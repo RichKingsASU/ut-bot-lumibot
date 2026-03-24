@@ -74,3 +74,10 @@ Thumbs.db
 ! composer.json
 ! tsconfig.json
 ! *.ipynb
+
+# Dashboard
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.netlify/
+dashboard/.env
+

@@ -1,0 +1,28 @@
+[build]
+  base = "dashboard"
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+
+[dev]
+  command = "npm run dev"
+  port = 8888
+  targetPort = 5173
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
+
+[[scheduled]]
+  function = "ingest-bars"
+  cron = "* 13-20 * * 1-5"
+
+[[scheduled]]
+  function = "ingest-options"
+  cron = "*/5 13-20 * * 1-5"
+
