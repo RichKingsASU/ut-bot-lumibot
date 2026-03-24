@@ -70,10 +70,12 @@ Thumbs.db
 *.csv
 *.pkl
 *.json
-! package.json
+! **/package.json
+! **/package-lock.json
 ! composer.json
-! tsconfig.json
+! **/tsconfig.json
 ! *.ipynb
+
 
 # Dashboard
 dashboard/node_modules/
