@@ -14,7 +14,11 @@ import { BotStatus } from './components/SidePanel/BotStatus'
 import { useAlpacaAccount } from './hooks/useAlpacaAccount'
 import { useAlpacaStream } from './hooks/useAlpacaStream'
 import { useUTBot } from './hooks/useUTBot'
+import { LoginPage } from './components/LoginPage'
+import { supabase } from './lib/supabaseClient'
 import type { IndicatorState, Timeframe, OHLCV, LogEntry } from './types/dashboard'
+import type { Session } from '@supabase/supabase-js'
+
 
 const DEFAULT_SYMBOL = import.meta.env.VITE_DEFAULT_SYMBOL || 'IWM'
 const DEFAULT_TIMEFRAME = (import.meta.env.VITE_DEFAULT_TIMEFRAME || '15m') as Timeframe
@@ -50,12 +54,31 @@ function useLogs() {
 type SidePanelTab = 'account' | 'trade' | 'positions' | 'orders' | 'bot'
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL)
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME)
   const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS)
   const [hoveredCandle, setHoveredCandle] = useState<OHLCV | null>(null)
   const [sideTab, setSideTab] = useState<SidePanelTab>('account')
   const [iterationsToday] = useState(0)
+
+  React.useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthLoading(false)
+    })
+
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
   const { logs, addLog } = useLogs()
 
   const { account, positions, orders, isInTrade, activePosition, loading, error } = useAlpacaAccount(symbol)
@@ -90,8 +113,24 @@ export default function App() {
     { key: 'bot', label: 'Bot' },
   ]
 
+  if (authLoading) {
+    return (
+      <div style={{ 
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+        background: 'var(--bg-primary)', color: 'var(--text-muted)' 
+      }}>
+        Initializing...
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <LoginPage />
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+
 
       {/* TOP BAR */}
       <TopBar

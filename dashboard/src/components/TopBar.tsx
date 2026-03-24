@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import type { Timeframe } from '../types/dashboard'
 import { fmtPrice } from '../utils/formatters'
+import { supabase } from '../lib/supabaseClient'
+
 
 interface TopBarProps {
   symbol: string
@@ -145,9 +147,36 @@ export const TopBar: React.FC<TopBarProps> = ({
       )}
 
       {/* Connection */}
-      <span style={{ color: connected ? 'var(--green)' : 'var(--red)', fontSize: '11px' }}>
+      <span style={{ color: connected ? 'var(--green)' : 'var(--red)', fontSize: '11px', whiteSpace: 'nowrap' }}>
         ● {connected ? 'LIVE' : 'OFFLINE'}
       </span>
+
+      <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
+
+      {/* Logout */}
+      <button
+        onClick={() => supabase.auth.signOut()}
+        title="Logout"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          transition: 'color 0.2s',
+        }}
+        onMouseOver={(e) => (e.currentTarget.style.color = '#fff')}
+        onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
     </div>
+
   )
 }
