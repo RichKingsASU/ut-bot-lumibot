@@ -21,9 +21,10 @@ import { PortfolioView } from './components/dashboard/Portfolio/PortfolioView'
 import { OptionsView } from './components/dashboard/Options/OptionsView'
 import { CryptoView } from './components/dashboard/Crypto/CryptoView'
 import { BacktestView } from './components/dashboard/Backtest/BacktestView'
-import { DataView } from './components/dashboard/Data/DataView'
+import { DataInventoryView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
+import { TradeView } from './components/dashboard/Trade/TradeView'
 import { StrategiesView } from './components/dashboard/Strategies/StrategiesView'
 import { supabase } from './lib/supabaseClient'
 import type { IndicatorState, Timeframe, OHLCV, LogEntry } from './types/dashboard'
@@ -69,9 +70,6 @@ export default function App() {
   
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL)
   const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME)
-  const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS)
-  const [hoveredCandle, setHoveredCandle] = useState<OHLCV | null>(null)
-  const [sideTab, setSideTab] = useState<SidePanelTab>('account')
   const [activeScreen, setActiveScreen] = useState<DashboardScreen>('trade')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [iterationsToday] = useState(0)
@@ -100,9 +98,6 @@ export default function App() {
     sensitivity: 1.0,
   })
 
-  const handleIndicatorToggle = (key: keyof IndicatorState) => {
-    setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
 
   const handleSymbolChange = (s: string) => {
     setSymbol(s)
@@ -185,96 +180,30 @@ export default function App() {
           {activeScreen === 'options' && <OptionsView />}
           {activeScreen === 'crypto' && <CryptoView />}
           {activeScreen === 'backtest' && <BacktestView />}
-          {activeScreen === 'data' && <DataView />}
+          {activeScreen === 'data' && <DataInventoryView />}
           {activeScreen === 'alerts' && <AlertsView />}
           {activeScreen === 'settings' && <SettingsView />}
           
           {activeScreen === 'trade' && (
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-              {/* CHART AREA */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* OHLC Data Bar */}
-                <OHLCBar candle={lastCandle} hoveredCandle={hoveredCandle} />
-
-                {/* Indicator Toolbar */}
-                <IndicatorToolbar indicators={indicators} onChange={handleIndicatorToggle} />
-
-                {/* Chart */}
-                <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                  <CandlestickChart
-                    candles={candles}
-                    trailStops={trailStops}
-                    signals={signals}
-                    indicators={indicators}
-                    currentPrice={currentPrice}
-                    entryPrice={activePosition ? parseFloat(activePosition.avg_entry_price) : undefined}
-                    onCrosshairMove={setHoveredCandle}
-                  />
-                </div>
-
-                {/* Volume Chart */}
-                <VolumeChart candles={candles} visible={indicators.volume} />
-              </div>
-
-              {/* SIDE PANEL */}
-              <div style={{
-                width: '280px',
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                borderLeft: '1px solid var(--border)',
-                background: 'var(--bg-secondary)',
-                overflow: 'hidden',
-              }}>
-                {/* Side Panel Tabs */}
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-                  {SIDE_TABS.map(({ key, label }) => (
-                    <button
-                      key={key}
-                      id={`side-tab-${key}`}
-                      onClick={() => setSideTab(key)}
-                      style={{
-                        flex: 1, padding: '8px 2px', border: 'none', cursor: 'pointer',
-                        background: sideTab === key ? 'var(--bg-tertiary)' : 'transparent',
-                        color: sideTab === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                        fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-                        borderBottom: sideTab === key ? '2px solid var(--blue)' : '2px solid transparent',
-                        letterSpacing: '0.04em',
-                      }}
-                    >{label}</button>
-                  ))}
-                </div>
-
-                {/* Side Panel Content */}
-                <div style={{ flex: 1, overflow: 'auto' }}>
-                  {sideTab === 'account' && <AccountOverview account={account} loading={loading} />}
-                  {sideTab === 'trade' && (
-                    <ActiveTrade
-                      position={activePosition}
-                      currentPrice={currentPrice}
-                      trailStop={currentTrailStop}
-                      lastSignal={lastSignal?.type ?? ''}
-                    />
-                  )}
-                  {sideTab === 'positions' && <Positions positions={positions} />}
-                  {sideTab === 'orders' && <OrderPanel orders={orders} />}
-                  {sideTab === 'bot' && (
-                    <BotStatus
-                      symbol={symbol}
-                      timeframe={timeframe}
-                      atrPeriod={10}
-                      sensitivity={1.0}
-                      currentATR={currentATR}
-                      currentTrailStop={currentTrailStop}
-                      lastSignal={lastSignal?.type ?? ''}
-                      iterationsToday={iterationsToday}
-                      connected={connected}
-                    />
-                  )}
-                  {sideTab === 'data' && <SeedStatus />}
-                </div>
-              </div>
-            </div>
+            <TradeView
+              symbol={symbol}
+              timeframe={timeframe}
+              candles={candles}
+              trailStops={trailStops}
+              signals={signals}
+              currentPrice={currentPrice}
+              activePosition={activePosition}
+              account={account}
+              positions={positions}
+              orders={orders}
+              currentTrailStop={currentTrailStop || 0}
+              currentATR={currentATR || 0}
+              lastSignal={lastSignal}
+              connected={connected}
+              loading={loading}
+              iterationsToday={iterationsToday}
+              addLog={addLog}
+            />
           )}
         </div>
       </div>

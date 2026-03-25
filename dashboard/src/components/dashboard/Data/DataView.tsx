@@ -2,7 +2,7 @@ import React from 'react'
 import { Database, Cloud, AlertCircle } from 'lucide-react'
 import SeedStatus from '../../SeedStatus'
 
-export function DataView() {
+export function DataInventoryView() {
   return (
     <div style={{ padding: '24px', flex: 1, overflow: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
