@@ -1,13 +1,13 @@
--- ── Drop old partial schema if it exists ──────────────────
+-- ══════════════════════════════════════════════════════════
+-- Disrupting Alpha — Database Schema (no pg_partman required)
+-- Run this in the Supabase SQL Editor
+-- ══════════════════════════════════════════════════════════
+
+-- ── Drop old partitioned tables if they exist ─────────────
 DROP TABLE IF EXISTS options_chain CASCADE;
 DROP TABLE IF EXISTS options_chain_archive CASCADE;
 
--- ── OHLCV bars (already exists — verify columns match) ────
--- If ohlcv_bars already exists, just confirm these columns:
--- symbol, timeframe, ts, open, high, low, close, volume,
--- vwap, trade_count, feed, created_at
--- If it does NOT exist, create it:
-
+-- ── OHLCV bars ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ohlcv_bars (
   symbol       TEXT          NOT NULL,
   timeframe    TEXT          NOT NULL,
@@ -22,22 +22,14 @@ CREATE TABLE IF NOT EXISTS ohlcv_bars (
   feed         TEXT          NOT NULL DEFAULT 'sip',
   created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   PRIMARY KEY (symbol, timeframe, ts)
-) PARTITION BY RANGE (ts);
-
--- Note: Ensure pg_partman is enabled
--- SELECT partman.create_parent(
---   p_parent_table => 'public.ohlcv_bars',
---   p_control      => 'ts',
---   p_interval     => '1 month',
---   p_premake      => 3
--- );
+);
 
 CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_tf_ts
   ON ohlcv_bars (symbol, timeframe, ts DESC);
 
 -- ── Full options chain snapshot table ─────────────────────
 CREATE TABLE options_chain (
-  id                    BIGSERIAL,
+  id                    BIGSERIAL     PRIMARY KEY,
   snapshot_ts           TIMESTAMPTZ   NOT NULL,
 
   -- Contract identity
@@ -46,8 +38,8 @@ CREATE TABLE options_chain (
   expiration_date       DATE          NOT NULL,
   strike_price          NUMERIC(12,4) NOT NULL,
   option_type           CHAR(1)       NOT NULL,   -- 'C' or 'P'
-  contract_style        TEXT,                     -- 'american'
-  contract_size         SMALLINT,                 -- 100
+  contract_style        TEXT,
+  contract_size         SMALLINT,
 
   -- Computed fields
   dte                   SMALLINT,
@@ -81,18 +73,18 @@ CREATE TABLE options_chain (
   -- Implied volatility
   implied_volatility    NUMERIC(10,6),
 
-  -- Greeks (all 5 — may be NULL for 0DTE)
+  -- Greeks
   delta                 NUMERIC(10,6),
   gamma                 NUMERIC(10,6),
   theta                 NUMERIC(10,6),
   vega                  NUMERIC(10,6),
   rho                   NUMERIC(10,6),
 
-  -- Open interest (from contract metadata, updated daily)
+  -- Open interest
   open_interest         INTEGER,
   open_interest_date    DATE,
 
-  -- Previous day close (from contract metadata)
+  -- Previous day close
   prev_close_price      NUMERIC(10,4),
   prev_close_date       DATE,
 
@@ -100,19 +92,9 @@ CREATE TABLE options_chain (
   has_greeks            BOOLEAN       NOT NULL DEFAULT FALSE,
   has_trade             BOOLEAN       NOT NULL DEFAULT FALSE,
   has_quote             BOOLEAN       NOT NULL DEFAULT FALSE,
-  feed                  TEXT          NOT NULL DEFAULT 'opra',
+  feed                  TEXT          NOT NULL DEFAULT 'opra'
+);
 
-  PRIMARY KEY (id, snapshot_ts)
-) PARTITION BY RANGE (snapshot_ts);
-
--- SELECT partman.create_parent(
---   p_parent_table => 'public.options_chain',
---   p_control      => 'snapshot_ts',
---   p_interval     => '1 month',
---   p_premake      => 3
--- );
-
--- Indexes for common query patterns
 CREATE INDEX idx_options_underlying_ts
   ON options_chain (underlying, snapshot_ts DESC);
 
@@ -129,10 +111,10 @@ CREATE INDEX idx_options_delta
   ON options_chain (underlying, delta, snapshot_ts DESC)
   WHERE delta IS NOT NULL;
 
--- ── Seed job tracking table ────────────────────────────────
+-- ── Seed job tracking table ───────────────────────────────
 CREATE TABLE IF NOT EXISTS seed_jobs (
   id            BIGSERIAL     PRIMARY KEY,
-  job_type      TEXT          NOT NULL,  -- 'bars' | 'options_seed'
+  job_type      TEXT          NOT NULL,
   symbol        TEXT          NOT NULL,
   timeframe     TEXT,
   started_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -145,7 +127,52 @@ CREATE TABLE IF NOT EXISTS seed_jobs (
   metadata      JSONB
 );
 
--- ── Useful views ───────────────────────────────────────────
+-- ── Backtest results ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS backtest_results (
+  id                BIGSERIAL     PRIMARY KEY,
+  strategy          TEXT          NOT NULL,
+  symbol            TEXT          NOT NULL,
+  timeframe         TEXT,
+  data_source       TEXT,
+  date_start        DATE,
+  date_end          DATE,
+  atr_period        INTEGER,
+  sensitivity       NUMERIC(6,2),
+  initial_capital   NUMERIC(14,2),
+  final_value       NUMERIC(14,2),
+  total_return_pct  NUMERIC(10,4),
+  max_drawdown_pct  NUMERIC(10,4),
+  sharpe_ratio      NUMERIC(10,4),
+  total_trades      INTEGER,
+  winning_trades    INTEGER,
+  losing_trades     INTEGER,
+  win_rate_pct      NUMERIC(8,4),
+  avg_win           NUMERIC(14,2),
+  avg_loss          NUMERIC(14,2),
+  profit_factor     NUMERIC(10,4),
+  params            JSONB,
+  created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+-- ── Bot signals ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bot_signals (
+  id            BIGSERIAL     PRIMARY KEY,
+  symbol        TEXT          NOT NULL,
+  ts            TIMESTAMPTZ   NOT NULL,
+  signal        TEXT          NOT NULL,  -- 'buy' | 'sell'
+  price         NUMERIC(12,4),
+  trail_stop    NUMERIC(12,4),
+  atr           NUMERIC(12,4),
+  metadata      JSONB,
+  created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_signals_sym_ts
+  ON bot_signals (symbol, ts DESC);
+
+-- ── Views ─────────────────────────────────────────────────
+
+-- Bar inventory view (referenced by seed-status function)
 CREATE OR REPLACE VIEW bar_inventory AS
 SELECT
   symbol,
@@ -160,6 +187,34 @@ FROM ohlcv_bars
 GROUP BY symbol, timeframe, feed
 ORDER BY symbol, timeframe;
 
+-- Data inventory view (referenced by supabase-query function)
+CREATE OR REPLACE VIEW data_inventory AS
+SELECT
+  symbol,
+  timeframe,
+  feed,
+  COUNT(*)                              AS bar_count,
+  MIN(ts)::DATE                         AS earliest,
+  MAX(ts)::DATE                         AS latest,
+  MAX(created_at)                       AS last_ingested
+FROM ohlcv_bars
+GROUP BY symbol, timeframe, feed
+ORDER BY symbol, timeframe;
+
+-- Options inventory view (referenced by supabase-query function)
+CREATE OR REPLACE VIEW options_inventory AS
+SELECT
+  underlying,
+  COUNT(DISTINCT contract_symbol)       AS contracts,
+  COUNT(DISTINCT expiration_date)       AS expirations,
+  MIN(snapshot_ts)::DATE                AS earliest_snapshot,
+  MAX(snapshot_ts)::DATE                AS latest_snapshot,
+  COUNT(*)                              AS total_rows
+FROM options_chain
+GROUP BY underlying
+ORDER BY underlying;
+
+-- Options chain summary view
 CREATE OR REPLACE VIEW options_chain_summary AS
 SELECT
   underlying,
@@ -179,67 +234,33 @@ FROM options_chain
 GROUP BY underlying, snapshot_ts::DATE
 ORDER BY underlying, snap_date DESC;
 
--- ── RLS policies ───────────────────────────────────────────
-ALTER TABLE options_chain   ENABLE ROW LEVEL SECURITY;
+-- ── RLS policies ──────────────────────────────────────────
 ALTER TABLE ohlcv_bars      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE seed_jobs       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE options_chain    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE seed_jobs        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE backtest_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_signals      ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "service_role_all" ON options_chain
-  FOR ALL TO service_role USING (true);
+-- Allow service_role full access (used by Netlify functions)
 CREATE POLICY "service_role_all" ON ohlcv_bars
+  FOR ALL TO service_role USING (true);
+CREATE POLICY "service_role_all" ON options_chain
   FOR ALL TO service_role USING (true);
 CREATE POLICY "service_role_all" ON seed_jobs
   FOR ALL TO service_role USING (true);
+CREATE POLICY "service_role_all" ON backtest_results
+  FOR ALL TO service_role USING (true);
+CREATE POLICY "service_role_all" ON bot_signals
+  FOR ALL TO service_role USING (true);
 
--- ── pg_partman & pg_cron setup instructions ──────────────────
--- These should be run manually in the Supabase SQL editor:
--- Enable extensions
-CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- Initialize partitions
-SELECT partman.create_parent(
-  p_parent_table => 'public.ohlcv_bars',
-  p_control      => 'ts',
-  p_interval     => '1 month',
-  p_premake      => 3
-);
-
-SELECT partman.create_parent(
-  p_parent_table => 'public.options_chain',
-  p_control      => 'snapshot_ts',
-  p_interval     => '1 month',
-  p_premake      => 3
-);
-
--- Schedule maintenance
-SELECT cron.schedule(
-  'partman-maintenance',
-  '0 * * * *',
-  $$SELECT partman.run_maintenance()$$
-);
-
--- Daily open interest refresh at 6:30 AM EST (11:30 UTC)
-SELECT cron.schedule(
-  'refresh-open-interest',
-  '30 11 * * 1-5',
-  $$
-  UPDATE options_chain oc
-  SET open_interest      = c.oi,
-      open_interest_date = c.oi_date,
-      prev_close_price   = c.cp,
-      prev_close_date    = c.cp_date
-  FROM (
-    SELECT contract_symbol,
-           MAX(open_interest)      AS oi,
-           MAX(open_interest_date) AS oi_date,
-           MAX(prev_close_price)   AS cp,
-           MAX(prev_close_date)    AS cp_date
-    FROM options_chain
-    WHERE snapshot_ts >= NOW() - INTERVAL '2 days'
-    GROUP BY contract_symbol
-  ) c
-  WHERE oc.contract_symbol = c.contract_symbol
-    AND oc.snapshot_ts >= CURRENT_DATE;
-  $$
-);
+-- Allow anon read access for dashboard queries via supabase-query function
+CREATE POLICY "anon_read" ON ohlcv_bars
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_read" ON options_chain
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_read" ON bot_signals
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_read" ON backtest_results
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_read" ON seed_jobs
+  FOR SELECT TO anon USING (true);
