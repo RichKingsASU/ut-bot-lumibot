@@ -15,6 +15,7 @@ import { useAlpacaAccount } from './hooks/useAlpacaAccount'
 import { useAlpacaStream } from './hooks/useAlpacaStream'
 import { useUTBot } from './hooks/useUTBot'
 import { LoginPage } from './components/LoginPage'
+import SeedStatus from './components/SeedStatus'
 import { supabase } from './lib/supabaseClient'
 import type { IndicatorState, Timeframe, OHLCV, LogEntry } from './types/dashboard'
 import type { Session } from '@supabase/supabase-js'
@@ -51,7 +52,7 @@ function useLogs() {
   return { logs, addLog }
 }
 
-type SidePanelTab = 'account' | 'trade' | 'positions' | 'orders' | 'bot'
+type SidePanelTab = 'account' | 'trade' | 'positions' | 'orders' | 'bot' | 'data'
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -111,6 +112,7 @@ export default function App() {
     { key: 'positions', label: 'Positions' },
     { key: 'orders', label: 'Orders' },
     { key: 'bot', label: 'Bot' },
+    { key: 'data', label: 'Data' },
   ]
 
   if (authLoading) {
@@ -238,6 +240,7 @@ export default function App() {
                 connected={connected}
               />
             )}
+            {sideTab === 'data' && <SeedStatus />}
           </div>
         </div>
       </div>

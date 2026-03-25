@@ -23,6 +23,6 @@
   cron = "* 13-20 * * 1-5"
 
 [[scheduled]]
-  function = "ingest-options"
+  function = "ingest-options-chain"
   cron = "*/5 13-20 * * 1-5"
 
