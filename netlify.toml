@@ -17,12 +17,5 @@
 
 [functions]
   node_bundler = "esbuild"
-
-[[scheduled]]
-  function = "ingest-bars"
-  cron = "* 13-20 * * 1-5"
-
-[[scheduled]]
-  function = "ingest-options-chain"
-  cron = "*/5 13-20 * * 1-5"
+  included_files = ["netlify/functions/**"]
 
