@@ -12,7 +12,7 @@ import { DataInventoryView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
 import { TradeView } from './components/dashboard/Trade/TradeView'
-import { supabase } from './lib/supabaseClient'
+import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
 import type { Session } from '@supabase/supabase-js'
 import { TradingProvider } from './context/TradingContext'
 
@@ -20,10 +20,23 @@ import { TradingProvider } from './context/TradingContext'
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
-  
+  const [authError, setAuthError] = useState<string | null>(null)
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    if (supabaseMisconfigured) {
+      setAuthError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables, then redeploy.')
+      setAuthLoading(false)
+      return
+    }
+
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        setAuthError(`Auth error: ${error.message}`)
+      }
       setSession(session)
+      setAuthLoading(false)
+    }).catch((err) => {
+      setAuthError(`Connection failed: ${err.message}`)
       setAuthLoading(false)
     })
 
@@ -36,11 +49,24 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div style={{ 
-        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-        background: 'var(--bg-primary)', color: 'var(--text-muted)' 
+      <div style={{
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg-primary)', color: 'var(--text-muted)'
       }}>
         Initializing...
+      </div>
+    )
+  }
+
+  if (authError) {
+    return (
+      <div style={{
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: '1rem',
+        background: 'var(--bg-primary)', color: 'var(--text-muted)', padding: '2rem'
+      }}>
+        <div style={{ color: '#ef4444', fontWeight: 600, fontSize: '1.2rem' }}>Configuration Error</div>
+        <div style={{ maxWidth: '500px', textAlign: 'center', lineHeight: 1.6 }}>{authError}</div>
       </div>
     )
   }

@@ -1,6 +1,5 @@
 import { Config } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
-import fetch from "node-fetch";
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
