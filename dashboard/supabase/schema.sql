@@ -193,7 +193,6 @@ CREATE POLICY "service_role_all" ON seed_jobs
 
 -- ── pg_partman & pg_cron setup instructions ──────────────────
 -- These should be run manually in the Supabase SQL editor:
-/*
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -244,4 +243,3 @@ SELECT cron.schedule(
     AND oc.snapshot_ts >= CURRENT_DATE;
   $$
 );
-*/

@@ -2,17 +2,12 @@ import React, { useState, useEffect } from 'react'
 import type { AlpacaPosition } from '../types/alpaca'
 import { fmtCurrency, fmtPnL, fmtPercent, fmtPrice, fmtDuration, fmtShares, fmtDateTime } from '../utils/formatters'
 
-interface InTradeBarProps {
-  isInTrade: boolean
-  position: AlpacaPosition | null
-  currentPrice: number
-  trailStop: number
-  entryTime?: string
-}
+import { useTradingContext } from '../context/TradingContext'
 
-export const InTradeBar: React.FC<InTradeBarProps> = ({
-  isInTrade, position, currentPrice, trailStop, entryTime,
-}) => {
+export const InTradeBar: React.FC = () => {
+  const { isInTrade, activePosition: position, currentPrice, currentTrailStop: trailStop } = useTradingContext()
+  const entryTime = position ? (position as { updated_at?: string }).updated_at ?? '' : undefined
+
   const [, forceUpdate] = useState(0)
 
   // Live timer
@@ -39,7 +34,7 @@ export const InTradeBar: React.FC<InTradeBarProps> = ({
   const unrealizedPlPct = parseFloat(position.unrealized_plpc)
   const entryPrice = parseFloat(position.avg_entry_price)
   const qty = parseFloat(position.qty)
-  const stopDist = currentPrice - trailStop
+  const stopDist = (currentPrice ?? 0) - (trailStop ?? 0)
   const stopDistPct = entryPrice > 0 ? stopDist / entryPrice : 0
 
   let riskColor = 'var(--green)'
@@ -77,7 +72,7 @@ export const InTradeBar: React.FC<InTradeBarProps> = ({
       {sep}
       {block('ENTRY', `$${fmtPrice(entryPrice)}`)}
       {sep}
-      {block('CURRENT', `$${fmtPrice(currentPrice)}`)}
+      {block('CURRENT', `$${fmtPrice(currentPrice ?? 0)}`)}
       {sep}
       {block('SHARES', fmtShares(qty))}
       {sep}
