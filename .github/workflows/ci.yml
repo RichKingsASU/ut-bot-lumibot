@@ -29,5 +29,6 @@ jobs:
 
     - name: Security scan (Secrets check)
       run: |
-        # Fail if any secrets are accidentally committed to code files
-        ! grep -r "API_KEY\|API_SECRET\|Bearer" . --include="*.py"
+        # Fail if any hardcoded secrets are committed to code files
+        # Ignore lines that reference env vars via os.getenv()
+        ! grep -r "API_KEY\|API_SECRET\|Bearer" . --include="*.py" | grep -v 'os\.getenv'
