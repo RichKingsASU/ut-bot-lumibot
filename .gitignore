@@ -83,4 +83,5 @@ dashboard/node_modules/
 dashboard/dist/
 dashboard/.netlify/
 dashboard/.env
+!dashboard/src/lib/
 

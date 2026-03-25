@@ -2,39 +2,31 @@ import React, { useState } from 'react'
 import type { Timeframe } from '../types/dashboard'
 import { fmtPrice } from '../utils/formatters'
 import { supabase } from '../lib/supabaseClient'
-
-
-interface TopBarProps {
-  symbol: string
-  timeframe: Timeframe
-  currentPrice: number
-  prevClose: number
-  isInTrade: boolean
-  tradeSide: 'long' | 'short' | null
-  botRunning: boolean
-  connected: boolean
-  onSymbolChange: (s: string) => void
-  onTimeframeChange: (t: Timeframe) => void
-}
+import { useTradingContext } from '../context/TradingContext'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
 
-export const TopBar: React.FC<TopBarProps> = ({
-  symbol, timeframe, currentPrice, prevClose,
-  isInTrade, tradeSide, botRunning, connected,
-  onSymbolChange, onTimeframeChange,
-}) => {
+export const TopBar: React.FC = () => {
+  const { 
+    symbol, timeframe, currentPrice, prevClose, 
+    isInTrade, activePosition, connected, 
+    setSymbol, setTimeframe 
+  } = useTradingContext()
+
+  const botRunning = connected
+  const tradeSide = activePosition?.side ?? null
+
   const [editingSymbol, setEditingSymbol] = useState(false)
   const [inputVal, setInputVal] = useState(symbol)
 
-  const priceChange = currentPrice - prevClose
-  const priceChangePct = prevClose > 0 ? (priceChange / prevClose) * 100 : 0
+  const priceChange = (currentPrice ?? 0) - (prevClose ?? 0)
+  const priceChangePct = (prevClose ?? 0) > 0 ? (priceChange / (prevClose ?? 1)) * 100 : 0
   const isUp = priceChange >= 0
 
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const val = inputVal.trim().toUpperCase()
-    if (val) { onSymbolChange(val); setEditingSymbol(false) }
+    if (val) { setSymbol(val); setEditingSymbol(false) }
   }
 
   return (
@@ -100,7 +92,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Price */}
       <span style={{ fontSize: '16px', fontWeight: 700, color: isUp ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace' }}>
-        ${fmtPrice(currentPrice)}
+        ${fmtPrice(currentPrice ?? 0)}
       </span>
       <span style={{ color: isUp ? 'var(--green)' : 'var(--red)', fontSize: '12px' }}>
         {isUp ? '+' : ''}{fmtPrice(priceChange)} ({isUp ? '+' : ''}{priceChangePct.toFixed(2)}%)
@@ -114,7 +106,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             key={tf}
             id={`tf-btn-${tf}`}
-            onClick={() => onTimeframeChange(tf)}
+            onClick={() => setTimeframe(tf)}
             style={{
               background: timeframe === tf ? 'rgba(88,166,255,0.2)' : 'transparent',
               border: timeframe === tf ? '1px solid var(--blue)' : '1px solid transparent',
