@@ -9,27 +9,10 @@ import { Positions } from '../../SidePanel/Positions'
 import { OrderPanel } from '../../SidePanel/OrderPanel'
 import { BotStatus } from '../../SidePanel/BotStatus'
 import SeedStatus from '../../SeedStatus'
-import type { IndicatorState, OHLCV, OHLCV as OHLCVType } from '../../../types/dashboard'
+import type { IndicatorState, OHLCV, Signal, Timeframe } from '../../../types/dashboard'
+import type { AlpacaAccount, AlpacaPosition, AlpacaOrder } from '../../../types/alpaca'
 
-interface TradeViewProps {
-  symbol: string
-  timeframe: any // Replace with proper Timeframe type if available
-  candles: OHLCVType[]
-  trailStops: any
-  signals: any
-  currentPrice: number
-  activePosition: any
-  account: any
-  positions: any[]
-  orders: any[]
-  currentTrailStop: number | null
-  currentATR: number | null
-  lastSignal: any
-  connected: boolean
-  loading: boolean
-  iterationsToday: number
-  addLog: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void
-}
+import { useTradingContext } from '../../../context/TradingContext'
 
 type SidePanelTab = 'account' | 'trade' | 'positions' | 'orders' | 'bot' | 'data'
 
@@ -46,25 +29,13 @@ const DEFAULT_INDICATORS: IndicatorState = {
   bollinger: false,
 }
 
-export function TradeView({
-  symbol,
-  timeframe,
-  candles,
-  trailStops,
-  signals,
-  currentPrice,
-  activePosition,
-  account,
-  positions,
-  orders,
-  currentTrailStop,
-  currentATR,
-  lastSignal,
-  connected,
-  loading,
-  iterationsToday,
-  addLog
-}: TradeViewProps) {
+export function TradeView() {
+  const {
+    symbol, timeframe, candles, trailStops, signals, currentPrice,
+    activePosition, account, positions, orders, currentTrailStop,
+    currentATR, lastSignal, connected, loading, iterationsToday
+  } = useTradingContext()
+
   const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS)
   const [hoveredCandle, setHoveredCandle] = useState<OHLCV | null>(null)
   const [sideTab, setSideTab] = useState<SidePanelTab>('account')
@@ -98,10 +69,10 @@ export function TradeView({
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <CandlestickChart
             candles={candles}
-            trailStops={trailStops}
+            trailStops={trailStops as number[]}
             signals={signals}
             indicators={indicators}
-            currentPrice={currentPrice}
+            currentPrice={currentPrice ?? 0}
             entryPrice={activePosition ? parseFloat(activePosition.avg_entry_price) : undefined}
             onCrosshairMove={setHoveredCandle}
           />
@@ -146,7 +117,7 @@ export function TradeView({
           {sideTab === 'trade' && (
             <ActiveTrade
               position={activePosition}
-              currentPrice={currentPrice}
+              currentPrice={currentPrice ?? 0}
               trailStop={currentTrailStop ?? 0}
               lastSignal={lastSignal?.type ?? ''}
             />

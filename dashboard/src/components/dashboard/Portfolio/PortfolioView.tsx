@@ -1,7 +1,20 @@
 import React from 'react'
 import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import type { AlpacaAccount, AlpacaPosition } from '../../../types/alpaca'
+
+import { useTradingContext } from '../../../context/TradingContext'
 
 export function PortfolioView() {
+  const { account, positions, loading } = useTradingContext()
+  const equity = account ? parseFloat(account.equity) : 0
+  const lastEquity = account ? parseFloat(account.last_equity) : equity
+  const dayPl = equity - lastEquity
+  const dayPlPct = lastEquity !== 0 ? (dayPl / lastEquity) * 100 : 0
+  const buyingPower = account ? parseFloat(account.buying_power) : 0
+  
+  const formatCurrency = (val: number) => 
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
+
   return (
     <div style={{ padding: '24px', flex: 1, overflow: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -19,10 +32,34 @@ export function PortfolioView() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '32px' }}>
-        <StatCard title="Total Equity" value="$124,500.20" change="+2.4%" positive={true} icon={Wallet} />
-        <StatCard title="Day P&L" value="$1,240.50" change="+1.02%" positive={true} icon={TrendingUp} />
-        <StatCard title="Buying Power" value="$48,200.00" change="Stable" positive={null} icon={ArrowUpRight} />
-        <StatCard title="Open Positions" value="8" change="-2" positive={false} icon={ArrowDownRight} />
+        <StatCard 
+          title="Total Equity" 
+          value={loading ? 'Loading...' : formatCurrency(equity)} 
+          change={loading ? '' : `${dayPl >= 0 ? '+' : ''}${dayPlPct.toFixed(2)}%`} 
+          positive={dayPl >= 0} 
+          icon={Wallet} 
+        />
+        <StatCard 
+          title="Day P&L" 
+          value={loading ? 'Loading...' : formatCurrency(dayPl)} 
+          change={loading ? '' : `${dayPl >= 0 ? '+' : ''}${dayPlPct.toFixed(2)}%`} 
+          positive={dayPl >= 0} 
+          icon={TrendingUp} 
+        />
+        <StatCard 
+          title="Buying Power" 
+          value={loading ? 'Loading...' : formatCurrency(buyingPower)} 
+          change="Real-time" 
+          positive={null} 
+          icon={ArrowUpRight} 
+        />
+        <StatCard 
+          title="Open Positions" 
+          value={loading ? '...' : positions.length.toString()} 
+          change="Active" 
+          positive={positions.length > 0} 
+          icon={ArrowDownRight} 
+        />
       </div>
 
       <div style={{ 

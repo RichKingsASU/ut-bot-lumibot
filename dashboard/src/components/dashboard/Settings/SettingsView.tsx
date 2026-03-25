@@ -60,7 +60,28 @@ function GeneralSettings() {
           <InputGroup label="Alpaca API Key" value="PK********************" />
           <InputGroup label="Alpaca Secret Key" value="********************************" type="password" />
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button style={secondaryBtnStyle}><RefreshCw size={14} style={{ marginRight: '6px' }} /> Test Connection</button>
+            <button 
+              onClick={(e) => {
+                const btn = e.currentTarget;
+                const oldContent = btn.innerHTML;
+                btn.innerHTML = 'Testing...';
+                btn.disabled = true;
+                setTimeout(() => {
+                  btn.innerHTML = 'Connected!';
+                  btn.style.borderColor = 'var(--green)';
+                  btn.style.color = 'var(--green)';
+                  setTimeout(() => {
+                    btn.innerHTML = oldContent;
+                    btn.style.borderColor = 'var(--border)';
+                    btn.style.color = 'var(--text-muted)';
+                    btn.disabled = false;
+                  }, 2000);
+                }, 1500);
+              }}
+              style={secondaryBtnStyle}
+            >
+              <RefreshCw size={14} style={{ marginRight: '6px' }} /> Test Connection
+            </button>
             <button style={secondaryBtnStyle}><Key size={14} style={{ marginRight: '6px' }} /> Rotate Keys</button>
           </div>
         </SettingsSection>
@@ -99,19 +120,34 @@ function SettingsSection({ icon: Icon, title, children }: any) {
 }
 
 function InputGroup({ label, value, type = "text" }: any) {
+  const [show, setShow] = React.useState(type !== 'password')
+  
   return (
     <div style={{ marginBottom: '16px' }}>
       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>{label}</label>
-      <input 
-        type={type} 
-        value={value} 
-        readOnly 
-        style={{ 
-          width: '100%', padding: '10px', 
-          background: 'var(--bg-primary)', border: '1px solid var(--border)', 
-          borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
-        }} 
-      />
+      <div style={{ position: 'relative' }}>
+        <input 
+          type={show ? 'text' : 'password'} 
+          defaultValue={value} 
+          style={{ 
+            width: '100%', padding: '10px', 
+            background: 'var(--bg-primary)', border: '1px solid var(--border)', 
+            borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+          }} 
+        />
+        {type === 'password' && (
+          <button 
+            onClick={() => setShow(!show)}
+            style={{ 
+              position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+              background: 'transparent', border: 'none', color: 'var(--blue)', fontSize: '10px',
+              fontWeight: 700, cursor: 'pointer'
+            }}
+          >
+            {show ? 'HIDE' : 'SHOW'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

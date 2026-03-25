@@ -2,10 +2,7 @@ import React, { useRef, useEffect } from 'react'
 import type { LogEntry } from '../types/dashboard'
 import { fmtTime } from '../utils/formatters'
 
-interface BottomLogBarProps {
-  logs: LogEntry[]
-  connected: boolean
-}
+import { useTradingContext } from '../context/TradingContext'
 
 const levelColors: Record<string, string> = {
   info: 'var(--text-muted)',
@@ -14,7 +11,8 @@ const levelColors: Record<string, string> = {
   success: 'var(--green)',
 }
 
-export const BottomLogBar: React.FC<BottomLogBarProps> = ({ logs, connected }) => {
+export const BottomLogBar: React.FC = () => {
+  const { logs, connected } = useTradingContext()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

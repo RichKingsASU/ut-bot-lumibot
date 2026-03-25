@@ -1,20 +1,33 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Bell, Filter } from 'lucide-react'
+import { useTradingContext } from '../../../context/TradingContext'
 
 export function AlertsView() {
+  const { signals, symbol } = useTradingContext()
+  const [filterType, setFilterType] = useState<'ALL' | 'BUY' | 'SELL'>('ALL')
+  
+  const reverseSignals = [...signals].reverse()
+  const filteredSignals = reverseSignals.filter(sig => filterType === 'ALL' || sig.type === filterType)
+  
   return (
     <div style={{ padding: '24px', flex: 1, overflow: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)' }}>Signal Alerts</h1>
+        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)' }}>Signal Alerts ({filteredSignals.length})</h1>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button style={{ 
-            display: 'flex', alignItems: 'center', padding: '8px 12px', 
-            background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
-            borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer'
-          }}>
-            <Filter size={16} style={{ marginRight: '8px' }} />
-            Filter
-          </button>
+          <select 
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as any)}
+            style={{ 
+              padding: '8px 32px 8px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
+              borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer', appearance: 'none',
+              backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23bdc1c6%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px top 50%', backgroundSize: '12px auto'
+            }}
+          >
+            <option value="ALL">All Types</option>
+            <option value="BUY">Buy Only</option>
+            <option value="SELL">Sell Only</option>
+          </select>
           <button style={{ 
             padding: '8px 12px', background: 'var(--red)', border: 'none', 
             borderRadius: '4px', color: 'white', fontWeight: 600, cursor: 'pointer'
@@ -30,27 +43,22 @@ export function AlertsView() {
         border: '1px solid var(--border)',
         overflow: 'hidden'
       }}>
-        <AlertItem 
-          time="2026-03-25 10:45:02" 
-          symbol="IWM" 
-          type="BUY" 
-          message="UT Bot Signal: Strong Buy @ 201.45" 
-          priority="high" 
-        />
-        <AlertItem 
-          time="2026-03-25 10:30:15" 
-          symbol="SPY" 
-          type="TRAIL" 
-          message="Trailing Stop Adjusted: 512.20" 
-          priority="medium" 
-        />
-        <AlertItem 
-          time="2026-03-25 09:15:00" 
-          symbol="QQQ" 
-          type="SELL" 
-          message="Trend Reversal: Exit All Longs" 
-          priority="high" 
-        />
+        {filteredSignals.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No '{filterType}' signals generated for {symbol} yet.
+          </div>
+        ) : (
+          filteredSignals.map((sig, idx) => (
+            <AlertItem 
+              key={`${sig.time}-${idx}`}
+              time={new Date(sig.time * 1000).toLocaleString()} 
+              symbol={symbol} 
+              type={sig.type} 
+              message={`UT Bot Signal: ${sig.type === 'BUY' ? 'Strong Buy' : 'Strong Sell'} @ ${sig.price.toFixed(2)}`} 
+              priority="high" 
+            />
+          ))
+        )}
       </div>
     </div>
   )
@@ -61,7 +69,7 @@ function AlertItem({ time, symbol, type, message, priority }: any) {
   
   return (
     <div style={{ 
-      padding: '166px', 
+      padding: '16px', 
       borderBottom: '1px solid var(--border)', 
       display: 'flex', 
       alignItems: 'center',
