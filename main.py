@@ -4,6 +4,7 @@ import sys
 from lumibot.traders import Trader
 from lumibot.brokers import Alpaca
 from strategies.ut_bot import UTBotStrategy
+from strategies import heartbeat
 from config import ALPACA_CONFIG
 import adapters.supabase_logger as db
 
@@ -13,6 +14,14 @@ def _shutdown_handler(signum, frame):
     sig_name = signal.Signals(signum).name if signum else "UNKNOWN"
     print(f"\n[SHUTDOWN] Received {sig_name} — logging session end...")
     db.log_session_end()
+    sys.exit(0)
+
+
+
+def _shutdown_handler(signum, frame):
+    """Handle SIGINT/SIGTERM — write offline status before exit."""
+    print(f"\nReceived signal {signum}, shutting down...")
+    heartbeat.stop()
     sys.exit(0)
 
 

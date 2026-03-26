@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { useAlpacaAccount } from '../hooks/useAlpacaAccount'
 import { useAlpacaStream } from '../hooks/useAlpacaStream'
 import { useUTBot } from '../hooks/useUTBot'
+import { useBotStatus, type BotStatusData } from '../hooks/useBotStatus'
 import type { Timeframe, LogEntry, OHLCV, Signal } from '../types/dashboard'
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder } from '../types/alpaca'
 
@@ -36,6 +37,7 @@ interface TradingContextValue {
   logs: LogEntry[]
   addLog: (message: string, level?: LogEntry['level']) => void
   iterationsToday: number
+  botStatus: BotStatusData
 }
 
 const TradingContext = createContext<TradingContextValue | undefined>(undefined)
@@ -58,6 +60,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   const { account, positions, orders, isInTrade, activePosition, loading, error } = useAlpacaAccount(symbol)
   const { candles, currentPrice, connected, prevClose } = useAlpacaStream(symbol, timeframe)
+  const botStatus = useBotStatus()
   const { trailStops, signals, currentTrailStop, currentATR, lastSignal } = useUTBot(candles, {
     atrPeriod: 10,
     sensitivity: 1.0,
@@ -100,7 +103,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     
     logs,
     addLog,
-    iterationsToday
+    iterationsToday,
+    botStatus,
   }
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>
