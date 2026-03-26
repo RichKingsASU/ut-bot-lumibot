@@ -65,16 +65,16 @@ const STRIKE_MODES = [
 
 // ── API helpers ─────���─────────────────────────��─────────────────────────────
 
-const API_BASE = '/.netlify/functions'
+import { API } from '../../../lib/api'
 
 async function fetchConfig(): Promise<OptionsConfig> {
-  const res = await fetch(`${API_BASE}/options-config?action=get`)
+  const res = await fetch(API.optionsConfig('get'))
   if (!res.ok) throw new Error('Failed to load config')
   return res.json()
 }
 
 async function saveConfigAPI(config: OptionsConfig): Promise<{ status: string; error?: string; config?: OptionsConfig }> {
-  const res = await fetch(`${API_BASE}/options-config?action=save`, {
+  const res = await fetch(API.optionsConfig('save'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -83,14 +83,14 @@ async function saveConfigAPI(config: OptionsConfig): Promise<{ status: string; e
 }
 
 async function fetchPreview(optionType: string): Promise<PreviewData> {
-  const res = await fetch(`${API_BASE}/options-config?action=preview&option_type=${optionType}`)
+  const res = await fetch(`${API.optionsConfig('preview')}&option_type=${optionType}`)
   if (!res.ok) return { status: 'unavailable', reason: 'API error' }
   return res.json()
 }
 
 async function fetchExpirations(): Promise<ExpirationEntry[]> {
   try {
-    const res = await fetch(`${API_BASE}/options-config?action=expirations`)
+    const res = await fetch(API.optionsConfig('expirations'))
     if (!res.ok) return []
     const data = await res.json()
     return data.expirations || []
@@ -101,7 +101,7 @@ async function fetchExpirations(): Promise<ExpirationEntry[]> {
 
 async function fetchBotState(): Promise<{ last_signal: string; underlying_price: number | null }> {
   try {
-    const res = await fetch(`${API_BASE}/bot-state`)
+    const res = await fetch(API.botState())
     if (!res.ok) return { last_signal: 'FLAT', underlying_price: null }
     return res.json()
   } catch {
@@ -580,13 +580,14 @@ function PreviewCard({ preview, botSignal }: { preview: PreviewData; botSignal: 
   const spreadPct = mid > 0 ? (spread / mid) * 100 : 0
   const costPerContract = mid * 100
 
-  let spreadQuality: { label: string; color: string; pct: number }
+  const barWidth = Math.min(spreadPct / 10 * 100, 100)
+  let spreadQuality: { label: string; color: string }
   if (spreadPct < 3) {
-    spreadQuality = { label: 'GOOD', color: '#089981', pct: Math.min(spreadPct / 3 * 100, 100) }
-  } else if (spreadPct < 7) {
-    spreadQuality = { label: 'FAIR', color: '#e3b341', pct: Math.min(spreadPct / 7 * 100, 100) }
+    spreadQuality = { label: 'GOOD', color: '#089981' }
+  } else if (spreadPct <= 7) {
+    spreadQuality = { label: 'FAIR', color: '#e3b341' }
   } else {
-    spreadQuality = { label: 'WIDE', color: '#f23645', pct: 100 }
+    spreadQuality = { label: 'WIDE', color: '#f23645' }
   }
 
   const optType = (preview.option_type || 'call').toUpperCase()
@@ -637,12 +638,17 @@ function PreviewCard({ preview, botSignal }: { preview: PreviewData; botSignal: 
         <div style={{ height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
           <div style={{
             height: '100%',
-            width: `${100 - spreadQuality.pct}%`,
+            width: `${barWidth}%`,
             background: spreadQuality.color,
             borderRadius: '3px',
             transition: 'width 0.3s ease',
           }} />
         </div>
+        {spreadQuality.label === 'WIDE' && (
+          <div style={{ fontSize: '11px', color: '#f23645', marginTop: '6px', fontWeight: 500 }}>
+            {'\u26A0'} Wide spread detected {'\u2014'} slippage may be significant
+          </div>
+        )}
       </div>
     </div>
   )
