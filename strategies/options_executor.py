@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 import requests
 import pytz
 
+import adapters.supabase_logger as db
+
 logger = logging.getLogger("options_executor")
 logger.setLevel(logging.INFO)
 if not logger.handlers:
@@ -386,6 +388,25 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
         }
         logger.info("POSITION OPENED: %s %s strike=%.2f qty=%d fill=%.2f",
                      direction, contract_symbol, strike, filled_qty, fill_price)
+
+        # Log ENTRY to paper_trades (trade_pnl=None on entry)
+        try:
+            db.log_trade(
+                symbol=underlying,
+                side="ENTRY",
+                contract_symbol=contract_symbol,
+                direction=direction,
+                option_type=option_type,
+                strike=strike,
+                expiration=expiration,
+                qty=filled_qty,
+                entry_price=fill_price,
+                entry_underlying_price=underlying_price,
+                entry_rsi=current_rsi,
+            )
+        except Exception as e:
+            logger.warning("[SUPABASE] paper_trades ENTRY write failed: %s", e)
+
         return filled_order
 
     except requests.exceptions.HTTPError as e:
@@ -437,6 +458,26 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
             pnl = -(open_position["fill_price"] * qty * 100)
             trade_record = _build_trade_record(0.0, pnl, exit_reason)
             log_trade_async(trade_record)
+            # Log EXIT to paper_trades
+            try:
+                db.log_trade(
+                    symbol=open_position.get("contract_symbol", ""),
+                    side="EXIT",
+                    contract_symbol=open_position.get("contract_symbol"),
+                    direction=open_position.get("direction"),
+                    option_type=open_position.get("option_type"),
+                    strike=open_position.get("strike"),
+                    expiration=open_position.get("expiration"),
+                    qty=qty,
+                    entry_price=open_position.get("fill_price"),
+                    exit_price=0.0,
+                    entry_underlying_price=open_position.get("entry_underlying_price"),
+                    trade_pnl=pnl,
+                    exit_reason=exit_reason,
+                    entry_rsi=open_position.get("entry_rsi"),
+                )
+            except Exception as e:
+                logger.warning("[SUPABASE] paper_trades EXIT write failed: %s", e)
             logger.info("POSITION CLOSED (expired worthless): P&L=$%.2f", pnl)
             open_position = {}
             return {"status": "expired_worthless", "pnl": pnl}
@@ -473,9 +514,30 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
             # when underlying drops)
             pass
 
-        # 5. Log to Supabase (fire-and-forget)
+        # 5. Log to Supabase (fire-and-forget) — legacy trade_log
         trade_record = _build_trade_record(exit_price, pnl, exit_reason)
         log_trade_async(trade_record)
+
+        # Log EXIT to paper_trades (new structured table)
+        try:
+            db.log_trade(
+                symbol=open_position.get("contract_symbol", ""),
+                side="EXIT",
+                contract_symbol=contract_symbol,
+                direction=open_position.get("direction"),
+                option_type=open_position.get("option_type"),
+                strike=open_position.get("strike"),
+                expiration=open_position.get("expiration"),
+                qty=qty,
+                entry_price=open_position.get("fill_price"),
+                exit_price=exit_price,
+                entry_underlying_price=open_position.get("entry_underlying_price"),
+                trade_pnl=pnl,
+                exit_reason=exit_reason,
+                entry_rsi=open_position.get("entry_rsi"),
+            )
+        except Exception as e:
+            logger.warning("[SUPABASE] paper_trades EXIT write failed: %s", e)
 
         logger.info("POSITION CLOSED: %s exit=%.2f P&L=$%.2f reason=%s",
                      contract_symbol, exit_price, pnl, exit_reason)

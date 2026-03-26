@@ -26,7 +26,7 @@ from strategies.options_executor import (
     get_open_position,
     get_underlying_price,
 )
-from strategies.heartbeat import set_last_signal
+import adapters.supabase_logger as db
 
 logger = logging.getLogger("ut_bot_strategy")
 ET = pytz.timezone("America/New_York")
@@ -123,9 +123,42 @@ class UTBotStrategy(Strategy):
 
         current_price = df.iloc[-1]['close']
         current_signal = df.iloc[-1]['signal']
+        current_atr = df.iloc[-1]['atr'] if not pd.isna(df.iloc[-1]['atr']) else 0.0
+        current_trail_stop = df.iloc[-1]['trail_stop']
+
+        # ── Log the latest bar to Supabase (fire-and-forget) ─────────────
+        try:
+            last_bar = df.iloc[-1]
+            db.log_bar(symbol, {
+                "t": last_bar.name.isoformat() if hasattr(last_bar.name, "isoformat") else str(last_bar.name),
+                "o": last_bar["open"], "h": last_bar["high"],
+                "l": last_bar["low"],  "c": last_bar["close"],
+                "v": int(last_bar.get("volume", 0)) if "volume" in last_bar.index else 0,
+            })
+        except Exception as e:
+            logger.warning("[SUPABASE] bar_log write failed: %s", e)
 
         # ── Compute 5-minute RSI for exit logic ──────────────────────────
         current_rsi = self._compute_rsi(df['close'], self.parameters["rsi_period"])
+
+        # ── Log signal to Supabase if a signal fired ─────────────────────
+        if current_signal != 0:
+            try:
+                bar_time = df.index[-1]
+                db.log_signal(
+                    symbol=symbol,
+                    bar_time=bar_time.isoformat() if hasattr(bar_time, "isoformat") else str(bar_time),
+                    timeframe=self.parameters.get("timeframe", "1D"),
+                    signal_type="UT_BUY" if current_signal == 1 else "UT_SELL",
+                    close_price=float(current_price),
+                    trail_stop=float(current_trail_stop),
+                    atr=float(current_atr),
+                    rsi=float(current_rsi),
+                    buy_sig=(current_signal == 1),
+                    sell_sig=(current_signal == -1),
+                )
+            except Exception as e:
+                logger.warning("[SUPABASE] signal_log write failed: %s", e)
 
         # ── Determine direction ──────────────────────────────────────────
         if current_signal == 1:
