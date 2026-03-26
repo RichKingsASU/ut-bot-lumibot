@@ -12,7 +12,7 @@ const levelColors: Record<string, string> = {
 }
 
 export const BottomLogBar: React.FC = () => {
-  const { logs, connected } = useTradingContext()
+  const { logs, connected, botStatus } = useTradingContext()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -49,9 +49,16 @@ export const BottomLogBar: React.FC = () => {
         )}
       </div>
 
-      <span style={{ color: connected ? 'var(--green)' : 'var(--red)', fontSize: 10, whiteSpace: 'nowrap' }}>
-        <span className="pulse-dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: connected ? 'var(--green)' : 'var(--red)', marginRight: 4, verticalAlign: 'middle' }} />
-        {connected ? 'LIVE' : 'OFFLINE'}
+      <span style={{
+        color: botStatus.online ? 'var(--green)' : botStatus.status === 'stale' || botStatus.status === 'connecting' ? 'var(--amber)' : 'var(--red)',
+        fontSize: 10, whiteSpace: 'nowrap'
+      }}>
+        <span className="pulse-dot" style={{
+          display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+          background: botStatus.online ? 'var(--green)' : botStatus.status === 'stale' || botStatus.status === 'connecting' ? 'var(--amber)' : 'var(--red)',
+          marginRight: 4, verticalAlign: 'middle'
+        }} />
+        {botStatus.online ? 'LIVE' : botStatus.status === 'stale' ? 'STALE' : botStatus.status === 'connecting' ? 'CONNECTING...' : 'OFFLINE'}
       </span>
     </div>
   )

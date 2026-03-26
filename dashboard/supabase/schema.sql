@@ -154,6 +154,32 @@ CREATE TABLE IF NOT EXISTS backtest_results (
   created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
+-- ── Bot status (heartbeat from local bot) ───────────────────
+CREATE TABLE IF NOT EXISTS bot_status (
+  id              INTEGER       PRIMARY KEY DEFAULT 1,
+  status          TEXT          NOT NULL DEFAULT 'offline',
+  last_heartbeat  TIMESTAMPTZ,
+  session_id      TEXT,
+  symbol          TEXT,
+  mode            TEXT,
+  uptime_seconds  INTEGER,
+  last_signal     TEXT,
+  last_signal_time TIMESTAMPTZ,
+  updated_at      TIMESTAMPTZ   DEFAULT NOW()
+);
+
+-- Seed the single row
+INSERT INTO bot_status (id, status) VALUES (1, 'offline')
+  ON CONFLICT DO NOTHING;
+
+ALTER TABLE bot_status ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all" ON bot_status
+  FOR ALL TO service_role USING (true);
+
+CREATE POLICY "anon_read" ON bot_status
+  FOR SELECT TO anon USING (true);
+
 -- ── Bot signals ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bot_signals (
   id            BIGSERIAL     PRIMARY KEY,

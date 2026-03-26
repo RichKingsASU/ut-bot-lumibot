@@ -33,7 +33,7 @@ export function TradeView() {
   const {
     symbol, timeframe, candles, trailStops, signals, currentPrice,
     activePosition, account, positions, orders, currentTrailStop,
-    currentATR, lastSignal, connected, loading, iterationsToday
+    currentATR, lastSignal, connected, loading, iterationsToday, botStatus
   } = useTradingContext()
 
   const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS)
@@ -135,6 +135,7 @@ export function TradeView() {
               lastSignal={lastSignal?.type ?? ''}
               iterationsToday={iterationsToday}
               connected={connected}
+              botStatus={botStatus}
             />
           )}
           {sideTab === 'data' && <SeedStatus />}

@@ -6,14 +6,29 @@ import { useTradingContext } from '../context/TradingContext'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
 
+function formatUptime(seconds: number | null): string {
+  if (seconds == null) return ''
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return `${h}h ${m.toString().padStart(2, '0')}m`
+}
+
+function formatSignalTime(iso: string | null): string {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET'
+  } catch { return '' }
+}
+
 export const TopBar: React.FC = () => {
-  const { 
-    symbol, timeframe, currentPrice, prevClose, 
-    isInTrade, activePosition, connected, 
-    setSymbol, setTimeframe 
+  const {
+    symbol, timeframe, currentPrice, prevClose,
+    isInTrade, activePosition, connected,
+    setSymbol, setTimeframe, botStatus
   } = useTradingContext()
 
-  const botRunning = connected
+  const botRunning = botStatus.online
   const tradeSide = activePosition?.side ?? null
 
   const [editingSymbol, setEditingSymbol] = useState(false)
@@ -126,9 +141,9 @@ export const TopBar: React.FC = () => {
       {/* Badges */}
       <span className={`badge badge-blue`}>PAPER</span>
 
-      <span className={`badge ${botRunning ? 'badge-green' : 'badge-gray'}`}>
+      <span className={`badge ${botRunning ? 'badge-green' : botStatus.status === 'stale' ? 'badge-amber' : 'badge-gray'}`}>
         {botRunning && <span className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />}
-        BOT {botRunning ? 'RUNNING' : 'STOPPED'}
+        BOT {botRunning ? 'RUNNING' : botStatus.status === 'stale' ? 'STALE' : 'STOPPED'}
       </span>
 
       {isInTrade && (
@@ -138,10 +153,22 @@ export const TopBar: React.FC = () => {
         </span>
       )}
 
-      {/* Connection */}
-      <span style={{ color: connected ? 'var(--green)' : 'var(--red)', fontSize: '11px', whiteSpace: 'nowrap' }}>
-        ● {connected ? 'LIVE' : 'OFFLINE'}
+      {/* Bot Status Indicator */}
+      <span style={{
+        color: botStatus.online ? 'var(--green)' : botStatus.status === 'stale' ? 'var(--amber)' : botStatus.status === 'connecting' ? 'var(--amber)' : 'var(--red)',
+        fontSize: '11px', whiteSpace: 'nowrap'
+      }}>
+        ● {botStatus.online ? 'LIVE' : botStatus.status === 'stale' ? 'STALE' : botStatus.status === 'connecting' ? 'CONNECTING...' : 'OFFLINE'}
       </span>
+
+      {/* Bot details when online */}
+      {botStatus.online && (
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          {botStatus.symbol ?? ''} | {(botStatus.mode ?? '').toUpperCase()} | {formatUptime(botStatus.uptime_seconds)}
+          {botStatus.last_signal && ` | ${botStatus.last_signal}`}
+          {botStatus.last_signal_time && ` (${formatSignalTime(botStatus.last_signal_time)})`}
+        </span>
+      )}
 
       <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
 
