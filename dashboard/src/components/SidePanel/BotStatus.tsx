@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { fmtPrice, fmtTime } from '../../utils/formatters'
 import { DataInventory } from '../DataInventory'
+import type { BotStatusData } from '../../hooks/useBotStatus'
 
 interface BotStatusProps {
   symbol: string
@@ -12,6 +13,7 @@ interface BotStatusProps {
   lastSignal: string
   iterationsToday: number
   connected: boolean
+  botStatus: BotStatusData
 }
 
 function getMarketStatus(): 'OPEN' | 'CLOSED' | 'PRE' | 'AFTER' {
@@ -49,7 +51,7 @@ const statusColors: Record<string, string> = {
 
 export const BotStatus: React.FC<BotStatusProps> = ({
   symbol, timeframe, atrPeriod, sensitivity,
-  currentATR, currentTrailStop, lastSignal, iterationsToday, connected,
+  currentATR, currentTrailStop, lastSignal, iterationsToday, connected, botStatus,
 }: BotStatusProps) => {
   const [now, setNow] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'status' | 'inventory'>('status')
@@ -131,6 +133,13 @@ export const BotStatus: React.FC<BotStatusProps> = ({
 
             <div style={{ marginTop: 4 }}>
               {row('Data Feed', connected ? '● LIVE' : '● OFFLINE', connected ? 'var(--green)' : 'var(--red)')}
+              {row('Bot Status',
+                botStatus.online ? '● LIVE' : botStatus.status === 'stale' ? '● STALE' : botStatus.status === 'connecting' ? '● CONNECTING' : '● OFFLINE',
+                botStatus.online ? 'var(--green)' : botStatus.status === 'stale' || botStatus.status === 'connecting' ? 'var(--amber)' : 'var(--red)'
+              )}
+              {botStatus.online && botStatus.mode && row('Mode', botStatus.mode.toUpperCase())}
+              {botStatus.online && botStatus.uptime_seconds != null && row('Uptime', `${Math.floor(botStatus.uptime_seconds / 3600)}h ${Math.floor((botStatus.uptime_seconds % 3600) / 60).toString().padStart(2, '0')}m`)}
+              {botStatus.online && botStatus.last_signal && row('Last Signal', botStatus.last_signal, botStatus.last_signal === 'CALL' ? 'var(--green)' : botStatus.last_signal === 'PUT' ? 'var(--red)' : 'var(--text-muted)')}
             </div>
           </div>
         ) : (

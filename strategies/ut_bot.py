@@ -26,6 +26,7 @@ from strategies.options_executor import (
     get_open_position,
     get_underlying_price,
 )
+from strategies.heartbeat import set_last_signal
 
 logger = logging.getLogger("ut_bot_strategy")
 ET = pytz.timezone("America/New_York")
@@ -152,6 +153,7 @@ class UTBotStrategy(Strategy):
         # ── ENTRY LOGIC (if no open position) ───────────────────────────
         if not has_open_position() and current_signal != 0:
             direction = "LONG" if current_signal == 1 else "SHORT"
+            signal_label = "CALL" if direction == "LONG" else "PUT"
             logger.info("Entry signal: %s at underlying=%.2f RSI=%.1f",
                         direction, current_price, current_rsi)
             buy_to_open(
@@ -161,6 +163,7 @@ class UTBotStrategy(Strategy):
                 underlying_price=current_price,
                 current_rsi=current_rsi,
             )
+            set_last_signal(signal_label)
 
     # ── Exit trigger evaluation ──────────────────────────────────────────
 
