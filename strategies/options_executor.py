@@ -127,31 +127,110 @@ def fetch_option_chain(underlying: str, expiration_date: str,
     return contracts
 
 
-def select_atm_contract(underlying: str, underlying_price: float,
-                        option_type: str = "call",
-                        expiration_date: str | None = None) -> dict | None:
+def _compute_target_expiration() -> str:
+    """Compute expiration date from config (OPTION_EXPIRATION_MODE)."""
+    from config import (OPTION_EXPIRATION_MODE, OPTION_EXPIRATION_DAYS_OUT)
+
+    today = datetime.now(ET).strftime("%Y-%m-%d")
+    mode = OPTION_EXPIRATION_MODE
+
+    if mode == "0DTE":
+        return today
+    elif mode == "1DTE":
+        return _add_days(today, 1)
+    elif mode == "2DTE":
+        return _add_days(today, 2)
+    elif mode == "WEEKLY":
+        d = datetime.now(ET)
+        days_until_fri = (4 - d.weekday()) % 7 or 7
+        return _add_days(today, days_until_fri)
+    elif mode == "BIWEEKLY":
+        d = datetime.now(ET)
+        days_until_fri = (4 - d.weekday()) % 7 or 7
+        return _add_days(today, days_until_fri + 7)
+    elif mode == "MONTHLY":
+        d = datetime.now(ET)
+        # 3rd Friday of next month
+        if d.month == 12:
+            nm, ny = 1, d.year + 1
+        else:
+            nm, ny = d.month + 1, d.year
+        first = datetime(ny, nm, 1)
+        first_fri = (4 - first.weekday()) % 7 + 1
+        third_fri = first_fri + 14
+        return f"{ny}-{nm:02d}-{third_fri:02d}"
+    elif mode == "CUSTOM":
+        return _add_days(today, OPTION_EXPIRATION_DAYS_OUT)
+    else:
+        return today
+
+
+def _add_days(date_str: str, days: int) -> str:
+    d = datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=days)
+    return d.strftime("%Y-%m-%d")
+
+
+def _compute_strike_offset() -> float:
+    """Compute strike offset from ATM based on config (OPTION_STRIKE_MODE)."""
+    from config import OPTION_STRIKE_MODE, OPTION_STRIKE_STEP
+
+    offsets = {
+        "ITM3": -3, "ITM2": -2, "ITM1": -1,
+        "ATM": 0,
+        "OTM1": 1, "OTM2": 2, "OTM3": 3,
+    }
+    multiplier = offsets.get(OPTION_STRIKE_MODE, 0)
+    return multiplier * OPTION_STRIKE_STEP
+
+
+def select_contract(underlying: str, underlying_price: float,
+                    option_type: str = "call",
+                    expiration_date: str | None = None) -> dict | None:
     """
-    Select the at-the-money contract:
-      - expiration defaults to today (0DTE) in ET
-      - ATM = nearest strike to round(underlying_price)
+    Select an option contract using configurable expiration and strike settings.
+
+    Uses OPTION_EXPIRATION_MODE and OPTION_STRIKE_MODE from config.py.
+    Falls back up to OPTION_MAX_DTE_FALLBACK days forward if no contracts
+    exist on the target expiration date.
+
     Returns the contract dict or None.
     """
+    from config import OPTION_MAX_DTE_FALLBACK
+
     if expiration_date is None:
-        expiration_date = datetime.now(ET).strftime("%Y-%m-%d")
+        expiration_date = _compute_target_expiration()
 
     contracts = fetch_option_chain(underlying, expiration_date, option_type)
+
+    # Fallback: search forward if no contracts on target date
+    if not contracts and OPTION_MAX_DTE_FALLBACK > 0:
+        for d in range(1, OPTION_MAX_DTE_FALLBACK + 1):
+            fallback_date = _add_days(expiration_date, d)
+            contracts = fetch_option_chain(underlying, fallback_date, option_type)
+            if contracts:
+                expiration_date = fallback_date
+                logger.info("Fallback: using expiration %s (+%d days)", fallback_date, d)
+                break
+
     if not contracts:
         return None
 
-    target_strike = round(underlying_price)
+    # Target strike = nearest to round(price) + offset
+    offset = _compute_strike_offset()
+    target_strike = round(underlying_price) + offset
     best = min(contracts,
                key=lambda c: abs(float(c.get("strike_price", 0)) - target_strike))
-    logger.info("ATM %s selected: strike=%.2f  symbol=%s  exp=%s",
+    logger.info("Contract selected: %s strike=%.2f symbol=%s exp=%s (offset=%.1f)",
                 option_type.upper(),
                 float(best.get("strike_price", 0)),
                 best.get("symbol", "?"),
-                expiration_date)
+                expiration_date,
+                offset)
     return best
+
+
+# Keep backward-compatible alias
+select_atm_contract = select_contract
 
 
 def get_option_quote(contract_symbol: str) -> dict:
@@ -243,8 +322,8 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
             underlying_price = get_underlying_price(underlying)
         logger.info("Underlying %s price: %.2f", underlying, underlying_price)
 
-        # 2. Select ATM contract (0DTE)
-        contract = select_atm_contract(underlying, underlying_price, option_type)
+        # 2. Select contract using configured expiration + strike
+        contract = select_contract(underlying, underlying_price, option_type)
         if contract is None:
             logger.error("No ATM %s contract found — skipping entry", option_type)
             return None

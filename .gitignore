@@ -67,6 +67,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Runtime config (written by UI, never committed)
+runtime_config.json
+
 # Project Specific
 *.csv
 *.pkl
