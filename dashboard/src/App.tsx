@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage'
 import { DashboardSidebar, DashboardScreen } from './components/dashboard/DashboardSidebar'
 import { PortfolioView } from './components/dashboard/Portfolio/PortfolioView'
 import { OptionsView } from './components/dashboard/Options/OptionsView'
+import { OptionsConfigView } from './components/dashboard/OptionsConfig/OptionsConfigView'
 import { CryptoView } from './components/dashboard/Crypto/CryptoView'
 import { BacktestView } from './components/dashboard/Backtest/BacktestView'
 import { DataInventoryView } from './components/dashboard/Data/DataView'
@@ -109,6 +110,7 @@ function DashboardLayout() {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: 'var(--bg-primary)' }}>
           {activeScreen === 'portfolio' && <PortfolioView />}
           {activeScreen === 'options' && <OptionsView />}
+          {activeScreen === 'options-config' && <OptionsConfigView />}
           {activeScreen === 'crypto' && <CryptoView />}
           {activeScreen === 'backtest' && <BacktestView symbol="IWM" timeframe="15m" />}
           {activeScreen === 'data' && <DataInventoryView />}

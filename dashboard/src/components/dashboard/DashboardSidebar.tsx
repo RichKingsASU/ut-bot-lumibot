@@ -1,25 +1,27 @@
 import React from 'react'
-import { 
-  LineChart, 
-  Layers, 
-  Bitcoin, 
-  History, 
-  Wallet, 
-  Database, 
-  Bell, 
+import {
+  LineChart,
+  Layers,
+  Bitcoin,
+  History,
+  Wallet,
+  Database,
+  Bell,
   Settings,
+  SlidersHorizontal,
   Menu,
   ChevronLeft
 } from 'lucide-react'
 
-export type DashboardScreen = 
-  | 'portfolio' 
-  | 'trade' 
-  | 'options' 
-  | 'crypto' 
-  | 'backtest' 
-  | 'data' 
-  | 'alerts' 
+export type DashboardScreen =
+  | 'portfolio'
+  | 'trade'
+  | 'options'
+  | 'options-config'
+  | 'crypto'
+  | 'backtest'
+  | 'data'
+  | 'alerts'
   | 'settings'
 
 interface DashboardSidebarProps {
@@ -33,6 +35,7 @@ const NAV_ITEMS: { key: DashboardScreen; label: string; icon: React.ElementType 
   { key: 'portfolio', label: 'Portfolio', icon: Wallet },
   { key: 'trade', label: 'Trade', icon: LineChart },
   { key: 'options', label: 'Options', icon: Layers },
+  { key: 'options-config', label: 'Options Config', icon: SlidersHorizontal },
   { key: 'crypto', label: 'Crypto', icon: Bitcoin },
   { key: 'backtest', label: 'Backtest', icon: History },
   { key: 'data', label: 'Data', icon: Database },
