@@ -1,17 +1,19 @@
 """
-UT Bot ATR Options Strategy — Lumibot Implementation.
+K2 ATR Trailing Stop Strategy — Lumibot Implementation.
 
 Signal logic:
-  - UT Bot ATR trailing stop generates LONG / SHORT direction
-  - Entry: buy CALL (LONG) or PUT (SHORT) via Alpaca options API
-  - Exit: RSI step-back, trailing stop on underlying, or EOD flatten
+  - K2 ATR trailing stop generates direction flips (+1 / -1)
+  - RSI filter suppresses overbought buys and oversold sells
+  - Entry: market order for shares (95% of cash)
+  - Exit: market order to sell all shares
+  - EOD flatten at 15:55 ET
 
-CONSTRAINTS:
-  - Signal computation (trailing stop + crossover) is OFF-LIMITS for edits
-  - ATR_PERIOD=10, ATR_MULT=1.0
+Parameters are loaded from Supabase bot_config table and refreshed every
+5 iterations (~5 minutes at 1M sleeptime).
 """
 
 import logging
+import os
 from datetime import datetime
 
 import numpy as np
@@ -19,54 +21,145 @@ import pandas as pd
 import pytz
 from lumibot.strategies.strategy import Strategy
 
-from strategies.options_executor import (
-    buy_to_open,
-    sell_to_close,
-    has_open_position,
-    get_open_position,
-    get_underlying_price,
-)
 import adapters.supabase_logger as db
 
 logger = logging.getLogger("ut_bot_strategy")
 ET = pytz.timezone("America/New_York")
 
 
+# ── K2 ATR Trailing Stop Engine ───────────────────────────────────────────────
+
+def compute_atr(highs, lows, closes, period):
+    import numpy as np
+    n = len(closes)
+    tr = np.zeros(n)
+    for i in range(1, n):
+        tr[i] = max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+    tr[0] = highs[0] - lows[0]
+    atr = np.zeros(n)
+    atr[period-1] = np.mean(tr[:period])
+    for i in range(period, n):
+        atr[i] = (atr[i-1]*(period-1)+tr[i])/period
+    return atr
+
+def compute_k2_trailing_stop(closes, highs, lows, atr_period, atr_mult):
+    import numpy as np
+    n = len(closes)
+    atr = compute_atr(highs, lows, closes, atr_period)
+    stop = np.zeros(n)
+    direction = np.zeros(n)
+    stop[0] = closes[0]
+    direction[0] = 1.0
+    for i in range(1, n):
+        loss = atr_mult * atr[i]
+        c = closes[i]
+        ps = stop[i-1]
+        if c > ps:   stop[i] = max(ps, c - loss)
+        elif c < ps: stop[i] = min(ps, c + loss)
+        else:        stop[i] = ps
+        direction[i] = 1.0 if c > stop[i] else -1.0
+    return stop, direction
+
+
 class UTBotStrategy(Strategy):
+    # ── Default parameters (overridden by bot_config from Supabase) ───────
+    ATR_PERIOD = 10
+    ATR_MULT = 1.0
+    RSI_PERIOD = 14
+    RSI_OVERSOLD = 30
+    RSI_OVERBOUGHT = 70
+
     parameters = {
-        "symbol": "SPY",
-        "atr_period": 10,         # ATR_PERIOD=10 per spec
-        "sensitivity": 1.0,       # ATR_MULT=1.0 per spec
-        "timeframe": "1D",
-        # ── Exit parameters ──
-        "rsi_period": 14,
-        "rsi_step_thresh": 5.0,   # RSI drop from entry to trigger exit
-        "stop_pct": 0.005,        # 0.5% adverse move on underlying
-        "eod_flatten_time": "15:55",  # ET time to flatten all positions
-        # ── Position sizing ──
-        "max_contracts": 1,
+        "symbol": "IWM",
+        "eod_flatten_time": "15:55",
     }
 
     def initialize(self):
-        self.sleeptime = "1M"  # 1-minute bars for intraday options
-        self.last_signal = None
+        self.sleeptime = "1M"
         self.last_direction = None
+        self._iteration_count = 0
+        self._reload_config()
+
+    # ── Supabase bot_config reload ────────────────────────────────────────
+
+    def _reload_config(self):
+        """Fetch bot_config rows from Supabase and update instance variables."""
+        supa_url = os.getenv("SUPABASE_URL")
+        supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supa_url or not supa_key:
+            logger.warning("[CONFIG] Supabase credentials not set — using defaults")
+            return
+
+        try:
+            import httpx
+            resp = httpx.get(
+                f"{supa_url}/rest/v1/bot_config?select=key,value",
+                headers={
+                    "apikey": supa_key,
+                    "Authorization": f"Bearer {supa_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.warning("[CONFIG] bot_config fetch failed (%d): %s",
+                               resp.status_code, resp.text[:200])
+                return
+
+            rows = resp.json()
+            config = {row["key"]: row["value"] for row in rows}
+
+            # Update active symbol
+            if "active_symbol" in config:
+                self.parameters["symbol"] = config["active_symbol"]
+
+            # Update signal parameters
+            if "atr_period" in config:
+                self.ATR_PERIOD = int(config["atr_period"])
+            if "atr_mult" in config:
+                self.ATR_MULT = float(config["atr_mult"])
+            if "rsi_period" in config:
+                self.RSI_PERIOD = int(config["rsi_period"])
+            if "rsi_oversold" in config:
+                self.RSI_OVERSOLD = int(config["rsi_oversold"])
+            if "rsi_overbought" in config:
+                self.RSI_OVERBOUGHT = int(config["rsi_overbought"])
+
+            # Update paper mode
+            if "paper_mode" in config:
+                is_paper = config["paper_mode"].lower() == "true"
+                # Store for reference; broker config is set at startup
+                self._paper_mode = is_paper
+
+            logger.info("[CONFIG] Reloaded: symbol=%s ATR(%d, %.1f) RSI(%d, %d/%d)",
+                        self.parameters["symbol"], self.ATR_PERIOD, self.ATR_MULT,
+                        self.RSI_PERIOD, self.RSI_OVERSOLD, self.RSI_OVERBOUGHT)
+
+        except Exception as e:
+            logger.warning("[CONFIG] Failed to reload bot_config: %s", e)
 
     def on_trading_iteration(self):
+        self._iteration_count += 1
+
+        # Reload config every 5th iteration (~5 minutes)
+        if self._iteration_count % 5 == 0:
+            self._reload_config()
+
         symbol = self.parameters["symbol"]
-        atr_period = self.parameters["atr_period"]
-        sensitivity = self.parameters["sensitivity"]
+        atr_period = self.ATR_PERIOD
+        atr_mult = self.ATR_MULT
 
         # ── Check EOD flatten FIRST (highest priority) ───────────────────
-        if has_open_position():
-            now_et = datetime.now(ET)
-            flatten_h, flatten_m = map(int,
-                self.parameters["eod_flatten_time"].split(":"))
-            if now_et.hour > flatten_h or (
-                now_et.hour == flatten_h and now_et.minute >= flatten_m
-            ):
+        now_et = datetime.now(ET)
+        flatten_h, flatten_m = map(int,
+            self.parameters["eod_flatten_time"].split(":"))
+        if now_et.hour > flatten_h or (
+            now_et.hour == flatten_h and now_et.minute >= flatten_m
+        ):
+            positions = self.get_positions()
+            if positions:
                 logger.info("EOD flatten triggered at %s ET", now_et.strftime("%H:%M"))
-                sell_to_close(exit_reason="eod_flatten")
+                self.sell_all()
                 return
 
         # ── Fetch historical prices ──────────────────────────────────────
@@ -74,57 +167,46 @@ class UTBotStrategy(Strategy):
         df = bars.df
 
         # ══════════════════════════════════════════════════════════════════
-        # SIGNAL LOGIC — DO NOT MODIFY (off-limits per constraints)
+        # K2 ATR TRAILING STOP SIGNAL ENGINE
         # ══════════════════════════════════════════════════════════════════
 
-        # Calculate ATR manually
-        df['high_low'] = df['high'] - df['low']
-        df['high_close'] = abs(df['high'] - df['close'].shift())
-        df['low_close'] = abs(df['low'] - df['close'].shift())
-        df['tr'] = df[['high_low', 'high_close', 'low_close']].max(axis=1)
-        df['atr'] = df['tr'].rolling(window=atr_period).mean()
+        closes = df["close"].values.astype(float)
+        highs = df["high"].values.astype(float)
+        lows = df["low"].values.astype(float)
 
-        # Calculate UT Bot Trailing Stop
-        df['loss'] = sensitivity * df['atr']
-        df['trail_stop'] = 0.0
+        trail_stop, direction = compute_k2_trailing_stop(
+            closes, highs, lows, atr_period, atr_mult
+        )
 
-        for i in range(1, len(df)):
-            close = df.iloc[i]['close']
-            prev_close = df.iloc[i-1]['close']
-            prev_trail_stop = df.iloc[i-1]['trail_stop']
-            loss = df.iloc[i]['loss']
-
-            if close > prev_trail_stop and prev_close > prev_trail_stop:
-                df.at[df.index[i], 'trail_stop'] = max(prev_trail_stop, close - loss)
-            elif close < prev_trail_stop and prev_close < prev_trail_stop:
-                df.at[df.index[i], 'trail_stop'] = min(prev_trail_stop, close + loss)
-            elif close > prev_trail_stop:
-                df.at[df.index[i], 'trail_stop'] = close - loss
-            else:
-                df.at[df.index[i], 'trail_stop'] = close + loss
-
-        # Signal logic
-        df['prev_trail_stop'] = df['trail_stop'].shift()
-        df['signal'] = 0
-        df.loc[
-            (df['close'] > df['trail_stop']) &
-            (df['close'].shift() <= df['prev_trail_stop']),
-            'signal'
-        ] = 1
-        df.loc[
-            (df['close'] < df['trail_stop']) &
-            (df['close'].shift() >= df['prev_trail_stop']),
-            'signal'
-        ] = -1
+        # Detect direction flip on the latest closed bar
+        buy_signal = False
+        sell_signal = False
+        if len(direction) >= 2:
+            prev_dir = direction[-2]
+            curr_dir = direction[-1]
+            if prev_dir == -1.0 and curr_dir == 1.0:
+                buy_signal = True
+            elif prev_dir == 1.0 and curr_dir == -1.0:
+                sell_signal = True
 
         # ══════════════════════════════════════════════════════════════════
-        # END SIGNAL LOGIC
+        # END SIGNAL ENGINE
         # ══════════════════════════════════════════════════════════════════
 
-        current_price = df.iloc[-1]['close']
-        current_signal = df.iloc[-1]['signal']
-        current_atr = df.iloc[-1]['atr'] if not pd.isna(df.iloc[-1]['atr']) else 0.0
-        current_trail_stop = df.iloc[-1]['trail_stop']
+        current_price = closes[-1]
+        current_trail_stop = trail_stop[-1]
+        current_direction = direction[-1]
+
+        # ── Compute RSI ──────────────────────────────────────────────────
+        current_rsi = self._compute_rsi(df["close"], self.RSI_PERIOD)
+
+        # ── RSI suppression ──────────────────────────────────────────────
+        if buy_signal and current_rsi > self.RSI_OVERBOUGHT:
+            logger.info("BUY suppressed — RSI %.1f > %d", current_rsi, self.RSI_OVERBOUGHT)
+            buy_signal = False
+        if sell_signal and current_rsi < self.RSI_OVERSOLD:
+            logger.info("SELL suppressed — RSI %.1f < %d", current_rsi, self.RSI_OVERSOLD)
+            sell_signal = False
 
         # ── Log the latest bar to Supabase (fire-and-forget) ─────────────
         try:
@@ -138,92 +220,57 @@ class UTBotStrategy(Strategy):
         except Exception as e:
             logger.warning("[SUPABASE] bar_log write failed: %s", e)
 
-        # ── Compute 5-minute RSI for exit logic ──────────────────────────
-        current_rsi = self._compute_rsi(df['close'], self.parameters["rsi_period"])
-
         # ── Log signal to Supabase if a signal fired ─────────────────────
-        if current_signal != 0:
+        if buy_signal or sell_signal:
             try:
                 bar_time = df.index[-1]
+                atr_vals = compute_atr(highs, lows, closes, atr_period)
+                current_atr = float(atr_vals[-1])
                 db.log_signal(
                     symbol=symbol,
                     bar_time=bar_time.isoformat() if hasattr(bar_time, "isoformat") else str(bar_time),
-                    timeframe=self.parameters.get("timeframe", "1D"),
-                    signal_type="UT_BUY" if current_signal == 1 else "UT_SELL",
+                    timeframe="1D",
+                    signal_type="UT_BUY" if buy_signal else "UT_SELL",
                     close_price=float(current_price),
                     trail_stop=float(current_trail_stop),
-                    atr=float(current_atr),
+                    atr=current_atr,
                     rsi=float(current_rsi),
-                    buy_sig=(current_signal == 1),
-                    sell_sig=(current_signal == -1),
+                    buy_sig=buy_signal,
+                    sell_sig=sell_signal,
                 )
             except Exception as e:
                 logger.warning("[SUPABASE] signal_log write failed: %s", e)
 
-        # ── Determine direction ──────────────────────────────────────────
-        if current_signal == 1:
-            self.last_direction = "LONG"
-        elif current_signal == -1:
-            self.last_direction = "SHORT"
+        # ── Determine position qty ────────────────────────────────────────
+        positions = self.get_positions()
+        qty = 0
+        for pos in positions:
+            if pos.symbol == symbol:
+                qty = pos.quantity
 
+        # ── Log line (preserve required format) ──────────────────────────
         self.log_message(
-            f"Price: {current_price:.2f} | Signal: {current_signal} | "
-            f"Dir: {self.last_direction} | RSI: {current_rsi:.1f} | "
-            f"Position: {has_open_position()}"
+            f"Price: {current_price:.2f} | Trail Stop: {current_trail_stop:.2f} | "
+            f"Dir: {current_direction:.0f} | RSI: {current_rsi:.1f} | Position: {qty}"
         )
 
-        # ── EXIT LOGIC (if we have an open position) ────────────────────
-        if has_open_position():
-            pos = get_open_position()
-            exit_reason = self._check_exit_triggers(
-                current_price, current_rsi, pos
-            )
-            if exit_reason:
-                logger.info("Exit triggered: %s", exit_reason)
-                sell_to_close(exit_reason=exit_reason)
-                return
+        # ── SELL signal: sell all shares of active symbol ─────────────────
+        if sell_signal and qty > 0:
+            logger.info("SELL signal: selling %d shares of %s at %.2f",
+                        qty, symbol, current_price)
+            order = self.create_order(symbol, qty, "sell")
+            self.submit_order(order)
+            return
 
-        # ── ENTRY LOGIC (if no open position) ───────────────────────────
-        if not has_open_position() and current_signal != 0:
-            direction = "LONG" if current_signal == 1 else "SHORT"
-            signal_label = "CALL" if direction == "LONG" else "PUT"
-            logger.info("Entry signal: %s at underlying=%.2f RSI=%.1f",
-                        direction, current_price, current_rsi)
-            buy_to_open(
-                underlying=symbol,
-                direction=direction,
-                qty=self.parameters["max_contracts"],
-                underlying_price=current_price,
-                current_rsi=current_rsi,
-            )
-            set_last_signal(signal_label)
-
-    # ── Exit trigger evaluation ──────────────────────────────────────────
-
-    def _check_exit_triggers(self, current_price: float,
-                              current_rsi: float, pos: dict) -> str | None:
-        """
-        Check all three exit conditions. Returns the reason string or None.
-        Priority: EOD flatten is checked earlier (top of on_trading_iteration).
-        """
-        # 1. RSI step-back
-        entry_rsi = pos.get("entry_rsi")
-        if entry_rsi is not None:
-            rsi_drop = entry_rsi - current_rsi
-            if rsi_drop >= self.parameters["rsi_step_thresh"]:
-                return f"rsi_stepback (entry={entry_rsi:.1f} now={current_rsi:.1f})"
-
-        # 2. Trailing stop on underlying price
-        entry_price = pos.get("entry_underlying_price", current_price)
-        stop_pct = self.parameters["stop_pct"]
-        if pos.get("direction") == "LONG":
-            if current_price <= entry_price * (1 - stop_pct):
-                return f"trailing_stop_long (entry={entry_price:.2f} now={current_price:.2f})"
-        elif pos.get("direction") == "SHORT":
-            if current_price >= entry_price * (1 + stop_pct):
-                return f"trailing_stop_short (entry={entry_price:.2f} now={current_price:.2f})"
-
-        return None
+        # ── BUY signal: buy shares with 95% of cash ──────────────────────
+        if buy_signal and qty == 0:
+            cash = self.get_cash()
+            shares_to_buy = int((cash * 0.95) / current_price)
+            if shares_to_buy > 0:
+                logger.info("BUY signal: buying %d shares of %s at %.2f (cash=%.2f)",
+                            shares_to_buy, symbol, current_price, cash)
+                order = self.create_order(symbol, shares_to_buy, "buy")
+                self.submit_order(order)
 
     # ── RSI calculation ──────────────────────────────────────────────────
 

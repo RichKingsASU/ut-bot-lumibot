@@ -11,4 +11,5 @@ export const API = {
   optionsConfig: (action: string) =>
     `${BASE}/options-config?action=${action}`,
   botState: () => `${BASE}/bot-state`,
+  botConfig: () => `${BASE}/bot-config`,
 }
