@@ -1,4 +1,4 @@
-import signal
+﻿import signal
 import sys
 from lumibot.traders import Trader
 from lumibot.brokers import Alpaca
@@ -9,7 +9,6 @@ import adapters.supabase_logger as db
 
 
 def _shutdown_handler(signum, frame):
-    """Handle SIGINT/SIGTERM - write offline status before exit."""
     print(f"\nReceived signal {signum}, shutting down...")
     heartbeat.stop()
     sys.exit(0)
