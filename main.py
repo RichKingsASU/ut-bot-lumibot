@@ -31,10 +31,12 @@ def main():
     })
     trader = Trader()
     trader.add_strategy(strategy)
+    heartbeat.start()
     print("Starting Lumibot Trader...")
     try:
         trader.run_all()
     finally:
+        heartbeat.stop()
         db.log_session_end()
 
 
