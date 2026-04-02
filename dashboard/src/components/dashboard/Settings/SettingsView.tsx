@@ -1,327 +1,390 @@
-import React from 'react'
-import { Settings, Save, RefreshCw, Key, Shield, SlidersHorizontal, RotateCcw } from 'lucide-react'
-import { StrategiesView } from '../Strategies/StrategiesView'
-import { ContractConfigSection, CONTRACT_CONFIG_DEFAULTS } from './ContractConfigSection'
-import type { ContractConfig } from './ContractConfigSection'
-import { API } from '../../../lib/api'
+import React, { useState } from 'react'
+import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff } from 'lucide-react'
+
+const styles = {
+  container: {
+    padding: '24px',
+    backgroundColor: 'var(--bg-primary, #0d1117)',
+    color: 'var(--text-primary, #e6edf3)',
+    minHeight: '100vh',
+  },
+  header: {
+    fontSize: '24px',
+    fontWeight: 700,
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: '10px',
+    marginBottom: '24px',
+  },
+  accordion: {
+    backgroundColor: 'var(--bg-secondary, #161b22)',
+    border: '1px solid var(--border, #30363d)',
+    borderRadius: '8px',
+    marginBottom: '12px',
+    overflow: 'hidden' as const,
+  },
+  accordionHeader: {
+    display: 'flex' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: '16px 20px',
+    cursor: 'pointer' as const,
+    userSelect: 'none' as const,
+  },
+  accordionTitle: {
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: '10px',
+    fontSize: '15px',
+    fontWeight: 600,
+  },
+  accordionBody: (open: boolean) => ({
+    maxHeight: open ? '600px' : '0',
+    overflow: 'hidden' as const,
+    transition: 'max-height 0.3s ease',
+  }),
+  accordionContent: {
+    padding: '0 20px 20px',
+    borderTop: '1px solid var(--border, #30363d)',
+    paddingTop: '16px',
+  },
+  label: {
+    fontSize: '13px',
+    fontWeight: 500,
+    color: 'var(--text-muted, #8b949e)',
+    marginBottom: '6px',
+    display: 'block' as const,
+  },
+  input: {
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: '1px solid var(--border, #30363d)',
+    backgroundColor: 'var(--bg-tertiary, #21262d)',
+    color: 'var(--text-primary, #e6edf3)',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+  },
+  inputRow: {
+    marginBottom: '14px',
+  },
+  inputWithIcon: {
+    position: 'relative' as const,
+  },
+  eyeBtn: {
+    position: 'absolute' as const,
+    right: '10px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-muted, #8b949e)',
+    cursor: 'pointer' as const,
+    padding: '2px',
+  },
+  btn: {
+    padding: '8px 16px',
+    borderRadius: '6px',
+    border: '1px solid var(--border, #30363d)',
+    backgroundColor: 'var(--bg-tertiary, #21262d)',
+    color: 'var(--text-primary, #e6edf3)',
+    cursor: 'pointer' as const,
+    fontSize: '13px',
+    display: 'inline-flex' as const,
+    alignItems: 'center' as const,
+    gap: '6px',
+  },
+  btnPrimary: {
+    padding: '8px 20px',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: 'var(--blue, #58a6ff)',
+    color: '#0d1117',
+    cursor: 'pointer' as const,
+    fontSize: '13px',
+    fontWeight: 600,
+    display: 'inline-flex' as const,
+    alignItems: 'center' as const,
+    gap: '6px',
+  },
+  statusDot: (connected: boolean) => ({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: connected ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
+    display: 'inline-block' as const,
+    marginRight: '6px',
+  }),
+  toggleRow: {
+    display: 'flex' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: '10px 0',
+  },
+  toggleLabel: {
+    fontSize: '14px',
+    fontWeight: 500,
+  },
+  toggle: (on: boolean) => ({
+    width: '42px',
+    height: '22px',
+    borderRadius: '11px',
+    backgroundColor: on ? 'var(--green, #3fb950)' : 'var(--bg-tertiary, #21262d)',
+    border: `1px solid ${on ? 'var(--green, #3fb950)' : 'var(--border, #30363d)'}`,
+    position: 'relative' as const,
+    cursor: 'pointer' as const,
+    transition: 'background-color 0.2s',
+  }),
+  toggleKnob: (on: boolean) => ({
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    backgroundColor: '#fff',
+    position: 'absolute' as const,
+    top: '2px',
+    left: on ? '22px' : '2px',
+    transition: 'left 0.2s',
+  }),
+  select: {
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: '1px solid var(--border, #30363d)',
+    backgroundColor: 'var(--bg-tertiary, #21262d)',
+    color: 'var(--text-primary, #e6edf3)',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+  },
+  grid2: {
+    display: 'grid' as const,
+    gridTemplateColumns: '1fr 1fr',
+    gap: '16px',
+  },
+  muted: {
+    color: 'var(--text-muted, #8b949e)',
+    fontSize: '13px',
+  },
+}
+
+type Section = 'broker' | 'database' | 'notifications' | 'strategy'
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <div style={styles.toggle(on)} onClick={onClick}>
+      <div style={styles.toggleKnob(on)} />
+    </div>
+  )
+}
+
+function MaskedInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div style={styles.inputRow}>
+      <label style={styles.label}>{label}</label>
+      <div style={styles.inputWithIcon}>
+        <input
+          type={visible ? 'text' : 'password'}
+          style={styles.input}
+          placeholder={placeholder || ''}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        />
+        <button style={styles.eyeBtn} onClick={() => setVisible(!visible)}>
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function SettingsView() {
-  const [activeTab, setActiveTab] = React.useState<'general' | 'strategies' | 'contract'>('strategies')
+  const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['broker']))
+  const [alpacaKey, setAlpacaKey] = useState('')
+  const [alpacaSecret, setAlpacaSecret] = useState('')
+  const [paperMode, setPaperMode] = useState(true)
+  const [supabaseUrl] = useState('https://your-project.supabase.co')
+  const [supabaseKey, setSupabaseKey] = useState('')
+  const [dbConnected] = useState(true)
+  const [telegramToken, setTelegramToken] = useState('')
+  const [telegramChatId, setTelegramChatId] = useState('')
+  const [emailNotifs, setEmailNotifs] = useState(false)
+  const [pushNotifs, setPushNotifs] = useState(true)
+  const [quietStart, setQuietStart] = useState('22:00')
+  const [quietEnd, setQuietEnd] = useState('07:00')
+  const [defaultSymbol, setDefaultSymbol] = useState('IWM')
+  const [defaultTimeframe, setDefaultTimeframe] = useState('1m')
+  const [atrPeriod, setAtrPeriod] = useState('10')
+  const [sensitivity, setSensitivity] = useState('1.0')
+  const [autoStart, setAutoStart] = useState(false)
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Settings Header Tabs */}
-      <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-        <button
-          onClick={() => setActiveTab('strategies')}
-          style={{
-            padding: '16px 24px', background: activeTab === 'strategies' ? 'var(--bg-tertiary)' : 'transparent',
-            border: 'none', borderBottom: activeTab === 'strategies' ? '2px solid var(--blue)' : '2px solid transparent',
-            color: activeTab === 'strategies' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-          }}
-        >
-          Strategies
-        </button>
-        <button
-          onClick={() => setActiveTab('contract')}
-          style={{
-            padding: '16px 24px', background: activeTab === 'contract' ? 'var(--bg-tertiary)' : 'transparent',
-            border: 'none', borderBottom: activeTab === 'contract' ? '2px solid var(--blue)' : '2px solid transparent',
-            color: activeTab === 'contract' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-          }}
-        >
-          Contract Config
-        </button>
-        <button
-          onClick={() => setActiveTab('general')}
-          style={{
-            padding: '16px 24px', background: activeTab === 'general' ? 'var(--bg-tertiary)' : 'transparent',
-            border: 'none', borderBottom: activeTab === 'general' ? '2px solid var(--blue)' : '2px solid transparent',
-            color: activeTab === 'general' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-          }}
-        >
-          System Config
-        </button>
-      </div>
-
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {activeTab === 'strategies' && <StrategiesView />}
-        {activeTab === 'contract' && <ContractConfigTab />}
-        {activeTab === 'general' && <GeneralSettings />}
-      </div>
-    </div>
-  )
-}
-
-function ContractConfigTab() {
-  const [contractConfig, setContractConfig] = React.useState<ContractConfig>({ ...CONTRACT_CONFIG_DEFAULTS })
-  const [savedConfig, setSavedConfig] = React.useState<ContractConfig>({ ...CONTRACT_CONFIG_DEFAULTS })
-  const [saving, setSaving] = React.useState(false)
-  const [toast, setToast] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [loaded, setLoaded] = React.useState(false)
-
-  // Load config on mount
-  React.useEffect(() => {
-    fetch(API.optionsConfig('get'))
-      .then((res) => { if (!res.ok) throw new Error(); return res.json() })
-      .then((c: ContractConfig) => { setContractConfig(c); setSavedConfig(c); setLoaded(true) })
-      .catch(() => setLoaded(true))
-  }, [])
-
-  // Toast auto-dismiss
-  React.useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 3000)
-    return () => clearTimeout(t)
-  }, [toast])
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      const res = await fetch(API.optionsConfig('save'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contractConfig),
-      })
-      const result = await res.json()
-      if (result.status === 'ok') {
-        setSavedConfig(result.config || contractConfig)
-        setToast({ type: 'success', message: 'Config saved and applied — bot will use new settings on next signal' })
-      } else {
-        setToast({ type: 'error', message: `Failed to save: ${result.error}` })
-      }
-    } catch (err: any) {
-      setToast({ type: 'error', message: `Failed to save: ${err.message}` })
-    } finally {
-      setSaving(false)
-    }
+  const toggleSection = (section: Section) => {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
   }
 
-  const handleReset = () => {
-    setContractConfig({ ...CONTRACT_CONFIG_DEFAULTS })
-  }
+  const isOpen = (section: Section) => openSections.has(section)
 
   return (
-    <div id="contract-config" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-          padding: '12px 24px',
-          background: toast.type === 'success' ? '#089981' : '#f23645',
-          color: '#fff', fontWeight: 600, fontSize: '14px',
-          textAlign: 'center',
-          animation: 'slideDown 0.2s ease-out',
-        }}>
-          {toast.type === 'success' ? '✓' : '✗'} {toast.message}
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <SettingsIcon size={22} />
+        Settings
+      </div>
+
+      {/* BROKER */}
+      <div style={styles.accordion}>
+        <div style={styles.accordionHeader} onClick={() => toggleSection('broker')}>
+          <div style={styles.accordionTitle}>
+            <Key size={18} /> Broker Configuration
+          </div>
+          {isOpen('broker') ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </div>
-      )}
-
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-          <SlidersHorizontal size={22} style={{ color: '#2962ff' }} />
-          <div>
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Contract Configuration
-            </h2>
-            <p style={{ color: 'var(--text-muted)', marginTop: '4px', fontSize: '13px', margin: 0 }}>
-              Configure which option contract the bot buys on each signal
-            </p>
+        <div style={styles.accordionBody(isOpen('broker'))}>
+          <div style={styles.accordionContent}>
+            <div style={styles.grid2}>
+              <MaskedInput label="Alpaca API Key" value={alpacaKey} onChange={setAlpacaKey} placeholder="AKXXXXXXXXXXXXXXXXXX" />
+              <MaskedInput label="Alpaca Secret Key" value={alpacaSecret} onChange={setAlpacaSecret} placeholder="Enter secret key" />
+            </div>
+            <div style={styles.inputRow}>
+              <label style={styles.label}>Base URL</label>
+              <input
+                type="text"
+                style={{ ...styles.input, opacity: 0.7 }}
+                value={paperMode ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'}
+                readOnly
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
+              <button style={styles.btn}>Test Connection</button>
+              <div style={styles.toggleRow}>
+                <span style={{ ...styles.toggleLabel, marginRight: '10px' }}>{paperMode ? 'Paper Mode' : 'Live Mode'}</span>
+                <Toggle on={!paperMode} onClick={() => setPaperMode(!paperMode)} />
+              </div>
+            </div>
           </div>
         </div>
-
-        <ContractConfigSection
-          value={contractConfig}
-          onChange={setContractConfig}
-        />
-
-        {/* Spacer for sticky bottom bar */}
-        <div style={{ height: '80px' }} />
       </div>
 
-      {/* Sticky action bar */}
-      <div style={{
-        borderTop: '1px solid var(--border)',
-        background: 'var(--bg-secondary)',
-        padding: '12px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexShrink: 0,
-      }}>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-          <span style={{ fontWeight: 600 }}>Active:</span>{' '}
-          {savedConfig.expiration_mode} · {savedConfig.strike_mode} · Step {savedConfig.strike_step}
+      {/* DATABASE */}
+      <div style={styles.accordion}>
+        <div style={styles.accordionHeader} onClick={() => toggleSection('database')}>
+          <div style={styles.accordionTitle}>
+            <Database size={18} /> Database Configuration
+          </div>
+          {isOpen('database') ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={handleReset} style={actionSecondaryBtnStyle}>
-            <RotateCcw size={14} style={{ marginRight: '6px' }} />
-            Reset to Defaults
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              display: 'flex', alignItems: 'center',
-              padding: '10px 20px',
-              background: '#2962ff',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              fontWeight: 600,
-              cursor: saving ? 'wait' : 'pointer',
-              opacity: saving ? 0.7 : 1,
-              fontSize: '13px',
-            }}
-          >
-            <Save size={14} style={{ marginRight: '6px' }} />
-            {saving ? 'Saving...' : 'Save & Apply'}
-          </button>
+        <div style={styles.accordionBody(isOpen('database'))}>
+          <div style={styles.accordionContent}>
+            <div style={styles.inputRow}>
+              <label style={styles.label}>Supabase URL</label>
+              <input type="text" style={{ ...styles.input, opacity: 0.7 }} value={supabaseUrl} readOnly />
+            </div>
+            <MaskedInput label="Supabase Anon Key" value={supabaseKey} onChange={setSupabaseKey} placeholder="Enter anon key" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
+              <button style={styles.btn}>Test Connection</button>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={styles.statusDot(dbConnected)} />
+                <span style={{ fontSize: '13px', color: dbConnected ? 'var(--green, #3fb950)' : 'var(--red, #f85149)' }}>
+                  {dbConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <style>{`
-        @keyframes slideDown {
-          from { transform: translateY(-100%); }
-          to { transform: translateY(0); }
-        }
-      `}</style>
-    </div>
-  )
-}
-
-function GeneralSettings() {
-  return (
-    <div style={{ padding: '24px', maxWidth: '800px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>System Configuration</h2>
-        <button style={{
-          display: 'flex', alignItems: 'center', padding: '10px 20px',
-          background: 'var(--blue)', color: 'white', border: 'none',
-          borderRadius: '4px', fontWeight: 600, cursor: 'pointer'
-        }}>
-          <Save size={18} style={{ marginRight: '8px' }} />
-          Save Changes
-        </button>
+      {/* NOTIFICATIONS */}
+      <div style={styles.accordion}>
+        <div style={styles.accordionHeader} onClick={() => toggleSection('notifications')}>
+          <div style={styles.accordionTitle}>
+            <Bell size={18} /> Notifications
+          </div>
+          {isOpen('notifications') ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+        <div style={styles.accordionBody(isOpen('notifications'))}>
+          <div style={styles.accordionContent}>
+            <div style={styles.grid2}>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Telegram Bot Token</label>
+                <input type="text" style={styles.input} value={telegramToken} onChange={e => setTelegramToken(e.target.value)} placeholder="Enter bot token" />
+              </div>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Chat ID</label>
+                <input type="text" style={styles.input} value={telegramChatId} onChange={e => setTelegramChatId(e.target.value)} placeholder="Enter chat ID" />
+              </div>
+            </div>
+            <div style={{ ...styles.toggleRow, borderBottom: '1px solid var(--border, #30363d)' }}>
+              <span style={styles.toggleLabel}>Email Notifications</span>
+              <Toggle on={emailNotifs} onClick={() => setEmailNotifs(!emailNotifs)} />
+            </div>
+            <div style={{ ...styles.toggleRow, borderBottom: '1px solid var(--border, #30363d)' }}>
+              <span style={styles.toggleLabel}>Push Notifications</span>
+              <Toggle on={pushNotifs} onClick={() => setPushNotifs(!pushNotifs)} />
+            </div>
+            <div style={{ ...styles.grid2, marginTop: '14px' }}>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Quiet Hours Start</label>
+                <input type="time" style={styles.input} value={quietStart} onChange={e => setQuietStart(e.target.value)} />
+              </div>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Quiet Hours End</label>
+                <input type="time" style={styles.input} value={quietEnd} onChange={e => setQuietEnd(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gap: '32px' }}>
-        <SettingsSection icon={Shield} title="API Authentication">
-          <InputGroup label="Alpaca API Key" value="PK********************" />
-          <InputGroup label="Alpaca Secret Key" value="********************************" type="password" />
-          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button
-              onClick={(e) => {
-                const btn = e.currentTarget;
-                const oldContent = btn.innerHTML;
-                btn.innerHTML = 'Testing...';
-                btn.disabled = true;
-                setTimeout(() => {
-                  btn.innerHTML = 'Connected!';
-                  btn.style.borderColor = 'var(--green)';
-                  btn.style.color = 'var(--green)';
-                  setTimeout(() => {
-                    btn.innerHTML = oldContent;
-                    btn.style.borderColor = 'var(--border)';
-                    btn.style.color = 'var(--text-muted)';
-                    btn.disabled = false;
-                  }, 2000);
-                }, 1500);
-              }}
-              style={secondaryBtnStyle}
-            >
-              <RefreshCw size={14} style={{ marginRight: '6px' }} /> Test Connection
+      {/* STRATEGY DEFAULTS */}
+      <div style={styles.accordion}>
+        <div style={styles.accordionHeader} onClick={() => toggleSection('strategy')}>
+          <div style={styles.accordionTitle}>
+            <SlidersHorizontal size={18} /> Strategy Defaults
+          </div>
+          {isOpen('strategy') ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+        <div style={styles.accordionBody(isOpen('strategy'))}>
+          <div style={styles.accordionContent}>
+            <div style={styles.grid2}>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Default Symbol</label>
+                <input type="text" style={styles.input} value={defaultSymbol} onChange={e => setDefaultSymbol(e.target.value)} />
+              </div>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Default Timeframe</label>
+                <select style={styles.select as React.CSSProperties} value={defaultTimeframe} onChange={e => setDefaultTimeframe(e.target.value)}>
+                  <option value="1m">1m</option>
+                  <option value="5m">5m</option>
+                  <option value="15m">15m</option>
+                  <option value="1h">1h</option>
+                  <option value="1D">1D</option>
+                </select>
+              </div>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>ATR Period</label>
+                <input type="number" style={styles.input} value={atrPeriod} onChange={e => setAtrPeriod(e.target.value)} />
+              </div>
+              <div style={styles.inputRow}>
+                <label style={styles.label}>Sensitivity</label>
+                <input type="number" step="0.1" style={styles.input} value={sensitivity} onChange={e => setSensitivity(e.target.value)} />
+              </div>
+            </div>
+            <div style={{ ...styles.toggleRow, borderBottom: '1px solid var(--border, #30363d)', marginBottom: '16px' }}>
+              <span style={styles.toggleLabel}>Auto-start on deploy</span>
+              <Toggle on={autoStart} onClick={() => setAutoStart(!autoStart)} />
+            </div>
+            <button style={styles.btnPrimary}>
+              <Save size={14} /> Save Defaults
             </button>
-            <button style={secondaryBtnStyle}><Key size={14} style={{ marginRight: '6px' }} /> Rotate Keys</button>
           </div>
-        </SettingsSection>
-
-        <SettingsSection icon={Settings} title="General Configuration">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Dark Mode</div>
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Use high-contrast dark theme for low light environments</div>
-            </div>
-            <div style={{ width: '40px', height: '20px', background: 'var(--blue)', borderRadius: '10px', position: 'relative' }}>
-              <div style={{ width: '16px', height: '16px', background: 'white', borderRadius: '50%', position: 'absolute', right: '2px', top: '2px' }} />
-            </div>
-          </div>
-        </SettingsSection>
+        </div>
       </div>
     </div>
   )
-}
-
-function SettingsSection({ icon: Icon, title, children }: any) {
-  return (
-    <div style={{
-      background: 'var(--bg-secondary)',
-      borderRadius: '8px',
-      border: '1px solid var(--border)',
-      padding: '24px'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', color: 'var(--blue)' }}>
-        <Icon size={20} style={{ marginRight: '10px' }} />
-        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function InputGroup({ label, value, type = "text" }: any) {
-  const [show, setShow] = React.useState(type !== 'password')
-
-  return (
-    <div style={{ marginBottom: '16px' }}>
-      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>{label}</label>
-      <div style={{ position: 'relative' }}>
-        <input
-          type={show ? 'text' : 'password'}
-          defaultValue={value}
-          style={{
-            width: '100%', padding: '10px',
-            background: 'var(--bg-primary)', border: '1px solid var(--border)',
-            borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
-          }}
-        />
-        {type === 'password' && (
-          <button
-            onClick={() => setShow(!show)}
-            style={{
-              position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-              background: 'transparent', border: 'none', color: 'var(--blue)', fontSize: '10px',
-              fontWeight: 700, cursor: 'pointer'
-            }}
-          >
-            {show ? 'HIDE' : 'SHOW'}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-const secondaryBtnStyle = {
-  display: 'flex', alignItems: 'center', padding: '8px 12px',
-  background: 'transparent', border: '1px solid var(--border)',
-  borderRadius: '4px', color: 'var(--text-muted)', cursor: 'pointer',
-  fontSize: '13px'
-}
-
-const actionSecondaryBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  padding: '8px 14px',
-  background: 'transparent',
-  border: '1px solid var(--border)',
-  borderRadius: '4px',
-  color: 'var(--text-muted)',
-  cursor: 'pointer',
-  fontSize: '13px',
-  fontWeight: 500,
 }
