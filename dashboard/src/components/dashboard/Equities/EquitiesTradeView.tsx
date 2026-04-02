@@ -1,0 +1,263 @@
+import React from 'react'
+import { useTradingContext } from '../../../context/TradingContext'
+
+const colors = {
+  bgPrimary: '#0d1117',
+  bgSecondary: '#161b22',
+  bgTertiary: '#21262d',
+  border: '#30363d',
+  textPrimary: '#e6edf3',
+  textMuted: '#8b949e',
+  blue: '#58a6ff',
+  green: '#3fb950',
+  red: '#f85149',
+  amber: '#e3b341',
+}
+
+const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+const SYMBOLS = ['IWM', 'SPY', 'QQQ']
+
+export default function EquitiesTradeView() {
+  const {
+    symbol,
+    setSymbol,
+    timeframe,
+    isInTrade,
+    activePosition,
+    signals,
+    loading,
+  } = useTradingContext()
+
+  const recentSignals = [...signals].reverse().slice(0, 20)
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted }}>
+        Loading trade data...
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.bgPrimary }}>
+      {/* Symbol Tabs */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          borderBottom: `1px solid ${colors.border}`,
+          backgroundColor: colors.bgSecondary,
+          flexShrink: 0,
+        }}
+      >
+        {SYMBOLS.map((sym) => (
+          <button
+            key={sym}
+            onClick={() => setSymbol(sym)}
+            style={{
+              padding: '12px 28px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: sym === symbol ? colors.blue : colors.textMuted,
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderBottom: sym === symbol ? `2px solid ${colors.blue}` : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'color 0.15s',
+            }}
+          >
+            {sym}
+          </button>
+        ))}
+      </div>
+
+      {/* Main content: chart + position panel */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* Chart Area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.bgSecondary,
+              margin: 16,
+              marginRight: 0,
+              borderRadius: 8,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <span style={{ color: colors.textMuted, fontSize: 16 }}>
+              Candlestick Chart &mdash; {symbol} {timeframe}
+            </span>
+          </div>
+
+          {/* Signal Log */}
+          <div
+            style={{
+              height: 220,
+              flexShrink: 0,
+              margin: '0 16px 16px 16px',
+              marginRight: 0,
+              backgroundColor: colors.bgSecondary,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 16px',
+                fontSize: 13,
+                fontWeight: 600,
+                color: colors.textPrimary,
+                borderBottom: `1px solid ${colors.border}`,
+                flexShrink: 0,
+              }}
+            >
+              Signal Log
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Time', 'Type', 'Price'].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          position: 'sticky',
+                          top: 0,
+                          textAlign: 'left',
+                          padding: '8px 12px',
+                          fontSize: 11,
+                          color: colors.textMuted,
+                          borderBottom: `1px solid ${colors.border}`,
+                          backgroundColor: colors.bgSecondary,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentSignals.length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{ padding: 16, color: colors.textMuted, textAlign: 'center', fontSize: 13 }}>
+                        No signals yet
+                      </td>
+                    </tr>
+                  )}
+                  {recentSignals.map((sig, i) => (
+                    <tr key={`${sig.index}-${i}`}>
+                      <td style={{ padding: '6px 12px', fontSize: 12, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                        {new Date(sig.time).toLocaleTimeString()}
+                      </td>
+                      <td style={{ padding: '6px 12px', borderBottom: `1px solid ${colors.border}` }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 10px',
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            backgroundColor: sig.type === 'BUY' ? `${colors.green}22` : `${colors.red}22`,
+                            color: sig.type === 'BUY' ? colors.green : colors.red,
+                          }}
+                        >
+                          {sig.type}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 12px', fontSize: 12, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                        {currency.format(sig.price)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Position Panel */}
+        <div
+          style={{
+            width: 280,
+            flexShrink: 0,
+            backgroundColor: colors.bgSecondary,
+            borderLeft: `1px solid ${colors.border}`,
+            padding: 20,
+            margin: '16px 16px 16px 16px',
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 20 }}>
+            Position
+          </div>
+
+          {isInTrade && activePosition ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignSelf: 'flex-start',
+                  padding: '4px 12px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  backgroundColor: activePosition.side === 'long' ? `${colors.green}22` : `${colors.red}22`,
+                  color: activePosition.side === 'long' ? colors.green : colors.red,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {activePosition.side}
+              </div>
+
+              {[
+                { label: 'Symbol', value: activePosition.symbol },
+                { label: 'Quantity', value: activePosition.qty },
+                { label: 'Entry Price', value: currency.format(parseFloat(activePosition.avg_entry_price)) },
+                { label: 'Current Price', value: currency.format(parseFloat(activePosition.current_price)) },
+                {
+                  label: 'Unrealized P&L',
+                  value: currency.format(parseFloat(activePosition.unrealized_pl)),
+                  color: parseFloat(activePosition.unrealized_pl) >= 0 ? colors.green : colors.red,
+                },
+                { label: 'Market Value', value: currency.format(parseFloat(activePosition.market_value)) },
+              ].map((row) => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: colors.textMuted }}>{row.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: row.color || colors.textPrimary }}>
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: colors.textMuted,
+                fontSize: 13,
+              }}
+            >
+              No active position
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,21 +1,27 @@
 import React, { useState, useEffect } from 'react'
-import { TopBar } from './components/TopBar'
-import { InTradeBar } from './components/InTradeBar'
-import { BottomLogBar } from './components/BottomLogBar'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from './components/LoginPage'
-import { DashboardSidebar, DashboardScreen } from './components/dashboard/DashboardSidebar'
-import { PortfolioView } from './components/dashboard/Portfolio/PortfolioView'
-import { OptionsView } from './components/dashboard/Options/OptionsView'
-import { CryptoView } from './components/dashboard/Crypto/CryptoView'
-import { BacktestView } from './components/dashboard/Backtest/BacktestView'
-import { DataInventoryView } from './components/dashboard/Data/DataView'
+import { MainLayout } from './components/dashboard/layout/MainLayout'
+import OverviewView from './components/dashboard/Overview/OverviewView'
+import EquitiesTradeView from './components/dashboard/Equities/EquitiesTradeView'
+import EquitiesPerformanceView from './components/dashboard/Equities/EquitiesPerformanceView'
+import EquitiesStrategyView from './components/dashboard/Equities/EquitiesStrategyView'
+import CryptoMonitorView from './components/dashboard/Crypto/CryptoMonitorView'
+import CryptoPerformanceView from './components/dashboard/Crypto/CryptoPerformanceView'
+import CryptoStrategyView from './components/dashboard/Crypto/CryptoStrategyView'
+import StrategyLabView from './components/dashboard/StrategyLab/StrategyLabView'
+import NewsFeedView from './components/dashboard/NewsSocial/NewsFeedView'
+import SentimentView from './components/dashboard/NewsSocial/SentimentView'
+import WatchlistView from './components/dashboard/NewsSocial/WatchlistView'
+import PositionSizingView from './components/dashboard/RiskManager/PositionSizingView'
+import RiskRulesView from './components/dashboard/RiskManager/RiskRulesView'
+import AccountHealthView from './components/dashboard/RiskManager/AccountHealthView'
+import { DataView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
-import { TradeView } from './components/dashboard/Trade/TradeView'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
 import type { Session } from '@supabase/supabase-js'
 import { TradingProvider } from './context/TradingContext'
-
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -24,24 +30,22 @@ export default function App() {
 
   useEffect(() => {
     if (supabaseMisconfigured) {
-      setAuthError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables, then redeploy.')
+      setAuthError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in environment variables.')
       setAuthLoading(false)
       return
     }
 
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        setAuthError(`Auth error: ${error.message}`)
-      }
-      setSession(session)
+    supabase.auth.getSession().then(({ data: { session: s }, error }) => {
+      if (error) setAuthError(`Auth error: ${error.message}`)
+      setSession(s)
       setAuthLoading(false)
     }).catch((err) => {
-      setAuthError(`Connection failed: ${err.message}`)
+      setAuthError(`Connection failed: ${(err as Error).message}`)
       setAuthLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s)
     })
 
     return () => subscription.unsubscribe()
@@ -77,49 +81,31 @@ export default function App() {
 
   return (
     <TradingProvider>
-      <DashboardLayout />
+      <BrowserRouter>
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<OverviewView />} />
+            <Route path="/equities/trade" element={<EquitiesTradeView />} />
+            <Route path="/equities/performance" element={<EquitiesPerformanceView />} />
+            <Route path="/equities/strategy" element={<EquitiesStrategyView />} />
+            <Route path="/crypto/monitor" element={<CryptoMonitorView />} />
+            <Route path="/crypto/performance" element={<CryptoPerformanceView />} />
+            <Route path="/crypto/strategy" element={<CryptoStrategyView />} />
+            <Route path="/strategy-lab/editor" element={<StrategyLabView />} />
+            <Route path="/strategy-lab/backtest" element={<StrategyLabView />} />
+            <Route path="/news/feed" element={<NewsFeedView />} />
+            <Route path="/news/sentiment" element={<SentimentView />} />
+            <Route path="/news/watchlist" element={<WatchlistView />} />
+            <Route path="/risk/sizing" element={<PositionSizingView />} />
+            <Route path="/risk/rules" element={<RiskRulesView />} />
+            <Route path="/risk/health" element={<AccountHealthView />} />
+            <Route path="/data" element={<DataView />} />
+            <Route path="/alerts" element={<AlertsView />} />
+            <Route path="/settings" element={<SettingsView />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     </TradingProvider>
-  )
-}
-
-function DashboardLayout() {
-  const [activeScreen, setActiveScreen] = useState<DashboardScreen>('trade')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-primary)' }}>
-      {/* TOP BAR */}
-      <TopBar />
-
-      {/* IN TRADE BAR */}
-      <InTradeBar />
-
-      {/* MAIN CONTENT AREA */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        
-        {/* DASHBOARD SIDEBAR */}
-        <DashboardSidebar 
-          activeScreen={activeScreen} 
-          onScreenChange={setActiveScreen}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
-
-        {/* SCREEN CONTENT */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: 'var(--bg-primary)' }}>
-          {activeScreen === 'portfolio' && <PortfolioView />}
-          {activeScreen === 'options' && <OptionsView />}
-          {activeScreen === 'crypto' && <CryptoView />}
-          {activeScreen === 'backtest' && <BacktestView symbol="IWM" timeframe="15m" />}
-          {activeScreen === 'data' && <DataInventoryView />}
-          {activeScreen === 'alerts' && <AlertsView />}
-          {activeScreen === 'settings' && <SettingsView />}
-          {activeScreen === 'trade' && <TradeView />}
-        </div>
-      </div>
-
-      {/* BOTTOM LOG BAR */}
-      <BottomLogBar />
-    </div>
   )
 }
