@@ -2,7 +2,7 @@
 # Usage: powershell -ExecutionPolicy Bypass -File start-local.ps1
 
 $ErrorActionPreference = "Stop"
-$ROOT = "C:\Working\ut-bot-lumibot"
+$ROOT = "C:\github\ut-bot-lumibot"
 $SUPABASE_DIR = "C:\Working\SupabaseProjects\UTBOT LUMIBOT"
 
 Write-Host "`n=== UT Bot Lumibot - Local Startup ===" -ForegroundColor Cyan
