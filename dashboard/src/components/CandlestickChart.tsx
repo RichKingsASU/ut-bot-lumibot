@@ -136,7 +136,7 @@ export const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
     // ATR Trail Stop line
     const trailSeries = chart.addLineSeries({
-      color: '#58a6ff',
+      color: '#f59e0b',
       lineWidth: 2,
       lineStyle: 0,
       priceLineVisible: true,

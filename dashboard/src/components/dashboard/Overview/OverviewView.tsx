@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { DollarSign, TrendingUp, Briefcase, Target } from 'lucide-react'
 import { useTradingContext } from '../../../context/TradingContext'
+import { DataFreshness } from '../../DataFreshness'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -27,6 +28,12 @@ export default function OverviewView() {
     botStatus,
     loading,
   } = useTradingContext()
+
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  useEffect(() => {
+    if (account) setLastUpdated(new Date())
+  }, [account?.equity])
 
   if (loading) {
     return (
@@ -83,6 +90,9 @@ export default function OverviewView() {
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
       {/* Stat Cards */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <DataFreshness lastUpdated={lastUpdated} />
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((card) => {
           const Icon = card.icon
@@ -268,7 +278,7 @@ export default function OverviewView() {
                 borderRadius: '50%',
                 flexShrink: 0,
                 backgroundColor:
-                  log.level === 'error' ? colors.red : log.level === 'warn' ? colors.amber : colors.blue,
+                  log.level === 'error' ? colors.red : log.level === 'warning' ? colors.amber : colors.blue,
               }}
             />
             <span style={{ fontSize: 12, color: colors.textMuted, flexShrink: 0 }}>

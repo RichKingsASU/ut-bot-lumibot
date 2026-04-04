@@ -20,15 +20,15 @@ const StrategyLabView: React.FC = () => {
 
   const [selectedStrategy, setSelectedStrategy] = useState<number>(1)
   const [params, setParams] = useState({
-    atrPeriod: 14,
-    sensitivity: 1.5,
+    atrPeriod: 10,
+    sensitivity: 1.0,
     timeframe: '15m',
-    symbol: 'AAPL',
+    symbol: 'IWM',
   })
 
   const [backtestConfig, setBacktestConfig] = useState({
     startDate: '2025-01-01',
-    endDate: '2026-01-01',
+    endDate: new Date().toISOString().split('T')[0],
     initialBalance: 100000,
   })
   const [backtestProgress, setBacktestProgress] = useState<number | null>(null)
@@ -167,9 +167,19 @@ const StrategyLabView: React.FC = () => {
 
           {/* Parameter form */}
           <div style={cardStyle}>
-            <h2 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 20px 0' }}>
-              {mockStrategies.find(s => s.id === selectedStrategy)?.name} - Parameters
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <h2 style={{ fontSize: '16px', fontWeight: 600, margin: 0 }}>
+                {mockStrategies.find(s => s.id === selectedStrategy)?.name} - Parameters
+              </h2>
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: '#e3b341',
+                padding: '2px 8px', borderRadius: 4,
+                backgroundColor: 'rgba(227,179,65,0.12)',
+                border: '1px solid rgba(227,179,65,0.3)',
+              }}>
+                Lab Config (not deployed)
+              </span>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
               <div>
                 <label style={labelStyle}>ATR Period</label>
@@ -219,11 +229,25 @@ const StrategyLabView: React.FC = () => {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button style={{ ...btnStyle, background: 'var(--blue, #58a6ff)', color: '#0d1117', fontWeight: 600, border: 'none' }}>
                 <Save size={14} />
-                Save
+                Save Lab Config
               </button>
-              <button style={btnStyle}>
+              <button
+                style={{ ...btnStyle, background: 'var(--green, #3fb950)', color: '#0d1117', fontWeight: 600, border: 'none' }}
+                onClick={() => {
+                  const confirmed = window.confirm(
+                    `Deploy to Live?\n\n` +
+                    `ATR Period: ${params.atrPeriod}\n` +
+                    `Sensitivity: ${params.sensitivity}\n` +
+                    `Timeframe: ${params.timeframe}\n` +
+                    `Symbol: ${params.symbol}\n\n` +
+                    `This will update the live trading strategy.`
+                  )
+                  if (!confirmed) return
+                  setExecutionLog(prev => [...prev, `[DEPLOY] Deployed config to live: ${JSON.stringify(params)}`])
+                }}
+              >
                 <Upload size={14} />
-                Import JSON
+                Deploy to Live
               </button>
               <button style={btnStyle}>
                 <Download size={14} />

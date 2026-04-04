@@ -264,7 +264,18 @@ export function SettingsView() {
               <button style={styles.btn}>Test Connection</button>
               <div style={styles.toggleRow}>
                 <span style={{ ...styles.toggleLabel, marginRight: '10px' }}>{paperMode ? 'Paper Mode' : 'Live Mode'}</span>
-                <Toggle on={!paperMode} onClick={() => setPaperMode(!paperMode)} />
+                <Toggle on={!paperMode} onClick={() => {
+                  if (paperMode) {
+                    const confirmed = window.confirm(
+                      'WARNING: SWITCHING TO LIVE TRADING\n\n' +
+                      'This will use real capital from your Alpaca account.\n' +
+                      'All orders will be REAL and cannot be undone.\n\n' +
+                      'Are you absolutely sure?'
+                    )
+                    if (!confirmed) return
+                  }
+                  setPaperMode(!paperMode)
+                }} />
               </div>
             </div>
           </div>

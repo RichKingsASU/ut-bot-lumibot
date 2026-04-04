@@ -87,7 +87,7 @@ export function TopBar() {
     }
   }
 
-  const botRunning = botStatus?.status === 'running'
+  const botRunning = botStatus?.status === 'online'
   const online = connected
 
   return (

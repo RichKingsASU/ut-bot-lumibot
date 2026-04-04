@@ -9,6 +9,13 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
+import {
+  calculateWinRate,
+  calculateMaxDrawdown,
+  calculateSharpe,
+  sampleSizeWarning,
+  type Trade,
+} from '../../../utils/tradeStats'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -70,11 +77,24 @@ export default function EquitiesPerformanceView() {
   }
 
   const totalPnl = mockTrades.reduce((sum, t) => sum + t.pnl, 0)
-  const wins = mockTrades.filter((t) => t.pnl > 0).length
-  const winRate = Math.round((wins / mockTrades.length) * 100)
+  const trades: Trade[] = mockTrades.map((t) => ({
+    entry: t.entry,
+    exit: t.exit,
+    side: t.side as 'BUY' | 'SELL',
+    pnl: t.pnl,
+    date: t.date,
+  }))
+  const winRate = calculateWinRate(trades)
   const totalTrades = mockTrades.length
-  const sharpeRatio = 1.84
-  const maxDrawdown = -3.2
+  const equityValues = trades.reduce((acc, t) => {
+    const last = acc[acc.length - 1] || 100000
+    acc.push(last + t.pnl)
+    return acc
+  }, [] as number[])
+  const maxDrawdown = calculateMaxDrawdown(equityValues)
+  const dailyReturns = trades.map((t) => t.pnl / 100000)
+  const sharpeRatio = calculateSharpe(dailyReturns)
+  const warning = sampleSizeWarning(totalTrades)
 
   const statCards = [
     { label: 'Total P&L', value: currency.format(totalPnl), color: totalPnl >= 0 ? colors.green : colors.red },
@@ -170,7 +190,7 @@ export default function EquitiesPerformanceView() {
                   color: colors.textPrimary,
                   fontSize: 12,
                 }}
-                formatter={(value: number) => [currency.format(value), 'Equity']}
+                formatter={(value) => [currency.format(Number(value)), 'Equity']}
               />
               <Line
                 type="monotone"

@@ -28,7 +28,7 @@ export default function EquitiesStrategyView() {
   }
 
   const statusLabel = botStatus.online
-    ? botStatus.status === 'running'
+    ? botStatus.status === 'online'
       ? 'ACTIVE'
       : 'PAUSED'
     : 'STOPPED'
