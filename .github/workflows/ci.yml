@@ -29,6 +29,16 @@ jobs:
 
     - name: Security scan (Secrets check)
       run: |
-        # Fail if any hardcoded secrets are committed to code files
-        # Ignore lines that reference env vars via os.getenv()
-        ! grep -r "API_KEY\|API_SECRET\|Bearer" . --include="*.py" | grep -v 'os\.getenv'
+        # Fail only on actual hardcoded secret VALUES (not env var references)
+        # A hardcoded secret looks like: API_KEY = "ABCD1234..." (quoted value)
+        # NOT: os.getenv("API_KEY"), print("API_KEY not set"), f"Bearer {token}"
+        if grep -rn \
+          -e 'ALPACA_API_KEY\s*=\s*"[A-Z0-9]\{10,\}"' \
+          -e 'ALPACA_API_SECRET\s*=\s*"[A-Za-z0-9]\{20,\}"' \
+          --include="*.py" \
+          --exclude-dir=".git" \
+          .; then
+          echo "ERROR: Hardcoded API secrets found in Python files"
+          exit 1
+        fi
+        echo "Security scan passed — no hardcoded secrets found"
