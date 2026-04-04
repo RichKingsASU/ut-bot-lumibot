@@ -31,6 +31,8 @@ export const TopBar: React.FC = () => {
   const botRunning = botStatus.online
   const tradeSide = activePosition?.side ?? null
 
+  const paperMode = true // TODO: read from settings/context when paper mode toggle is wired
+
   const [editingSymbol, setEditingSymbol] = useState(false)
   const [inputVal, setInputVal] = useState(symbol)
 
@@ -139,7 +141,19 @@ export const TopBar: React.FC = () => {
       <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
 
       {/* Badges */}
-      <span className={`badge badge-blue`}>PAPER</span>
+      <span
+        className="badge"
+        style={{
+          backgroundColor: paperMode ? 'rgba(63,185,80,0.2)' : 'rgba(248,81,73,0.25)',
+          color: paperMode ? '#3fb950' : '#f85149',
+          border: paperMode ? '1px solid #3fb950' : '1px solid #f85149',
+          fontWeight: 700,
+          fontSize: paperMode ? '11px' : '12px',
+          animation: paperMode ? undefined : 'pulse-live 1.5s ease-in-out infinite',
+        }}
+      >
+        {paperMode ? 'PAPER' : 'LIVE'}
+      </span>
 
       <span className={`badge ${botRunning ? 'badge-green' : botStatus.status === 'stale' ? 'badge-amber' : 'badge-gray'}`}>
         {botRunning && <span className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />}

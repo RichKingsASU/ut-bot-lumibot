@@ -34,15 +34,16 @@ const navItems: NavItem[] = [
       { label: 'Strategy', path: '/equities/strategy' },
     ],
   },
-  {
-    label: 'Crypto',
-    icon: Bitcoin,
-    children: [
-      { label: 'Monitor', path: '/crypto/monitor' },
-      { label: 'Performance', path: '/crypto/performance' },
-      { label: 'Strategy', path: '/crypto/strategy' },
-    ],
-  },
+  // TODO: Re-enable Crypto nav when crypto trading is supported
+  // {
+  //   label: 'Crypto',
+  //   icon: Bitcoin,
+  //   children: [
+  //     { label: 'Monitor', path: '/crypto/monitor' },
+  //     { label: 'Performance', path: '/crypto/performance' },
+  //     { label: 'Strategy', path: '/crypto/strategy' },
+  //   ],
+  // },
   {
     label: 'Strategy Lab',
     icon: FlaskConical,
@@ -51,15 +52,16 @@ const navItems: NavItem[] = [
       { label: 'Backtest & Replay', path: '/strategy-lab/backtest' },
     ],
   },
-  {
-    label: 'News & Social',
-    icon: Newspaper,
-    children: [
-      { label: 'News Feed', path: '/news/feed' },
-      { label: 'Sentiment', path: '/news/sentiment' },
-      { label: 'Watchlist', path: '/news/watchlist' },
-    ],
-  },
+  // TODO: Re-enable News & Social nav when sentiment data sources are connected
+  // {
+  //   label: 'News & Social',
+  //   icon: Newspaper,
+  //   children: [
+  //     { label: 'News Feed', path: '/news/feed' },
+  //     { label: 'Sentiment', path: '/news/sentiment' },
+  //     { label: 'Watchlist', path: '/news/watchlist' },
+  //   ],
+  // },
   {
     label: 'Risk Manager',
     icon: Shield,

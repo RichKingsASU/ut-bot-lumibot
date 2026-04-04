@@ -1,50 +1,75 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
-
-// Generate mock equity curve data (30 days)
-const generateEquityData = () => {
-  let equity = 250000
-  const data = []
-  let peak = equity
-  for (let i = 0; i < 30; i++) {
-    const dailyReturn = (Math.random() - 0.45) * 2000
-    equity += dailyReturn
-    peak = Math.max(peak, equity)
-    const drawdown = ((equity - peak) / peak) * 100
-    const date = new Date()
-    date.setDate(date.getDate() - (29 - i))
-    data.push({
-      date: `${date.getMonth() + 1}/${date.getDate()}`,
-      equity: Math.round(equity),
-      drawdown: Math.round(drawdown * 100) / 100,
-    })
-  }
-  return data
-}
-
-const EQUITY_DATA = generateEquityData()
-
-const STAT_CARDS = [
-  { label: 'Current Drawdown', value: '-2.4%', color: '#e3b341' },
-  { label: 'Max Drawdown', value: '-5.8%', color: '#f85149' },
-  { label: 'Sharpe Ratio', value: '1.82', color: '#3fb950' },
-  { label: 'Sortino Ratio', value: '2.14', color: '#3fb950' },
-  { label: 'Win Rate', value: '62.3%', color: '#58a6ff' },
-  { label: 'Profit Factor', value: '1.67', color: '#3fb950' },
-]
+import { DataFreshness } from '../../DataFreshness'
+import {
+  calculateWinRate,
+  calculateMaxDrawdown,
+  calculateSharpe,
+  calculateSortino,
+  calculateProfitFactor,
+  sampleSizeWarning,
+} from '../../../utils/tradeStats'
 
 const AccountHealthView: React.FC = () => {
-  const { account } = useTradingContext()
+  const { account, signals } = useTradingContext()
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  const equity = account?.equity ?? 252400
-  const lastEquity = account?.last_equity ?? 251800
+  const equity = account ? parseFloat(account.equity) : 0
+  const lastEquity = account ? parseFloat(account.last_equity) : 0
   const dailyPnL = equity - lastEquity
   const dailyTarget = 500
   const pnlPct = Math.min(Math.max((dailyPnL / dailyTarget) * 100, 0), 100)
 
-  // Risk score mock
-  const riskScore = 38
+  useEffect(() => {
+    if (account) setLastUpdated(new Date())
+  }, [account?.equity])
+
+  // Derive trades from signal pairs
+  const trades = React.useMemo(() => {
+    const result: { entry: number; exit: number; side: 'BUY' | 'SELL'; pnl: number; date: string }[] = []
+    for (let i = 0; i < signals.length - 1; i++) {
+      if (signals[i].type === 'BUY') {
+        const exit = signals.slice(i + 1).find((s) => s.type === 'SELL')
+        if (exit) {
+          const pnl = exit.price - signals[i].price
+          result.push({
+            entry: signals[i].price,
+            exit: exit.price,
+            side: 'BUY',
+            pnl,
+            date: new Date(signals[i].time * 1000).toISOString(),
+          })
+        }
+      }
+    }
+    return result
+  }, [signals])
+
+  const winRate = calculateWinRate(trades)
+  const equityValues = trades.length > 0
+    ? trades.reduce((acc, t) => {
+        const last = acc[acc.length - 1] || equity
+        acc.push(last + t.pnl)
+        return acc
+      }, [] as number[])
+    : [equity]
+  const maxDrawdown = calculateMaxDrawdown(equityValues)
+
+  const dailyReturns = trades.map((t) => t.pnl / (equity || 1))
+  const sharpe = calculateSharpe(dailyReturns)
+  const sortino = calculateSortino(dailyReturns)
+  const profitFactor = calculateProfitFactor(trades)
+  const sampleWarning = sampleSizeWarning(trades.length)
+
+  // Current drawdown from account
+  const currentDrawdown = equity > 0 && lastEquity > 0
+    ? Math.round(((equity - lastEquity) / lastEquity) * 10000) / 100
+    : 0
+
+  // Risk score: ratio of current drawdown to a 10% max drawdown limit
+  const maxDrawdownLimit = 10
+  const riskScore = Math.min(100, Math.round((Math.abs(maxDrawdown) / maxDrawdownLimit) * 100))
 
   const getRiskColor = (score: number) => {
     if (score < 30) return '#3fb950'
@@ -60,9 +85,38 @@ const AccountHealthView: React.FC = () => {
 
   const riskColor = getRiskColor(riskScore)
 
+  const STAT_CARDS = [
+    { label: 'Current Drawdown', value: `${currentDrawdown >= 0 ? '+' : ''}${currentDrawdown}%`, color: currentDrawdown >= 0 ? '#3fb950' : '#e3b341' },
+    { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: '#f85149' },
+    { label: 'Sharpe Ratio', value: sharpe.toFixed(2), color: '#3fb950' },
+    { label: 'Sortino Ratio', value: sortino.toFixed(2), color: '#3fb950' },
+    { label: 'Win Rate', value: `${winRate}%`, color: '#58a6ff' },
+    { label: 'Profit Factor', value: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2), color: '#3fb950' },
+  ]
+
+  // Generate equity curve from account data (placeholder until portfolio_snapshots is wired)
+  const EQUITY_DATA = React.useMemo(() => {
+    if (!account) return []
+    const base = parseFloat(account.equity)
+    const data = []
+    for (let i = 0; i < 30; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() - (29 - i))
+      data.push({
+        date: `${date.getMonth() + 1}/${date.getDate()}`,
+        equity: i === 29 ? base : base, // Flat line until portfolio_snapshots is connected
+        drawdown: 0,
+      })
+    }
+    return data
+  }, [account?.equity])
+
   return (
     <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-primary, #e6edf3)' }}>
-      <h2 style={{ margin: '0 0 24px', fontSize: 20, fontWeight: 600 }}>Account Health</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Account Health</h2>
+        <DataFreshness lastUpdated={lastUpdated} />
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, marginBottom: 20 }}>
         {/* Risk Score Gauge */}
@@ -106,6 +160,11 @@ const AccountHealthView: React.FC = () => {
               <div style={{ fontSize: 24, fontWeight: 700, color: card.color }}>
                 {card.value}
               </div>
+              {sampleWarning && (card.label === 'Sharpe Ratio' || card.label === 'Win Rate' || card.label === 'Sortino Ratio') && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted, #8b949e)', marginTop: 4 }}>
+                  {sampleWarning}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -142,7 +201,6 @@ const AccountHealthView: React.FC = () => {
             backgroundColor: dailyPnL >= 0 ? '#3fb950' : '#f85149',
             transition: 'width 0.5s ease',
           }} />
-          {/* Target marker */}
           <div style={{
             position: 'absolute', top: -2, right: 0, width: 2, height: 16,
             backgroundColor: 'var(--text-muted, #8b949e)',
@@ -164,66 +222,73 @@ const AccountHealthView: React.FC = () => {
         <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 500, color: 'var(--text-muted, #8b949e)' }}>
           Equity Curve & Drawdown (30 Days)
         </h3>
-        <div style={{ width: '100%', height: 300 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={EQUITY_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: '#8b949e', fontSize: 11 }}
-                axisLine={{ stroke: '#30363d' }}
-                tickLine={false}
-                interval={4}
-              />
-              <YAxis
-                yAxisId="equity"
-                tick={{ fill: '#8b949e', fontSize: 11 }}
-                axisLine={{ stroke: '#30363d' }}
-                tickLine={false}
-                domain={['auto', 'auto']}
-                tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-              />
-              <YAxis
-                yAxisId="drawdown"
-                orientation="right"
-                tick={{ fill: '#8b949e', fontSize: 11 }}
-                axisLine={{ stroke: '#30363d' }}
-                tickLine={false}
-                domain={['auto', 0]}
-                tickFormatter={(v: number) => `${v}%`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#161b22',
-                  border: '1px solid #30363d',
-                  borderRadius: 6,
-                  color: '#e6edf3',
-                }}
-                labelStyle={{ color: '#8b949e' }}
-                formatter={(value: number, name: string) => {
-                  if (name === 'equity') return [`$${value.toLocaleString()}`, 'Equity']
-                  return [`${value}%`, 'Drawdown']
-                }}
-              />
-              <Area
-                yAxisId="drawdown"
-                type="monotone"
-                dataKey="drawdown"
-                stroke="#f8514966"
-                fill="rgba(248, 81, 73, 0.1)"
-                strokeWidth={1}
-              />
-              <Line
-                yAxisId="equity"
-                type="monotone"
-                dataKey="equity"
-                stroke="#58a6ff"
-                strokeWidth={2}
-                dot={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        {EQUITY_DATA.length === 0 ? (
+          <div style={{ color: 'var(--text-muted, #8b949e)', fontSize: 13, padding: '40px 0', textAlign: 'center' }}>
+            No account data available. Connect Alpaca API to view equity curve.
+          </div>
+        ) : (
+          <div style={{ width: '100%', height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={EQUITY_DATA}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: '#8b949e', fontSize: 11 }}
+                  axisLine={{ stroke: '#30363d' }}
+                  tickLine={false}
+                  interval={4}
+                />
+                <YAxis
+                  yAxisId="equity"
+                  tick={{ fill: '#8b949e', fontSize: 11 }}
+                  axisLine={{ stroke: '#30363d' }}
+                  tickLine={false}
+                  domain={['auto', 'auto']}
+                  tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+                />
+                <YAxis
+                  yAxisId="drawdown"
+                  orientation="right"
+                  tick={{ fill: '#8b949e', fontSize: 11 }}
+                  axisLine={{ stroke: '#30363d' }}
+                  tickLine={false}
+                  domain={['auto', 0]}
+                  tickFormatter={(v: number) => `${v}%`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#161b22',
+                    border: '1px solid #30363d',
+                    borderRadius: 6,
+                    color: '#e6edf3',
+                  }}
+                  labelStyle={{ color: '#8b949e' }}
+                  formatter={(value, name) => {
+                    const v = Number(value)
+                    if (name === 'equity') return [`$${v.toLocaleString()}`, 'Equity']
+                    return [`${v}%`, 'Drawdown']
+                  }}
+                />
+                <Area
+                  yAxisId="drawdown"
+                  type="monotone"
+                  dataKey="drawdown"
+                  stroke="#f8514966"
+                  fill="rgba(248, 81, 73, 0.1)"
+                  strokeWidth={1}
+                />
+                <Line
+                  yAxisId="equity"
+                  type="monotone"
+                  dataKey="equity"
+                  stroke="#58a6ff"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </div>
   )
