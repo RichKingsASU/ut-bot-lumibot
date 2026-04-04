@@ -87,7 +87,7 @@ def check_connectivity() -> bool:
             headers={**_headers, "Prefer": "count=exact"},
             timeout=10,
         )
-        if resp.status_code == 200:
+        if resp.status_code in (200, 206):
             count = resp.headers.get("content-range", "*/0").split("/")[-1]
             logger.info("[SUPABASE] Connected — bar_log has %s rows", count)
             return True
