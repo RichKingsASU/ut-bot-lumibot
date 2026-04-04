@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send } from 'lucide-react'
+import { supabase } from '../../../lib/supabaseClient'
 
 const styles = {
   container: {
@@ -39,7 +40,7 @@ const styles = {
     fontWeight: 600,
   },
   accordionBody: (open: boolean) => ({
-    maxHeight: open ? '600px' : '0',
+    maxHeight: open ? '800px' : '0',
     overflow: 'hidden' as const,
     transition: 'max-height 0.3s ease',
   }),
@@ -209,6 +210,7 @@ export function SettingsView() {
   const [dbConnected] = useState(true)
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramChatId, setTelegramChatId] = useState('')
+  const [telegramSaveStatus, setTelegramSaveStatus] = useState<'saved' | 'error' | null>(null)
   const [emailNotifs, setEmailNotifs] = useState(false)
   const [pushNotifs, setPushNotifs] = useState(true)
   const [quietStart, setQuietStart] = useState('22:00')
@@ -218,6 +220,52 @@ export function SettingsView() {
   const [atrPeriod, setAtrPeriod] = useState('10')
   const [sensitivity, setSensitivity] = useState('1.0')
   const [autoStart, setAutoStart] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('user_settings')
+      .select('value')
+      .eq('key', 'telegram_config')
+      .single()
+      .then(({ data }) => {
+        if (data?.value) {
+          try {
+            const cfg = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+            setTelegramToken(cfg.token || '')
+            setTelegramChatId(cfg.chatId || '')
+          } catch { /* ignore parse errors */ }
+        }
+      })
+  }, [])
+
+  const handleSaveTelegram = async () => {
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({
+        key: 'telegram_config',
+        value: JSON.stringify({ token: telegramToken, chatId: telegramChatId })
+      })
+    setTelegramSaveStatus(error ? 'error' : 'saved')
+    setTimeout(() => setTelegramSaveStatus(null), 3000)
+  }
+
+  const handleTestTelegram = async () => {
+    try {
+      await fetch(
+        `https://api.telegram.org/bot${telegramToken}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: telegramChatId,
+            text: 'Disrupting Alpha — Test message. Telegram alerts are working.'
+          })
+        }
+      )
+    } catch (e) {
+      console.error('Telegram test failed:', e)
+    }
+  }
 
   const toggleSection = (section: Section) => {
     setOpenSections(prev => {
@@ -320,16 +368,68 @@ export function SettingsView() {
         </div>
         <div style={styles.accordionBody(isOpen('notifications'))}>
           <div style={styles.accordionContent}>
-            <div style={styles.grid2}>
-              <div style={styles.inputRow}>
-                <label style={styles.label}>Telegram Bot Token</label>
-                <input type="text" style={styles.input} value={telegramToken} onChange={e => setTelegramToken(e.target.value)} placeholder="Enter bot token" />
+            {/* Telegram Bot Configuration */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <svg style={{ width: '14px', height: '14px', color: 'var(--text-muted, #8b949e)' }} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8l-1.68 7.92c-.12.56-.46.7-.94.44l-2.6-1.92-1.26 1.22c-.14.14-.26.26-.52.26l.18-2.62 4.74-4.28c.2-.18-.04-.28-.32-.1L7.46 14.3l-2.56-.8c-.56-.18-.58-.56.12-.82l10-3.86c.46-.16.88.1.62.98z"/>
+                </svg>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted, #8b949e)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
+                  Telegram Bot
+                </span>
               </div>
-              <div style={styles.inputRow}>
-                <label style={styles.label}>Chat ID</label>
-                <input type="text" style={styles.input} value={telegramChatId} onChange={e => setTelegramChatId(e.target.value)} placeholder="Enter chat ID" />
+              <div style={styles.grid2}>
+                <div style={styles.inputRow}>
+                  <label style={styles.label}>Bot Token</label>
+                  <input
+                    type="password"
+                    style={styles.input}
+                    value={telegramToken}
+                    onChange={e => setTelegramToken(e.target.value)}
+                    placeholder="Enter Telegram bot token"
+                  />
+                </div>
+                <div style={styles.inputRow}>
+                  <label style={styles.label}>Chat ID</label>
+                  <input
+                    type="text"
+                    style={styles.input}
+                    value={telegramChatId}
+                    onChange={e => setTelegramChatId(e.target.value)}
+                    placeholder="Enter Chat ID"
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button style={styles.btnPrimary} onClick={handleSaveTelegram}>
+                  <Save size={14} /> Save Telegram Config
+                </button>
+                <button
+                  style={{
+                    ...styles.btn,
+                    opacity: (!telegramToken || !telegramChatId) ? 0.4 : 1,
+                    cursor: (!telegramToken || !telegramChatId) ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={handleTestTelegram}
+                  disabled={!telegramToken || !telegramChatId}
+                >
+                  <Send size={14} /> Send Test Message
+                </button>
+                {telegramSaveStatus && (
+                  <span style={{
+                    fontSize: '12px',
+                    color: telegramSaveStatus === 'saved' ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
+                  }}>
+                    {telegramSaveStatus === 'saved' ? 'Saved' : 'Failed'}
+                  </span>
+                )}
               </div>
             </div>
+
+            {/* Divider between Telegram and other notifications */}
+            <div style={{ borderTop: '1px solid var(--border, #30363d)', marginBottom: '16px' }} />
+
+            {/* Email / Push / Quiet Hours */}
             <div style={{ ...styles.toggleRow, borderBottom: '1px solid var(--border, #30363d)' }}>
               <span style={styles.toggleLabel}>Email Notifications</span>
               <Toggle on={emailNotifs} onClick={() => setEmailNotifs(!emailNotifs)} />
