@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Bell, Send, MessageSquare, ToggleLeft, ToggleRight, Filter, CheckCircle, XCircle } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Bell, ToggleLeft, ToggleRight, Filter, CheckCircle, XCircle } from 'lucide-react'
+import { supabase } from '../../../lib/supabaseClient'
 
 const styles = {
   container: {
@@ -26,41 +27,9 @@ const styles = {
   sectionTitle: {
     fontSize: '16px',
     fontWeight: 600,
-    marginBottom: '16px',
     display: 'flex' as const,
     alignItems: 'center' as const,
     gap: '8px',
-  },
-  label: {
-    fontSize: '13px',
-    fontWeight: 500,
-    color: 'var(--text-muted, #8b949e)',
-    marginBottom: '6px',
-    display: 'block' as const,
-  },
-  input: {
-    width: '100%',
-    padding: '8px 12px',
-    borderRadius: '6px',
-    border: '1px solid var(--border, #30363d)',
-    backgroundColor: 'var(--bg-tertiary, #21262d)',
-    color: 'var(--text-primary, #e6edf3)',
-    fontSize: '14px',
-    outline: 'none',
-    boxSizing: 'border-box' as const,
-  },
-  btn: {
-    padding: '8px 16px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--blue, #58a6ff)',
-    color: '#0d1117',
-    cursor: 'pointer' as const,
-    fontSize: '13px',
-    fontWeight: 600,
-    display: 'inline-flex' as const,
-    alignItems: 'center' as const,
-    gap: '6px',
   },
   toggleRow: {
     display: 'flex' as const,
@@ -120,19 +89,6 @@ const styles = {
     color: 'var(--text-muted, #8b949e)',
     fontSize: '13px',
   },
-  toast: {
-    position: 'fixed' as const,
-    bottom: '24px',
-    right: '24px',
-    backgroundColor: 'var(--green, #3fb950)',
-    color: '#0d1117',
-    padding: '12px 20px',
-    borderRadius: '8px',
-    fontWeight: 600,
-    fontSize: '14px',
-    zIndex: 1000,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-  },
   select: {
     padding: '6px 10px',
     borderRadius: '6px',
@@ -174,16 +130,27 @@ const defaultToggles: Record<string, boolean> = {
 }
 
 export function AlertsView() {
-  const [botToken, setBotToken] = useState('')
-  const [chatId, setChatId] = useState('')
-  const [telegramEnabled, setTelegramEnabled] = useState(false)
+  const [alertsEnabled, setAlertsEnabled] = useState(false)
   const [toggles, setToggles] = useState(defaultToggles)
-  const [showToast, setShowToast] = useState(false)
   const [filterType, setFilterType] = useState('All')
 
-  const handleTest = () => {
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
+  useEffect(() => {
+    supabase
+      .from('user_settings')
+      .select('value')
+      .eq('key', 'alerts_enabled')
+      .single()
+      .then(({ data }) => {
+        if (data) setAlertsEnabled(data.value === 'true' || data.value === true)
+      })
+  }, [])
+
+  const handleMasterToggle = async () => {
+    const newVal = !alertsEnabled
+    setAlertsEnabled(newVal)
+    await supabase
+      .from('user_settings')
+      .upsert({ key: 'alerts_enabled', value: String(newVal) })
   }
 
   const handleToggle = (key: string) => {
@@ -200,75 +167,93 @@ export function AlertsView() {
         Alerts Management
       </div>
 
-      {/* Telegram Configuration */}
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <MessageSquare size={18} /> Telegram Configuration
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-          <div>
-            <label style={styles.label}>Bot Token</label>
-            <input
-              type="password"
-              style={styles.input}
-              placeholder="Enter Telegram bot token"
-              value={botToken}
-              onChange={e => setBotToken(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Chat ID</label>
-            <input
-              type="text"
-              style={styles.input}
-              placeholder="Enter Chat ID"
-              value={chatId}
-              onChange={e => setChatId(e.target.value)}
-            />
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button style={styles.btn} onClick={handleTest}>
-            <Send size={14} /> Test Message
-          </button>
-          <div
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-            onClick={() => setTelegramEnabled(!telegramEnabled)}
-          >
-            {telegramEnabled ? (
-              <ToggleRight size={28} style={{ color: 'var(--green, #3fb950)' }} />
-            ) : (
-              <ToggleLeft size={28} style={{ color: 'var(--text-muted, #8b949e)' }} />
-            )}
-            <span style={{ fontSize: '13px', fontWeight: 500, color: telegramEnabled ? 'var(--green, #3fb950)' : 'var(--text-muted, #8b949e)' }}>
-              {telegramEnabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Alert Toggles */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <Bell size={18} /> Alert Toggles
-        </div>
-        <div style={styles.toggleGrid}>
-          {alertToggles.map(toggle => (
-            <div key={toggle.key} style={styles.toggleRow}>
-              <div>
-                <div style={styles.toggleLabel}>{toggle.label}</div>
-                <div style={styles.toggleDesc}>{toggle.desc}</div>
-              </div>
-              <div style={{ cursor: 'pointer' }} onClick={() => handleToggle(toggle.key)}>
-                {toggles[toggle.key] ? (
-                  <ToggleRight size={26} style={{ color: 'var(--green, #3fb950)' }} />
-                ) : (
-                  <ToggleLeft size={26} style={{ color: 'var(--text-muted, #8b949e)' }} />
-                )}
-              </div>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={styles.sectionTitle}>
+            <Bell size={18} /> Alert Toggles
+          </div>
+          {/* Master toggle */}
+          <button
+            onClick={handleMasterToggle}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: alertsEnabled ? '#58a6ff' : '#8b949e',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'color 0.15s',
+            }}
+          >
+            <div style={{
+              position: 'relative' as const,
+              width: '36px',
+              height: '20px',
+              borderRadius: '10px',
+              backgroundColor: alertsEnabled ? '#1f6feb' : '#30363d',
+              border: alertsEnabled ? 'none' : '1px solid #484f58',
+              transition: 'background-color 0.2s',
+            }}>
+              <div style={{
+                position: 'absolute' as const,
+                top: '2px',
+                left: alertsEnabled ? '16px' : '2px',
+                width: '16px',
+                height: '16px',
+                backgroundColor: '#fff',
+                borderRadius: '50%',
+                transition: 'left 0.2s',
+              }} />
             </div>
-          ))}
+            {alertsEnabled ? 'Alerts enabled' : 'Alerts disabled'}
+          </button>
         </div>
+
+        <div style={{
+          opacity: alertsEnabled ? 1 : 0.4,
+          pointerEvents: alertsEnabled ? 'auto' as const : 'none' as const,
+        }}>
+          <div style={styles.toggleGrid}>
+            {alertToggles.map(toggle => (
+              <div key={toggle.key} style={styles.toggleRow}>
+                <div>
+                  <div style={styles.toggleLabel}>{toggle.label}</div>
+                  <div style={styles.toggleDesc}>{toggle.desc}</div>
+                </div>
+                <div style={{ cursor: 'pointer' }} onClick={() => handleToggle(toggle.key)}>
+                  {toggles[toggle.key] ? (
+                    <ToggleRight size={26} style={{ color: 'var(--green, #3fb950)' }} />
+                  ) : (
+                    <ToggleLeft size={26} style={{ color: 'var(--text-muted, #8b949e)' }} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {!alertsEnabled && (
+          <div style={{
+            paddingTop: '12px',
+            marginTop: '12px',
+            borderTop: '1px solid var(--border, #30363d)',
+            fontSize: '12px',
+            color: '#484f58',
+          }}>
+            Enable alerts above to configure individual alert types.
+            Telegram is configured in{' '}
+            <span style={{ color: '#58a6ff' }}>Settings &rarr; Notifications</span>.
+          </div>
+        )}
       </div>
 
       {/* Alert History */}
@@ -315,13 +300,6 @@ export function AlertsView() {
           </tbody>
         </table>
       </div>
-
-      {showToast && (
-        <div style={styles.toast}>
-          <CheckCircle size={16} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
-          Message sent!
-        </div>
-      )}
     </div>
   )
 }

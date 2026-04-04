@@ -4,8 +4,10 @@ import { LoginPage } from './components/LoginPage'
 import { MainLayout } from './components/dashboard/layout/MainLayout'
 import OverviewView from './components/dashboard/Overview/OverviewView'
 import EquitiesTradeView from './components/dashboard/Equities/EquitiesTradeView'
+import EquitiesMonitorView from './components/dashboard/Equities/EquitiesMonitorView'
 import EquitiesPerformanceView from './components/dashboard/Equities/EquitiesPerformanceView'
 import EquitiesStrategyView from './components/dashboard/Equities/EquitiesStrategyView'
+import CryptoTradeView from './components/dashboard/Crypto/CryptoTradeView'
 import CryptoMonitorView from './components/dashboard/Crypto/CryptoMonitorView'
 import CryptoPerformanceView from './components/dashboard/Crypto/CryptoPerformanceView'
 import CryptoStrategyView from './components/dashboard/Crypto/CryptoStrategyView'
@@ -86,8 +88,10 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="/" element={<OverviewView />} />
             <Route path="/equities/trade" element={<EquitiesTradeView />} />
+            <Route path="/equities/monitor" element={<EquitiesMonitorView />} />
             <Route path="/equities/performance" element={<EquitiesPerformanceView />} />
             <Route path="/equities/strategy" element={<EquitiesStrategyView />} />
+            <Route path="/crypto/trade" element={<CryptoTradeView />} />
             <Route path="/crypto/monitor" element={<CryptoMonitorView />} />
             <Route path="/crypto/performance" element={<CryptoPerformanceView />} />
             <Route path="/crypto/strategy" element={<CryptoStrategyView />} />

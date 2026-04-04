@@ -30,20 +30,22 @@ const navItems: NavItem[] = [
     icon: LineChart,
     children: [
       { label: 'Trade', path: '/equities/trade' },
+      { label: 'Monitor', path: '/equities/monitor' },
       { label: 'Performance', path: '/equities/performance' },
       { label: 'Strategy', path: '/equities/strategy' },
     ],
   },
-  // TODO: Re-enable Crypto nav when crypto trading is supported
-  // {
-  //   label: 'Crypto',
-  //   icon: Bitcoin,
-  //   children: [
-  //     { label: 'Monitor', path: '/crypto/monitor' },
-  //     { label: 'Performance', path: '/crypto/performance' },
-  //     { label: 'Strategy', path: '/crypto/strategy' },
-  //   ],
-  // },
+  { label: '_separator_1', icon: LayoutDashboard, path: '_separator' },
+  {
+    label: 'Crypto',
+    icon: Bitcoin,
+    children: [
+      { label: 'Trade', path: '/crypto/trade' },
+      { label: 'Monitor', path: '/crypto/monitor' },
+      { label: 'Performance', path: '/crypto/performance' },
+      { label: 'Strategy', path: '/crypto/strategy' },
+    ],
+  },
   {
     label: 'Strategy Lab',
     icon: FlaskConical,
@@ -161,6 +163,13 @@ export function Sidebar() {
       {/* Nav items */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
         {navItems.map((item) => {
+          // Render separator
+          if (item.path === '_separator') {
+            return (
+              <div key={item.label} style={{ margin: '4px 12px', borderTop: '1px solid rgba(48, 54, 61, 0.6)' }} />
+            )
+          }
+
           const Icon = item.icon
           const hasChildren = !!item.children
           const isExpanded = expandedSections.has(item.label)
