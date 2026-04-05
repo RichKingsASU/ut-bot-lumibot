@@ -3,6 +3,14 @@ import { StrategyLibrary, LabStrategy } from './StrategyLibrary';
 import { CodeEditor } from './CodeEditor';
 import { TerminalPanel, TerminalLine } from './TerminalPanel';
 import { BacktestPanel } from './BacktestPanel';
+import { supabase } from '../../../lib/supabaseClient';
+
+/** Strip any residual HTML tags from code (safety net against highlighted innerHTML leaking). */
+function stripHtml(text: string): string {
+  if (!/<[a-z][\s\S]*>/i.test(text)) return text;
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  return doc.body.textContent || '';
+}
 
 // Default strategies to seed the library
 const DEFAULT_STRATEGIES: LabStrategy[] = [
@@ -338,13 +346,31 @@ const StrategyLabView: React.FC = () => {
     }, lines.length * 550 + 200);
   }, [selected, pulseCpu]);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     const now = new Date();
     const saved = `Last saved ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     setLastSaved(saved);
-  }, []);
 
-  const handleUpload = useCallback((code: string, filename: string) => {
+    // Persist raw code to Supabase — always strip HTML as a safety net
+    const cleanCode = stripHtml(selected.code);
+    try {
+      await supabase.from('strategies').upsert({
+        name: selected.name,
+        filename: selected.filename,
+        language: selected.language.toLowerCase(),
+        status: selected.status,
+        isCrypto: selected.isCrypto ?? false,
+        code: cleanCode,
+        lastSaved: now.toISOString(),
+      }, { onConflict: 'filename' });
+    } catch {
+      console.error('Failed to save strategy to Supabase');
+    }
+  }, [selected]);
+
+  const handleUpload = useCallback(async (code: string, filename: string) => {
+    // Always store raw text — strip HTML if the code was accidentally decorated
+    const cleanCode = stripHtml(code);
     const newStrat: LabStrategy = {
       id: `uploaded-${Date.now()}`,
       name: filename.replace('.py', '').replace(/_/g, ' '),
@@ -352,11 +378,26 @@ const StrategyLabView: React.FC = () => {
       language: 'Python',
       status: 'draft',
       lastSaved: 'Just uploaded',
-      code,
-      isCrypto: filename.toLowerCase().includes('btc') || filename.toLowerCase().includes('crypto'),
+      code: cleanCode,
+      isCrypto: filename.toLowerCase().includes('btc') || filename.toLowerCase().includes('crypto')
+        || filename.toLowerCase().includes('eth'),
     };
     setStrategies(prev => [...prev, newStrat]);
     setSelectedId(newStrat.id);
+
+    // Persist raw code to Supabase
+    try {
+      await supabase.from('strategies').insert([{
+        name: newStrat.name,
+        filename: newStrat.filename,
+        language: newStrat.language.toLowerCase(),
+        status: newStrat.status,
+        isCrypto: newStrat.isCrypto ?? false,
+        code: cleanCode,
+      }]);
+    } catch {
+      console.error('Failed to persist uploaded strategy to Supabase');
+    }
   }, []);
 
   const handleDeploy = useCallback(() => {
