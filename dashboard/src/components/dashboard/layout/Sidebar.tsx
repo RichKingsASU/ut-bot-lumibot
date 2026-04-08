@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   LineChart,
@@ -20,6 +20,7 @@ interface NavItem {
   label: string
   icon: React.ElementType
   path?: string
+  parentPath?: string
   children?: { label: string; path: string }[]
 }
 
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   {
     label: 'Strategy Lab',
     icon: FlaskConical,
+    parentPath: '/strategy-lab',
     children: [
       { label: 'Editor', path: '/strategy-lab/editor' },
       { label: 'Backtest & Replay', path: '/strategy-lab/backtest' },
@@ -67,7 +69,9 @@ const navItems: NavItem[] = [
   {
     label: 'Risk Manager',
     icon: Shield,
+    parentPath: '/risk-manager',
     children: [
+      { label: 'Kill Switch', path: '/risk-manager' },
       { label: 'Position Sizing', path: '/risk/sizing' },
       { label: 'Risk Rules', path: '/risk/rules' },
       { label: 'Account Health', path: '/risk/health' },
@@ -82,6 +86,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Auto-expand parent section when a child route is active
   useEffect(() => {
@@ -163,10 +168,18 @@ export function Sidebar() {
       {/* Nav items */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
         {navItems.map((item) => {
-          // Render separator
+          // Render separator — visible divider between Equities and Crypto
           if (item.path === '_separator') {
             return (
-              <div key={item.label} style={{ margin: '4px 12px', borderTop: '1px solid rgba(48, 54, 61, 0.6)' }} />
+              <div
+                key={item.label}
+                aria-hidden="true"
+                style={{
+                  margin: '8px 12px',
+                  height: 1,
+                  background: 'linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.04))',
+                }}
+              />
             )
           }
 
@@ -184,7 +197,18 @@ export function Sidebar() {
               {/* Parent / direct link */}
               {hasChildren ? (
                 <button
-                  onClick={() => toggleSection(item.label)}
+                  onClick={() => {
+                    if (item.parentPath) {
+                      navigate(item.parentPath)
+                      setExpandedSections((prev) => {
+                        const next = new Set(prev)
+                        next.add(item.label)
+                        return next
+                      })
+                    } else {
+                      toggleSection(item.label)
+                    }
+                  }}
                   style={{
                     width: '100%',
                     display: 'flex',

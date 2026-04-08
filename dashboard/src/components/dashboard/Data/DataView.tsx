@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Database, Cloud, Activity, RefreshCw, Table, ScrollText, Wifi } from 'lucide-react'
+import { useBotStatus } from '../../../hooks/useBotStatus'
 
 const styles = {
   container: {
@@ -161,12 +162,20 @@ const styles = {
 
 type Tab = 'CONNECTION' | 'SEEDING' | 'TABLES' | 'LOGS'
 
-const connections = [
-  { name: 'Alpaca SIP', type: 'Market Data', status: true, latency: '12ms', lastChecked: '2 sec ago' },
-  { name: 'Supabase', type: 'Database', status: true, latency: '34ms', lastChecked: '5 sec ago' },
-  { name: 'OPRA Options', type: 'Options Data', status: false, latency: '--', lastChecked: '1 min ago' },
-  { name: 'Bot Engine', type: 'Execution', status: true, latency: '8ms', lastChecked: '3 sec ago' },
-]
+// Build the connections list from live state where available so that the
+// Bot Engine row never disagrees with the Header / Overview bot indicators.
+function useConnections() {
+  const bot = useBotStatus()
+  const botUpdated = bot.last_heartbeat
+    ? new Date(bot.last_heartbeat).toLocaleTimeString()
+    : '—'
+  return [
+    { name: 'Alpaca SIP',   type: 'Market Data',  status: true,        latency: '12ms', lastChecked: '2 sec ago' },
+    { name: 'Supabase',     type: 'Database',     status: true,        latency: '34ms', lastChecked: '5 sec ago' },
+    { name: 'OPRA Options', type: 'Options Data', status: false,       latency: '--',   lastChecked: '1 min ago' },
+    { name: 'Bot Engine',   type: 'Execution',    status: bot.online,  latency: '8ms',  lastChecked: botUpdated },
+  ]
+}
 
 const seedingData = [
   { symbol: 'IWM', progress: 100 },
@@ -205,6 +214,7 @@ export function DataView() {
   const [activeTab, setActiveTab] = useState<Tab>('CONNECTION')
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [logFilter, setLogFilter] = useState<string>('ALL')
+  const connections = useConnections()
 
   const filteredLogs = logFilter === 'ALL' ? mockLogs : mockLogs.filter(l => l.level === logFilter)
 

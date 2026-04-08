@@ -167,6 +167,47 @@ export function AlertsView() {
         Alerts Management
       </div>
 
+      {/* Prominent banner when the master toggle is off, so the user can see
+          alerts are silenced and enable them in one click. */}
+      {!alertsEnabled && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '12px 16px',
+            marginBottom: 16,
+            background: 'rgba(245, 158, 11, 0.10)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Bell size={16} style={{ color: '#f59e0b' }} />
+            <span style={{ fontSize: 13, color: '#f59e0b' }}>
+              Alerts are disabled — you will not receive any notifications.
+            </span>
+          </div>
+          <button
+            onClick={handleMasterToggle}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: '1px solid rgba(245, 158, 11, 0.6)',
+              background: 'rgba(245, 158, 11, 0.18)',
+              color: '#f59e0b',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Enable Alerts
+          </button>
+        </div>
+      )}
+
       {/* Alert Toggles */}
       <div style={styles.section}>
         <div style={{

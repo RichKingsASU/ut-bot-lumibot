@@ -16,8 +16,21 @@ export default async (req: Request, context: Context) => {
 
   const body = req.method === "POST" ? await req.json() : {};
   const symbol = body.symbol || "IWM";
-  const timeframe = body.timeframe || "15m";
+  const rawTimeframe = body.timeframe || "15Min";
   const days = body.days || 30;
+
+  // Normalize to Alpaca's canonical timeframe format ('1Min','5Min','15Min','1Hour','1Day')
+  // so rows are always stored with the same key the monitor queries by.
+  const normalizeTimeframe = (tf: string): string => {
+    const t = tf.toLowerCase();
+    if (t === '1m'  || t === '1min'  || t === '1minute')  return '1Min';
+    if (t === '5m'  || t === '5min'  || t === '5minute')  return '5Min';
+    if (t === '15m' || t === '15min' || t === '15minute') return '15Min';
+    if (t === '1h'  || t === '1hour' || t === '60m')      return '1Hour';
+    if (t === '1d'  || t === '1day'  || t === 'day')      return '1Day';
+    return tf;
+  };
+  const timeframe = normalizeTimeframe(rawTimeframe);
 
   console.log(`[BACKFILL] Starting backfill for ${symbol} ${timeframe} (${days} days)...`);
 
@@ -26,9 +39,7 @@ export default async (req: Request, context: Context) => {
   let totalSaved = 0;
 
   while (nextPageToken !== null) {
-    const alpacaTimeframe = timeframe === '1m' ? '1Min' : 
-                          timeframe === '5m' ? '5Min' : 
-                          timeframe === '15m' ? '15Min' : timeframe;
+    const alpacaTimeframe = timeframe;
                           
     const baseUrl = "https://data.alpaca.markets";
     let url = `${baseUrl}/v2/stocks/${symbol}/bars?timeframe=${alpacaTimeframe}&start=${start}&feed=${alpacaFeed}&limit=10000`;

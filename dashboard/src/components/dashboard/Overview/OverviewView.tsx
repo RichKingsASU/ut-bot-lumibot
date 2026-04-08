@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { DollarSign, TrendingUp, Briefcase, Target } from 'lucide-react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
+import { calculateAllTimeWinRate } from '../../../data/historicalTrades'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -49,22 +50,11 @@ export default function OverviewView() {
   const dayPnlPct = lastEquity !== 0 ? (dayPnl / lastEquity) * 100 : 0
   const openPositions = positions.length
 
-  // Win rate: derive from signals pairs (BUY then SELL)
-  const computeWinRate = () => {
-    let wins = 0
-    let trades = 0
-    for (let i = 0; i < signals.length - 1; i++) {
-      if (signals[i].type === 'BUY') {
-        const exit = signals.slice(i + 1).find((s) => s.type === 'SELL')
-        if (exit) {
-          trades++
-          if (exit.price > signals[i].price) wins++
-        }
-      }
-    }
-    return trades > 0 ? Math.round((wins / trades) * 100) : 0
-  }
-  const winRate = computeWinRate()
+  // Win Rate is sourced from the historical trade log (same source as the
+  // Performance page) so both screens always show the same number. The old
+  // implementation read from live session signals which had 0 trades and
+  // therefore always rendered 0%.
+  const winRate = calculateAllTimeWinRate()
 
   const statCards = [
     { label: 'Total Equity', value: currency.format(equity), icon: DollarSign, color: colors.blue },
@@ -75,7 +65,7 @@ export default function OverviewView() {
       color: dayPnl >= 0 ? colors.green : colors.red,
     },
     { label: 'Open Positions', value: String(openPositions), icon: Briefcase, color: colors.amber },
-    { label: 'Win Rate', value: `${winRate}%`, icon: Target, color: colors.green },
+    { label: 'Win Rate (all time)', value: `${winRate}%`, icon: Target, color: colors.green },
   ]
 
   const recentSignals = [...signals].reverse().slice(0, 10)
