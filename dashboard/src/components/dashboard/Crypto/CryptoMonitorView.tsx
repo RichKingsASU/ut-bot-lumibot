@@ -23,10 +23,13 @@ const CryptoMonitorView: React.FC = () => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
 
+      // crypto-prices now returns { quotes: { 'BTC/USD': { price, change_pct, ap, bp } } }
+      // computed from /snapshots prevDailyBar.c so 24h change is real, not 0.
       const parsed = CRYPTO_SYMBOLS.map(sym => {
         const q = data.quotes?.[sym] || {}
-        const midPrice = ((q.ap || 0) + (q.bp || 0)) / 2
-        return { symbol: sym, price: midPrice, change24h: 0 }
+        const price = Number(q.price ?? 0) || ((Number(q.ap ?? 0) + Number(q.bp ?? 0)) / 2)
+        const change24h = Number(q.change_pct ?? 0)
+        return { symbol: sym, price, change24h }
       }).filter(q => q.price > 0)
 
       setQuotes(parsed)
