@@ -176,7 +176,7 @@ export default function CryptoTradeView() {
                         {currency.format(bar.c)}
                       </td>
                       <td style={{ padding: '6px 12px', fontSize: 12, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>
-                        {bar.v?.toFixed(4)}
+                        {Number(bar.v ?? 0).toFixed(4)}
                       </td>
                     </tr>
                   ))}
