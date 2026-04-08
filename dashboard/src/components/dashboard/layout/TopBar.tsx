@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { fmtPrice } from '../../../utils/formatters'
 import { supabase } from '../../../lib/supabaseClient'
@@ -37,6 +37,7 @@ export function TopBar() {
     currentPrice,
     prevClose,
     account,
+    accountUpdatedAt,
     botStatus,
     connected,
   } = useTradingContext()
@@ -77,15 +78,24 @@ export function TopBar() {
     currentPrice != null && prevClose != null ? currentPrice >= prevClose : true
   const priceColor = priceUp ? '#3fb950' : '#f85149'
 
-  // P&L
-  let pnl: number | null = null
-  if (account) {
+  // Header P&L is a stable snapshot — it only recomputes when the account
+  // payload from useAlpacaAccount actually changes (every 60s), so the
+  // displayed value doesn't fluctuate as the user navigates between pages.
+  const pnl = useMemo<number | null>(() => {
+    if (!account) return null
     const equity = parseFloat(account.equity)
     const lastEquity = parseFloat(account.last_equity)
-    if (!isNaN(equity) && !isNaN(lastEquity)) {
-      pnl = equity - lastEquity
-    }
-  }
+    if (isNaN(equity) || isNaN(lastEquity)) return null
+    return equity - lastEquity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountUpdatedAt])
+
+  const updatedAgo = (() => {
+    if (!accountUpdatedAt) return ''
+    const secs = Math.max(0, Math.round((Date.now() - accountUpdatedAt.getTime()) / 1000))
+    if (secs < 60) return `${secs}s ago`
+    return `${Math.floor(secs / 60)}m ago`
+  })()
 
   const botRunning = botStatus?.status === 'online'
   const online = connected
@@ -198,13 +208,15 @@ export function TopBar() {
 
       <div style={{ width: 1, height: 24, background: '#30363d' }} />
 
-      {/* P&L */}
+      {/* P&L — snapshot value, hover to see when last refreshed */}
       {pnl !== null && (
         <span
+          title={accountUpdatedAt ? `Last updated ${updatedAgo}` : undefined}
           style={{
             fontSize: 13,
             fontWeight: 600,
             color: pnl >= 0 ? '#3fb950' : '#f85149',
+            cursor: 'help',
           }}
         >
           P&L: {pnl >= 0 ? '+' : ''}

@@ -9,9 +9,13 @@ interface AlpacaAccountState {
   activePosition: AlpacaPosition | null
   loading: boolean
   error: string | null
+  accountUpdatedAt: Date | null
 }
 
-const ACCOUNT_INTERVAL = 15000
+// Account is a relatively stable snapshot — refreshing every 60s gives the
+// header a stable P&L value that doesn't visibly tick on every navigation.
+// Positions / orders need to feel live so they stay on shorter intervals.
+const ACCOUNT_INTERVAL = 60000
 const POSITIONS_INTERVAL = 5000
 const ORDERS_INTERVAL = 10000
 
@@ -21,6 +25,7 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   const [orders, setOrders] = useState<AlpacaOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [accountUpdatedAt, setAccountUpdatedAt] = useState<Date | null>(null)
 
   const fetchAccount = useCallback(async () => {
     try {
@@ -28,6 +33,7 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
       if (!res.ok) throw new Error(`Account fetch failed: ${res.status}`)
       const data = await res.json()
       setAccount(data)
+      setAccountUpdatedAt(new Date())
     } catch (e) {
       setError(String(e))
     }
@@ -86,5 +92,6 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
     activePosition,
     loading,
     error,
+    accountUpdatedAt,
   }
 }

@@ -16,6 +16,7 @@ interface TradingContextValue {
   setTimeframe: (tf: Timeframe) => void
   
   account: AlpacaAccount | null
+  accountUpdatedAt: Date | null
   positions: AlpacaPosition[]
   orders: AlpacaOrder[]
   isInTrade: boolean
@@ -58,7 +59,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     ])
   }, [])
 
-  const { account, positions, orders, isInTrade, activePosition, loading, error } = useAlpacaAccount(symbol)
+  const { account, accountUpdatedAt, positions, orders, isInTrade, activePosition, loading, error } = useAlpacaAccount(symbol)
   const { candles, currentPrice, connected, prevClose } = useAlpacaStream(symbol, timeframe)
   const botStatus = useBotStatus()
   const { trailStops, signals, currentTrailStop, currentATR, lastSignal } = useUTBot(candles, {
@@ -83,6 +84,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     setTimeframe: handleTimeframeChange,
     
     account,
+    accountUpdatedAt,
     positions,
     orders,
     isInTrade,
