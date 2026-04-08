@@ -18,6 +18,7 @@ import WatchlistView from './components/dashboard/NewsSocial/WatchlistView'
 import PositionSizingView from './components/dashboard/RiskManager/PositionSizingView'
 import RiskRulesView from './components/dashboard/RiskManager/RiskRulesView'
 import AccountHealthView from './components/dashboard/RiskManager/AccountHealthView'
+import RiskManagerView from './components/dashboard/RiskManager/RiskManagerView'
 import { DataView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
@@ -95,11 +96,13 @@ export default function App() {
             <Route path="/crypto/monitor" element={<CryptoMonitorView />} />
             <Route path="/crypto/performance" element={<CryptoPerformanceView />} />
             <Route path="/crypto/strategy" element={<CryptoStrategyView />} />
+            <Route path="/strategy-lab" element={<StrategyLabView />} />
             <Route path="/strategy-lab/editor" element={<StrategyLabView />} />
             <Route path="/strategy-lab/backtest" element={<StrategyLabView />} />
             <Route path="/news/feed" element={<NewsFeedView />} />
             <Route path="/news/sentiment" element={<SentimentView />} />
             <Route path="/news/watchlist" element={<WatchlistView />} />
+            <Route path="/risk-manager" element={<RiskManagerView />} />
             <Route path="/risk/sizing" element={<PositionSizingView />} />
             <Route path="/risk/rules" element={<RiskRulesView />} />
             <Route path="/risk/health" element={<AccountHealthView />} />
