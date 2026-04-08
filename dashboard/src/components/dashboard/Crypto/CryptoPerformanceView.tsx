@@ -37,6 +37,20 @@ const equityCurveData = [
   { date: 'Apr 02', equity: 10776 },
 ]
 
+// Format P&L so negatives render as "-$250.00" not "$-250.00", and
+// positives render with a leading "+". Used everywhere a P&L number is
+// shown so the formatting stays consistent across the page.
+const formatPnl = (n: number): string =>
+  n >= 0 ? `+$${n.toFixed(2)}` : `-$${Math.abs(n).toFixed(2)}`
+
+// Format quantities with the asset's base unit so the Qty column can
+// never be visually confused with a USD price column.
+const formatQty = (qty: number, symbol: string): string => {
+  // BTC ≈ 8 decimals, ETH/SOL ≈ 4
+  const decimals = symbol === 'BTC' ? 4 : symbol === 'ETH' ? 4 : 2
+  return `${qty.toFixed(decimals)} ${symbol}`
+}
+
 const CryptoPerformanceView: React.FC = () => {
   const totalPnl = mockTrades.reduce((sum, t) => sum + t.pnl, 0)
   const wins = mockTrades.filter(t => t.pnl > 0).length
@@ -45,11 +59,11 @@ const CryptoPerformanceView: React.FC = () => {
   const worstTrade = Math.min(...mockTrades.map(t => t.pnl))
 
   const stats = [
-    { label: 'Total Crypto P&L', value: `$${totalPnl.toFixed(2)}`, icon: DollarSign, color: totalPnl >= 0 ? 'var(--green, #3fb950)' : 'var(--red, #f85149)' },
+    { label: 'Total Crypto P&L', value: formatPnl(totalPnl), icon: DollarSign, color: totalPnl >= 0 ? 'var(--green, #3fb950)' : 'var(--red, #f85149)' },
     { label: 'Win Rate', value: `${winRate}%`, icon: Target, color: 'var(--blue, #58a6ff)' },
     { label: 'Total Trades', value: `${mockTrades.length}`, icon: BarChart3, color: 'var(--text-primary, #e6edf3)' },
-    { label: 'Best Trade', value: `+$${bestTrade.toFixed(2)}`, icon: Award, color: 'var(--green, #3fb950)' },
-    { label: 'Worst Trade', value: `-$${Math.abs(worstTrade).toFixed(2)}`, icon: AlertTriangle, color: 'var(--red, #f85149)' },
+    { label: 'Best Trade', value: formatPnl(bestTrade), icon: Award, color: 'var(--green, #3fb950)' },
+    { label: 'Worst Trade', value: formatPnl(worstTrade), icon: AlertTriangle, color: 'var(--red, #f85149)' },
   ]
 
   const handleExportCSV = () => {
@@ -118,7 +132,12 @@ const CryptoPerformanceView: React.FC = () => {
             <LineChart data={equityCurveData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #30363d)" />
               <XAxis dataKey="date" stroke="var(--text-muted, #8b949e)" fontSize={12} />
-              <YAxis stroke="var(--text-muted, #8b949e)" fontSize={12} domain={['dataMin - 100', 'dataMax + 100']} />
+              <YAxis
+                stroke="var(--text-muted, #8b949e)"
+                fontSize={12}
+                domain={['dataMin - 100', 'dataMax + 100']}
+                tickFormatter={(v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+              />
               <Tooltip
                 contentStyle={{
                   background: 'var(--bg-tertiary, #21262d)',
@@ -164,7 +183,7 @@ const CryptoPerformanceView: React.FC = () => {
                       {trade.side}
                     </span>
                   </td>
-                  <td style={{ padding: '10px 12px' }}>{trade.quantity}</td>
+                  <td style={{ padding: '10px 12px' }}>{formatQty(trade.quantity, trade.symbol)}</td>
                   <td style={{ padding: '10px 12px' }}>${trade.entryPrice.toLocaleString()}</td>
                   <td style={{ padding: '10px 12px' }}>${trade.exitPrice.toLocaleString()}</td>
                   <td
@@ -174,7 +193,7 @@ const CryptoPerformanceView: React.FC = () => {
                       color: trade.pnl >= 0 ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
                     }}
                   >
-                    {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                    {formatPnl(trade.pnl)}
                   </td>
                   <td
                     style={{
