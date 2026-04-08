@@ -168,10 +168,18 @@ export function Sidebar() {
       {/* Nav items */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
         {navItems.map((item) => {
-          // Render separator
+          // Render separator — visible divider between Equities and Crypto
           if (item.path === '_separator') {
             return (
-              <div key={item.label} style={{ margin: '4px 12px', borderTop: '1px solid rgba(48, 54, 61, 0.6)' }} />
+              <div
+                key={item.label}
+                aria-hidden="true"
+                style={{
+                  margin: '8px 12px',
+                  height: 1,
+                  background: 'linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.04))',
+                }}
+              />
             )
           }
 
