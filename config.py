@@ -32,11 +32,20 @@ def _get(key: str, default: str) -> str:
     return os.getenv(key, default)
 
 
+# ── Risk Management ─────────────────────────────────────────────────────────
+MAX_DAILY_LOSS = float(_get("MAX_DAILY_LOSS", "500.0"))
+MAX_POSITION_SIZE = int(_get("MAX_POSITION_SIZE", "5"))        # Max contracts per trade
+MAX_TRADES_PER_DAY = int(_get("MAX_TRADES_PER_DAY", "10"))   # Prevent runaway strategy
+
+# ── Security ────────────────────────────────────────────────────────────────
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+
 def reload():
     """Re-read runtime_config.json and update module-level config vars."""
     global _runtime
     global OPTION_EXPIRATION_MODE, OPTION_EXPIRATION_DAYS_OUT
     global OPTION_STRIKE_MODE, OPTION_STRIKE_STEP, OPTION_MAX_DTE_FALLBACK
+    global MAX_DAILY_LOSS
 
     _runtime = _load_runtime_config()
     OPTION_EXPIRATION_MODE = _get("OPTION_EXPIRATION_MODE", "0DTE")
@@ -44,6 +53,7 @@ def reload():
     OPTION_STRIKE_MODE = _get("OPTION_STRIKE_MODE", "ATM")
     OPTION_STRIKE_STEP = float(_get("OPTION_STRIKE_STEP", "1.0"))
     OPTION_MAX_DTE_FALLBACK = int(_get("OPTION_MAX_DTE_FALLBACK", "7"))
+    MAX_DAILY_LOSS = float(_get("MAX_DAILY_LOSS", "500.0"))
 
 
 # ── Alpaca Configuration (for Lumibot broker) ───────────────────────────────

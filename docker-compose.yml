@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build: 
+      context: .
+      target: bot
+    container_name: ut-bot-executor
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  dashboard:
+    build:
+      context: .
+      target: dashboard
+    container_name: ut-bot-dashboard
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    depends_on:
+      trading-bot:
+        condition: service_healthy

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send, CheckCircle2, XCircle, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { API } from '../../../lib/api'
 
 const styles = {
   container: {
@@ -167,6 +168,36 @@ const styles = {
     color: 'var(--text-muted, #8b949e)',
     fontSize: '13px',
   },
+  testResult: {
+    marginTop: '16px',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    gap: '8px',
+    fontSize: '14px',
+    border: '1px solid transparent',
+  },
+  successBox: {
+    backgroundColor: 'rgba(63, 185, 80, 0.1)',
+    borderColor: 'rgba(63, 185, 80, 0.2)',
+    color: '#3fb950',
+  },
+  errorBox: {
+    backgroundColor: 'rgba(248, 81, 73, 0.1)',
+    borderColor: 'rgba(248, 81, 73, 0.2)',
+    color: '#f85149',
+  },
+  badge: (paper: boolean) => ({
+    padding: '2px 8px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    backgroundColor: paper ? 'rgba(63, 185, 80, 0.2)' : 'rgba(248, 81, 73, 0.2)',
+    color: paper ? '#3fb950' : '#f85149',
+    marginLeft: '8px',
+  }),
 }
 
 type Section = 'broker' | 'database' | 'notifications' | 'strategy'
@@ -221,7 +252,18 @@ export function SettingsView() {
   const [sensitivity, setSensitivity] = useState('1.0')
   const [autoStart, setAutoStart] = useState(false)
 
+  // Connection Testing States
+  const [testLoading, setTestLoading] = useState(false)
+  const [testStatus, setTestStatus] = useState<null | 'success' | 'error'>(null)
+  const [testMessage, setTestMessage] = useState('')
+  const [testLatency, setTestLatency] = useState<number | null>(null)
+  const [lastVerified, setLastVerified] = useState<string | null>(null)
+  const [accountData, setAccountData] = useState<any>(null)
+
   useEffect(() => {
+    const saved = localStorage.getItem('alpaca_last_verified')
+    if (saved) setLastVerified(saved)
+
     supabase
       .from('user_settings')
       .select('value')
@@ -247,6 +289,74 @@ export function SettingsView() {
       })
     setTelegramSaveStatus(error ? 'error' : 'saved')
     setTimeout(() => setTelegramSaveStatus(null), 3000)
+  }
+
+  const handleTestAlpaca = async () => {
+    if (testLoading) return
+    
+    const baseUrl = paperMode ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'
+    
+    if (!alpacaKey || !alpacaSecret) {
+      setTestStatus('error')
+      setTestMessage('API Key and Secret Key are required')
+      return
+    }
+
+    if (!paperMode) {
+      const confirmLive = window.confirm(
+        'CRITICAL SAFETY CHECK: You are about to test a LIVE Alpaca connection.\n\n' +
+        'This will verify real account credentials. Continue?'
+      )
+      if (!confirmLive) return
+    }
+
+    setTestLoading(true)
+    setTestStatus(null)
+    setTestMessage('')
+
+    try {
+      console.log(`[CONN_TEST] Attempting connection to ${baseUrl}...`)
+      const response = await fetch(API.alpacaAccount(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-api-key': 'test-admin-key' // In a real app, this would be a secure session key
+        },
+        body: JSON.stringify({
+          apiKey: alpacaKey,
+          apiSecret: alpacaSecret,
+          baseUrl: baseUrl
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        console.log('[CONN_TEST] Success:', {
+          status: data.status,
+          latency: data.latency,
+          isPaper: data.isPaper
+        })
+        setTestStatus('success')
+        const now = new Date().toLocaleString()
+        setTestMessage(`Successfully connected to Alpaca ${data.isPaper ? 'Paper' : 'Live'} Trading`)
+        setTestLatency(data.latency)
+        setAccountData(data)
+        setLastVerified(now)
+        localStorage.setItem('alpaca_last_verified', now)
+      } else {
+        console.error('[CONN_TEST] Failure:', data.error)
+        setTestStatus('error')
+        setTestMessage(data.error || 'Unknown connection error')
+        setTestLatency(data.latency || null)
+      }
+    } catch (err) {
+      console.error('[CONN_TEST] Exception:', err)
+      setTestStatus('error')
+      setTestMessage('Network error: Could not reach validation server')
+    } finally {
+      setTestLoading(false)
+    }
   }
 
   const handleTestTelegram = async () => {
@@ -309,9 +419,26 @@ export function SettingsView() {
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
-              <button style={styles.btn}>Test Connection</button>
+              <button 
+                style={{
+                  ...styles.btn,
+                  opacity: testLoading ? 0.6 : 1,
+                  cursor: testLoading ? 'not-allowed' : 'pointer'
+                }} 
+                onClick={handleTestAlpaca}
+                disabled={testLoading}
+              >
+                {testLoading ? (
+                  <><Loader2 size={14} className="animate-spin" /> Testing...</>
+                ) : (
+                  'Test Connection'
+                )}
+              </button>
               <div style={styles.toggleRow}>
-                <span style={{ ...styles.toggleLabel, marginRight: '10px' }}>{paperMode ? 'Paper Mode' : 'Live Mode'}</span>
+                <span style={{ ...styles.toggleLabel, marginRight: '10px' }}>
+                  {paperMode ? 'Paper Mode' : 'Live Mode'}
+                  <span style={styles.badge(paperMode)}>{paperMode ? 'Paper' : 'Live'}</span>
+                </span>
                 <Toggle on={!paperMode} onClick={() => {
                   if (paperMode) {
                     const confirmed = window.confirm(
@@ -323,9 +450,85 @@ export function SettingsView() {
                     if (!confirmed) return
                   }
                   setPaperMode(!paperMode)
+                  setTestStatus(null) // Reset test status on mode change
                 }} />
               </div>
             </div>
+
+            {testStatus && (
+              <div style={{
+                ...styles.testResult,
+                ...(testStatus === 'success' ? styles.successBox : styles.errorBox)
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                  {testStatus === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                  {testStatus === 'success' ? 'Connection Verified' : 'Connection Failed'}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  {testMessage}
+                </div>
+                {testStatus === 'success' && accountData && (
+                  <div style={{ 
+                    marginTop: '4px', 
+                    padding: '8px', 
+                    backgroundColor: 'rgba(255,255,255,0.05)', 
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '4px'
+                  }}>
+                    <div>Status: <span style={{ fontWeight: 600 }}>{accountData.status}</span></div>
+                    <div>Latency: <span style={{ fontWeight: 600 }}>{testLatency}ms</span></div>
+                    <div>Account #: <span style={{ fontWeight: 600 }}>{accountData.account_number}</span></div>
+                    <div>Environment: <span style={{ fontWeight: 600 }}>{accountData.isPaper ? 'Paper' : 'Live'}</span></div>
+                  </div>
+                )}
+                {lastVerified && (
+                  <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '4px' }}>
+                    Last verified: {lastVerified}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!paperMode && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(248, 81, 73, 0.1)',
+                border: '1px solid rgba(248, 81, 73, 0.2)',
+                color: '#f85149',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                fontSize: '12px'
+              }}>
+                <AlertTriangle size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div>
+                  <strong style={{ display: 'block', marginBottom: '2px' }}>LIVE TRADING ACTIVE</strong>
+                  Your strategy will execute real trades with real capital. Ensure your risk settings are strictly validated.
+                </div>
+              </div>
+            )}
+            {paperMode && testStatus === 'success' && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(63, 185, 80, 0.1)',
+                border: '1px solid rgba(63, 185, 80, 0.2)',
+                color: '#3fb950',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '12px'
+              }}>
+                <ShieldCheck size={16} />
+                <span>Safely connected to Paper Trading environment.</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

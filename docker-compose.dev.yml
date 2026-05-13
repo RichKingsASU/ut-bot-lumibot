@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build: 
+      context: .
+      target: bot
+    container_name: ut-bot-executor-dev
+    env_file: .env
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    command: python main.py
+
+  dashboard:
+    build:
+      context: .
+      target: frontend-builder # Use builder stage or a separate node dev image
+    container_name: ut-bot-dashboard-dev
+    working_dir: /app/dashboard
+    ports:
+      - "5173:5173"
+    env_file: .env
+    volumes:
+      - ./dashboard:/app/dashboard
+    command: npm run dev -- --host

@@ -254,6 +254,57 @@ def log_trade(
     _update_session_trades()
 
 
+def log_trade_sync(
+    symbol: str,
+    side: str,
+    contract_symbol: str | None = None,
+    direction: str | None = None,
+    option_type: str | None = None,
+    strike: float | None = None,
+    expiration: str | None = None,
+    qty: int | None = None,
+    entry_price: float | None = None,
+    exit_price: float | None = None,
+    entry_underlying_price: float | None = None,
+    exit_underlying_price: float | None = None,
+    trade_pnl: float | None = None,
+    exit_reason: str | None = None,
+    entry_rsi: float | None = None,
+):
+    """
+    Synchronous version of log_trade. Blocks until write is confirmed.
+    Use this for critical EXIT events to ensure audit trail integrity.
+    """
+    global _cumulative_pnl
+    if trade_pnl is not None:
+        _cumulative_pnl += trade_pnl
+
+    row = {
+        "session_id": SESSION_ID,
+        "symbol": symbol,
+        "contract_symbol": contract_symbol,
+        "direction": direction,
+        "option_type": option_type,
+        "strike": float(strike) if strike is not None else None,
+        "expiration": expiration,
+        "qty": qty,
+        "side": side,
+        "entry_price": float(entry_price) if entry_price is not None else None,
+        "exit_price": float(exit_price) if exit_price is not None else None,
+        "entry_underlying_price": float(entry_underlying_price) if entry_underlying_price is not None else None,
+        "exit_underlying_price": float(exit_underlying_price) if exit_underlying_price is not None else None,
+        "trade_pnl": round(trade_pnl, 2) if trade_pnl is not None else None,
+        "cumulative_pnl": round(_cumulative_pnl, 2),
+        "exit_reason": exit_reason,
+        "entry_rsi": float(entry_rsi) if entry_rsi is not None else None,
+    }
+    # Blocking call
+    _post("paper_trades", row)
+    
+    # Session update (still thread-spawned is okay as it's secondary)
+    _update_session_trades()
+
+
 def _update_session_trades():
     """Increment trades_count on the session row."""
     _init()
@@ -284,3 +335,28 @@ def _update_session_trades():
 
     t = threading.Thread(target=_do, daemon=True)
     t.start()
+
+def log_alert(level: str, category: str, message: str, metadata: dict | None = None):
+    """Log a system alert for operator attention."""
+    row = {
+        "session_id": SESSION_ID,
+        "ts": datetime.now(ET).isoformat(),
+        "level": level,
+        "category": category,
+        "message": message,
+        "metadata": metadata or {},
+        "is_resolved": False,
+    }
+    _fire("system_alerts", row)
+
+def log_audit(action: str, status: str, details: str, metadata: dict | None = None):
+    """Log a major system action for traceability."""
+    row = {
+        "session_id": SESSION_ID,
+        "ts": datetime.now(ET).isoformat(),
+        "action": action,
+        "status": status,
+        "details": details,
+        "metadata": metadata or {},
+    }
+    _fire("system_audit", row)

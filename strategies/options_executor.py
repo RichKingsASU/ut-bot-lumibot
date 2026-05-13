@@ -51,6 +51,68 @@ _last_rejection_time: float = 0.0
 REJECTION_COOLDOWN_SECONDS = 300  # 5 minutes
 
 
+def sync_state_with_broker(underlying: str = "SPY"):
+    """
+    Query Alpaca for existing open positions and recover module state.
+    Call this on startup to prevent 'zombie' positions after a crash.
+    """
+    global open_position
+    logger.info("Checking Alpaca for existing %s positions...", underlying)
+    
+    try:
+        url = f"{_base_url()}/v2/positions"
+        resp = requests.get(url, headers=_headers(), timeout=15)
+        resp.raise_for_status()
+        positions = resp.json()
+        
+        # Look for a contract symbol that belongs to the underlying
+        # Alpaca option symbols look like 'SPY260326C00580000'
+        for pos in positions:
+            symbol = pos.get("symbol", "")
+            if symbol.startswith(underlying) and len(symbol) > len(underlying):
+                logger.info("Found existing position: %s", symbol)
+                
+                # Basic parsing from the symbol if possible, or just use position data
+                qty = int(pos.get("qty", 1))
+                fill_price = float(pos.get("avg_entry_price", 0))
+                
+                open_position = {
+                    "contract_symbol": symbol,
+                    "qty": qty,
+                    "fill_price": fill_price,
+                    "entry_time": datetime.now(ET), # Approximation
+                    "direction": "LONG" if pos.get("side") == "long" else "SHORT",
+                    "recovered": True
+                }
+                
+                # Try to extract details from symbol
+                try:
+                    suffix = symbol[len(underlying):] # 260326C00580000
+                    if len(suffix) >= 7:
+                        exp = f"20{suffix[0:2]}-{suffix[2:4]}-{suffix[4:6]}"
+                        option_type = "call" if suffix[6].upper() == "C" else "put"
+                        # Extract strike (usually last 8 digits)
+                        strike_str = suffix[7:]
+                        if strike_str.isdigit():
+                            open_position.update({
+                                "expiration": exp,
+                                "option_type": option_type,
+                                "strike": float(strike_str) / 1000.0
+                            })
+                except Exception:
+                    pass
+                
+                logger.info("Successfully recovered position: %s", open_position)
+                return True
+                
+        logger.info("No existing %s positions found.", underlying)
+        return False
+        
+    except Exception as e:
+        logger.error("Failed to sync state with broker: %s", e)
+        return False
+
+
 def _headers() -> dict:
     """Build Alpaca auth headers from environment."""
     api_key = os.getenv("ALPACA_API_KEY", "")
@@ -262,23 +324,119 @@ def _place_order(payload: dict) -> dict:
     return resp.json()
 
 
-def _wait_for_fill(order_id: str, timeout: int = 30, poll_interval: float = 1.0) -> dict:
-    """Poll order status until filled or timeout."""
-    url = f"{_base_url()}/v2/orders/{order_id}"
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        resp = requests.get(url, headers=_headers(), timeout=10)
-        resp.raise_for_status()
-        order = resp.json()
-        status = order.get("status", "")
-        if status == "filled":
-            return order
-        if status in ("canceled", "expired", "rejected", "suspended"):
-            return order
-        time.sleep(poll_interval)
-    resp = requests.get(url, headers=_headers(), timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, chase_interval: int = 10) -> dict:
+    """
+    Monitor an order and 'chase' the market if not filled.
+    Updates the limit price to the current bid (sell) or ask (buy).
+    """
+    current_order_id = order_id
+    chase_count = 0
+
+    while chase_count <= max_chases:
+        # 1. Wait for fill
+        deadline = time.time() + chase_interval
+        filled_order = None
+        while time.time() < deadline:
+            resp = requests.get(f"{_base_url()}/v2/orders/{current_order_id}", headers=_headers(), timeout=10)
+            order = resp.json()
+            if order.get("status") == "filled":
+                return order
+            if order.get("status") in ("canceled", "expired", "rejected"):
+                return order
+            filled_order = order
+            time.sleep(1.0)
+
+        # 2. Not filled — try to chase
+        if chase_count >= max_chases:
+            logger.warning("Max chases (%d) reached for order %s", max_chases, current_order_id)
+            return filled_order
+
+        contract_symbol = filled_order.get("symbol")
+        try:
+            quote = get_option_quote(contract_symbol)
+            new_limit = quote["ask"] if side == "buy" else quote["bid"]
+            old_limit = float(filled_order.get("limit_price", 0))
+
+            if new_limit != old_limit and new_limit > 0:
+                chase_count += 1
+                logger.info("Chasing market for %s: updating limit %.2f -> %.2f (Chase %d/%d)",
+                             contract_symbol, old_limit, new_limit, chase_count, max_chases)
+                
+                patch_url = f"{_base_url()}/v2/orders/{current_order_id}"
+                patch_resp = requests.patch(patch_url, json={"limit_price": str(new_limit)}, headers=_headers(), timeout=15)
+                
+                if patch_resp.status_code == 200:
+                    new_order = patch_resp.json()
+                    current_order_id = new_order.get("id")
+                else:
+                    logger.warning("Patch failed (%d): %s", patch_resp.status_code, patch_resp.text)
+            else:
+                # Price hasn't moved, just keep waiting
+                pass
+        except Exception as e:
+            logger.error("Error during order chase: %s", e)
+            
+    return filled_order
+
+
+def get_daily_realized_pnl() -> float:
+    """
+    Query Supabase for today's total realized P&L from the paper_trades table.
+    """
+    supa_url = os.getenv("SUPABASE_URL")
+    supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supa_url or not supa_key:
+        return 0.0
+        
+    try:
+        from supabase import create_client
+        client = create_client(supa_url, supa_key)
+        
+        # Today's date in YYYY-MM-DD
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        
+        # Query realized trades from today
+        resp = client.table("paper_trades") \
+            .select("trade_pnl") \
+            .eq("side", "EXIT") \
+            .gte("created_at", today) \
+            .execute()
+            
+        total_pnl = sum(float(row.get("trade_pnl", 0)) for row in resp.data)
+        return total_pnl
+    except Exception as e:
+        logger.warning("Failed to fetch daily P&L from Supabase: %s", e)
+        return 0.0
+
+
+def get_daily_trade_count() -> int:
+    """
+    Query Supabase for today's total number of ENTRY trades from the paper_trades table.
+    Used for enforcing MAX_TRADES_PER_DAY across restarts.
+    """
+    supa_url = os.getenv("SUPABASE_URL")
+    supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supa_url or not supa_key:
+        return 0
+        
+    try:
+        from supabase import create_client
+        client = create_client(supa_url, supa_key)
+        
+        # Today's date in YYYY-MM-DD
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        
+        # Query entry signals from today
+        resp = client.table("paper_trades") \
+            .select("id", count="exact") \
+            .eq("side", "ENTRY") \
+            .gte("created_at", today) \
+            .execute()
+            
+        return resp.count if resp.count is not None else 0
+    except Exception as e:
+        logger.warning("Failed to fetch daily trade count from Supabase: %s", e)
+        return 0
 
 
 # ── Buy-to-Open ──────────────────────────────────────────────────────────────
@@ -357,8 +515,8 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
         order = _place_order(order_payload)
         order_id = order.get("id", "")
 
-        # 5. Wait for fill
-        filled_order = _wait_for_fill(order_id, timeout=30)
+        # 5. Execute with chase
+        filled_order = _execute_order_with_chase(order_id, side="buy")
         status = filled_order.get("status", "")
 
         if status != "filled":
@@ -443,7 +601,15 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
         return None
 
     contract_symbol = open_position["contract_symbol"]
-    qty = open_position["qty"]
+    # ── [RECONCILIATION FIX] Get actual broker quantity ──────────────────
+    broker_pos = get_open_position()
+    if broker_pos:
+        qty = abs(int(float(broker_pos.get("qty", open_position["qty"]))))
+        if qty != open_position["qty"]:
+            logger.info("Quantity mismatch: local=%d broker=%d. Using broker quantity.", 
+                        open_position["qty"], qty)
+    else:
+        qty = open_position["qty"]
 
     try:
         # 1. Fetch bid price for the SAME contract
@@ -458,26 +624,25 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
             pnl = -(open_position["fill_price"] * qty * 100)
             trade_record = _build_trade_record(0.0, pnl, exit_reason)
             log_trade_async(trade_record)
-            # Log EXIT to paper_trades
-            try:
-                db.log_trade(
-                    symbol=open_position.get("contract_symbol", ""),
-                    side="EXIT",
-                    contract_symbol=open_position.get("contract_symbol"),
-                    direction=open_position.get("direction"),
-                    option_type=open_position.get("option_type"),
-                    strike=open_position.get("strike"),
-                    expiration=open_position.get("expiration"),
-                    qty=qty,
-                    entry_price=open_position.get("fill_price"),
-                    exit_price=0.0,
-                    entry_underlying_price=open_position.get("entry_underlying_price"),
-                    trade_pnl=pnl,
-                    exit_reason=exit_reason,
-                    entry_rsi=open_position.get("entry_rsi"),
-                )
-            except Exception as e:
-                logger.warning("[SUPABASE] paper_trades EXIT write failed: %s", e)
+            
+            # Log EXIT to paper_trades (Synchronous for integrity)
+            db.log_trade_sync(
+                symbol=open_position.get("symbol", ""),
+                side="EXIT",
+                contract_symbol=contract_symbol,
+                direction=open_position.get("direction"),
+                option_type=open_position.get("option_type"),
+                strike=open_position.get("strike"),
+                expiration=open_position.get("expiration"),
+                qty=qty,
+                entry_price=open_position.get("fill_price"),
+                exit_price=0.0,
+                entry_underlying_price=open_position.get("entry_underlying_price"),
+                trade_pnl=pnl,
+                exit_reason=exit_reason,
+                entry_rsi=open_position.get("entry_rsi"),
+            )
+            
             logger.info("POSITION CLOSED (expired worthless): P&L=$%.2f", pnl)
             open_position = {}
             return {"status": "expired_worthless", "pnl": pnl}
@@ -496,8 +661,8 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
         order = _place_order(order_payload)
         order_id = order.get("id", "")
 
-        # 3. Wait for fill
-        filled_order = _wait_for_fill(order_id, timeout=30)
+        # 3. Execute with chase
+        filled_order = _execute_order_with_chase(order_id, side="sell")
         status = filled_order.get("status", "")
 
         if status != "filled":
@@ -508,42 +673,35 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
 
         # 4. Calculate P&L (per contract = 100 shares)
         pnl = (exit_price - open_position["fill_price"]) * qty * 100
-        if open_position["direction"] == "SHORT":
-            # For puts, profit when price goes down, but we're buying a put
-            # so P&L is simply exit - entry (same formula, put value increases
-            # when underlying drops)
-            pass
 
-        # 5. Log to Supabase (fire-and-forget) — legacy trade_log
+        # 5. Log to Supabase (Legacy)
         trade_record = _build_trade_record(exit_price, pnl, exit_reason)
         log_trade_async(trade_record)
 
-        # Log EXIT to paper_trades (new structured table)
-        try:
-            db.log_trade(
-                symbol=open_position.get("contract_symbol", ""),
-                side="EXIT",
-                contract_symbol=contract_symbol,
-                direction=open_position.get("direction"),
-                option_type=open_position.get("option_type"),
-                strike=open_position.get("strike"),
-                expiration=open_position.get("expiration"),
-                qty=qty,
-                entry_price=open_position.get("fill_price"),
-                exit_price=exit_price,
-                entry_underlying_price=open_position.get("entry_underlying_price"),
-                trade_pnl=pnl,
-                exit_reason=exit_reason,
-                entry_rsi=open_position.get("entry_rsi"),
-            )
-        except Exception as e:
-            logger.warning("[SUPABASE] paper_trades EXIT write failed: %s", e)
+        # 6. Log EXIT to paper_trades (Synchronous for integrity)
+        db.log_trade_sync(
+            symbol=open_position.get("symbol", ""),
+            side="EXIT",
+            contract_symbol=contract_symbol,
+            direction=open_position.get("direction"),
+            option_type=open_position.get("option_type"),
+            strike=open_position.get("strike"),
+            expiration=open_position.get("expiration"),
+            qty=qty,
+            entry_price=open_position.get("fill_price"),
+            exit_price=exit_price,
+            entry_underlying_price=open_position.get("entry_underlying_price"),
+            trade_pnl=pnl,
+            exit_reason=exit_reason,
+            entry_rsi=open_position.get("entry_rsi"),
+        )
 
         logger.info("POSITION CLOSED: %s exit=%.2f P&L=$%.2f reason=%s",
                      contract_symbol, exit_price, pnl, exit_reason)
 
-        # 6. Clear position
+        # 7. Clear position
         open_position = {}
+        filled_order["trade_pnl"] = pnl
         return filled_order
 
     except requests.exceptions.HTTPError as e:

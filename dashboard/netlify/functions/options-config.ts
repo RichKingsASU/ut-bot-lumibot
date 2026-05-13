@@ -352,6 +352,16 @@ async function getExpirations(): Promise<any> {
 // ── Main handler ────────────────────────────────────────────────────────────
 
 export default async (req: Request, _context: Context) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get("X-Admin-API-Key");
+  if (adminKey && requestKey !== adminKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: JSON_HEADERS,
+    });
+  }
+
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "get";
 

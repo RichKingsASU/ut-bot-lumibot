@@ -35,7 +35,12 @@ export function useBotStatus(): BotStatusData {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(ENDPOINT)
+      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+      const res = await fetch(ENDPOINT, {
+        headers: {
+          'X-Admin-API-Key': adminKey
+        }
+      })
       if (!res.ok) {
         setData(prev => ({ ...prev, online: false, status: 'error' }))
         return

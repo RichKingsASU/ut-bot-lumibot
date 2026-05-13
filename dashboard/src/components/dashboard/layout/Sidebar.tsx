@@ -10,6 +10,7 @@ import {
   Database,
   Bell,
   Settings,
+  Server,
   Menu,
   ChevronLeft,
   ChevronDown,
@@ -78,7 +79,14 @@ const navItems: NavItem[] = [
     ],
   },
   { label: 'Data', icon: Database, path: '/data' },
-  { label: 'Alerts', icon: Bell, path: '/alerts' },
+  {
+    label: 'Infrastructure',
+    icon: Server,
+    children: [
+      { label: 'System Health', path: '/system-health' },
+      { label: 'Alerts', path: '/alerts' },
+    ],
+  },
   { label: 'Settings', icon: Settings, path: '/settings' },
 ]
 

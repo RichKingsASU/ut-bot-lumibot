@@ -19,7 +19,10 @@ export const useSupabaseData = ({ symbol, timeframe = '15m', limit = 100, mode }
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/.netlify/functions/supabase-query?type=bars&symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`);
+        const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+        const response = await fetch(`/.netlify/functions/supabase-query?type=bars&symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`, {
+          headers: { 'X-Admin-API-Key': adminKey }
+        });
         if (!response.ok) throw new Error('Failed to fetch historical bars');
         const data = await response.json();
         setBars(data);

@@ -11,4 +11,6 @@ export const API = {
   optionsConfig: (action: string) =>
     `${BASE}/options-config?action=${action}`,
   botState: () => `${BASE}/bot-state`,
+  alpacaAccount: () => `${BASE}/alpaca-account`,
+  alpacaFlatten: () => `${BASE}/alpaca-flatten`,
 }

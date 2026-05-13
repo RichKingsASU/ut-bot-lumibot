@@ -21,6 +21,7 @@ import AccountHealthView from './components/dashboard/RiskManager/AccountHealthV
 import RiskManagerView from './components/dashboard/RiskManager/RiskManagerView'
 import { DataView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
+import SystemHealthView from './components/dashboard/SystemHealth/SystemHealthView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
 import type { Session } from '@supabase/supabase-js'
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/risk/health" element={<AccountHealthView />} />
             <Route path="/data" element={<DataView />} />
             <Route path="/alerts" element={<AlertsView />} />
+            <Route path="/system-health" element={<SystemHealthView />} />
             <Route path="/settings" element={<SettingsView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

@@ -1,6 +1,13 @@
 import type { Handler } from '@netlify/functions'
 
-const handler: Handler = async () => {
+const handler: Handler = async (event) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = event.headers['x-admin-api-key'];
+  if (adminKey && requestKey !== adminKey) {
+    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+
   const baseUrl = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets'
   const apiKey = process.env.ALPACA_API_KEY || ''
   const apiSecret = process.env.ALPACA_API_SECRET || ''

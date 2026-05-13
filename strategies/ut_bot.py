@@ -25,12 +25,17 @@ from strategies.options_executor import (
     has_open_position,
     get_open_position,
     get_underlying_price,
+    get_daily_realized_pnl,
+    get_daily_trade_count,
 )
 import adapters.supabase_logger as db
+import config
 
 logger = logging.getLogger("ut_bot_strategy")
 ET = pytz.timezone("America/New_York")
 
+
+from logger import bot_logger, ErrorCategory
 
 class UTBotStrategy(Strategy):
     parameters = {
@@ -51,8 +56,19 @@ class UTBotStrategy(Strategy):
         self.sleeptime = "1M"  # 1-minute bars for intraday options
         self.last_signal = None
         self.last_direction = None
+        self.daily_realized_pnl = get_daily_realized_pnl()
+        self.trades_today = get_daily_trade_count()
+        bot_logger.info(f"Strategy Initialized. Symbol: {self.parameters['symbol']}, P&L: ${self.daily_realized_pnl:.2f}, Trades: {self.trades_today}/{config.MAX_TRADES_PER_DAY}", category=ErrorCategory.STRATEGY)
 
     def on_trading_iteration(self):
+        # ── [RISK FIX] Check daily loss limit ─────────────────────────────
+        if self.daily_realized_pnl <= -config.MAX_DAILY_LOSS:
+            if not has_open_position():
+                bot_logger.error(f"CRITICAL: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Trading suspended.", category=ErrorCategory.RISK)
+                return
+            else:
+                bot_logger.warning(f"WARNING: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Managing existing position only.", category=ErrorCategory.RISK)
+
         symbol = self.parameters["symbol"]
         atr_period = self.parameters["atr_period"]
         sensitivity = self.parameters["sensitivity"]
@@ -72,6 +88,21 @@ class UTBotStrategy(Strategy):
         # ── Fetch historical prices ──────────────────────────────────────
         bars = self.get_historical_prices(symbol, 100, "day")
         df = bars.df
+
+        # ── [DATA FRESHNESS GUARD] Check if last bar is stale ────────────────
+        if not df.empty:
+            last_bar_time = df.index[-1]
+            now = datetime.now(last_bar_time.tzinfo if last_bar_time.tzinfo else ET)
+            time_diff = (now - last_bar_time).total_seconds()
+            
+            # If data is > 90 seconds old, it's considered stale for 1m intraday trading
+            if time_diff > 90:
+                logger.error("STALE DATA DETECTED: Last bar (%s) is %.1f seconds old. Aborting iteration to prevent bad fills.", 
+                             last_bar_time.strftime("%H:%M:%S"), time_diff)
+                return
+        else:
+            logger.warning("Empty dataframe returned from broker. Aborting iteration.")
+            return
 
         # ══════════════════════════════════════════════════════════════════
         # SIGNAL LOGIC — DO NOT MODIFY (off-limits per constraints)
@@ -180,23 +211,45 @@ class UTBotStrategy(Strategy):
             )
             if exit_reason:
                 logger.info("Exit triggered: %s", exit_reason)
-                sell_to_close(exit_reason=exit_reason)
+                order = sell_to_close(exit_reason=exit_reason)
+                if order:
+                    # Update local P&L tracker
+                    trade_pnl = float(order.get("trade_pnl", 0))
+                    self.daily_realized_pnl += trade_pnl
+                    logger.info("Trade closed. Realized P&L: $%.2f | Day Total: $%.2f", trade_pnl, self.daily_realized_pnl)
                 return
 
         # ── ENTRY LOGIC (if no open position) ───────────────────────────
         if not has_open_position() and current_signal != 0:
+            # ── [RISK FIX] Check daily trade limit ─────────────────────────────
+            if self.trades_today >= config.MAX_TRADES_PER_DAY:
+                logger.warning("MAX_TRADES_PER_DAY (%d) reached. Entry blocked to prevent runaway.", 
+                               config.MAX_TRADES_PER_DAY)
+                return
+
             direction = "LONG" if current_signal == 1 else "SHORT"
             signal_label = "CALL" if direction == "LONG" else "PUT"
-            logger.info("Entry signal: %s at underlying=%.2f RSI=%.1f",
-                        direction, current_price, current_rsi)
-            buy_to_open(
+            qty = self.parameters.get("max_contracts", 1)
+            
+            # ── [RISK FIX] Check max position size ─────────────────────────────
+            if qty > config.MAX_POSITION_SIZE:
+                logger.warning("Requested qty %d exceeds MAX_POSITION_SIZE %d. Capping to limit.", 
+                               qty, config.MAX_POSITION_SIZE)
+                qty = config.MAX_POSITION_SIZE
+
+            logger.info("SIGNAL DETECTED: %s %d contracts of %s", direction, qty, symbol)
+            res = buy_to_open(
                 underlying=symbol,
                 direction=direction,
-                qty=self.parameters["max_contracts"],
-                underlying_price=current_price,
+                qty=qty,
+                underlying_price=float(current_price),
                 current_rsi=current_rsi,
             )
-            set_last_signal(signal_label)
+            if res:
+                self.trades_today += 1
+                set_last_signal(signal_label)
+            else:
+                logger.error("Entry failed for %s. Trade count not incremented.", symbol)
 
     # ── Exit trigger evaluation ──────────────────────────────────────────
 

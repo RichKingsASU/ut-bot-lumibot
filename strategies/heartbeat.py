@@ -110,7 +110,9 @@ def start():
     _stop_event.clear()
     _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True, name="heartbeat")
     _heartbeat_thread.start()
-    logger.info("Heartbeat started (session=%s, interval=%ds)", SESSION_ID, HEARTBEAT_INTERVAL)
+    
+    from logger import bot_logger, ErrorCategory
+    bot_logger.info(f"Heartbeat started (session={SESSION_ID}, interval={HEARTBEAT_INTERVAL}s)", category=ErrorCategory.INFRASTRUCTURE)
 
     # Send first heartbeat immediately
     threading.Thread(target=_upsert_status, args=("online",), daemon=True).start()
@@ -123,7 +125,9 @@ def stop():
         _heartbeat_thread.join(timeout=5)
     # Final offline write — blocking because we're shutting down
     _upsert_status("offline")
-    logger.info("Heartbeat stopped — offline status written")
+    
+    from logger import bot_logger, ErrorCategory
+    bot_logger.info("Heartbeat stopped — offline status written", category=ErrorCategory.INFRASTRUCTURE)
 
 
 # Register atexit so even unhandled exits attempt an offline write

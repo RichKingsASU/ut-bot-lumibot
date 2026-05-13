@@ -7,6 +7,17 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async (req: Request, context: Context) => {
+  // ── [SECURITY FIX] Simple API Key Authorization ──────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get("X-Admin-API-Key");
+
+  if (adminKey && requestKey !== adminKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const url = new URL(req.url);
   const type = url.searchParams.get("type");
   const symbol = url.searchParams.get("symbol");

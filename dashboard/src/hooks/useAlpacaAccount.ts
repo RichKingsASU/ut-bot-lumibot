@@ -29,7 +29,10 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
 
   const fetchAccount = useCallback(async () => {
     try {
-      const res = await fetch('/.netlify/functions/alpaca-account')
+      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+      const res = await fetch('/.netlify/functions/alpaca-account', {
+        headers: { 'X-Admin-API-Key': adminKey }
+      })
       if (!res.ok) throw new Error(`Account fetch failed: ${res.status}`)
       const data = await res.json()
       setAccount(data)
@@ -41,7 +44,10 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
 
   const fetchPositions = useCallback(async () => {
     try {
-      const res = await fetch('/.netlify/functions/alpaca-positions')
+      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+      const res = await fetch('/.netlify/functions/alpaca-positions', {
+        headers: { 'X-Admin-API-Key': adminKey }
+      })
       if (!res.ok) throw new Error(`Positions fetch failed: ${res.status}`)
       const data = await res.json()
       setPositions(Array.isArray(data) ? data : [])
@@ -52,7 +58,10 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/.netlify/functions/alpaca-orders')
+      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+      const res = await fetch('/.netlify/functions/alpaca-orders', {
+        headers: { 'X-Admin-API-Key': adminKey }
+      })
       if (!res.ok) throw new Error(`Orders fetch failed: ${res.status}`)
       const data = await res.json()
       setOrders(Array.isArray(data) ? data : [])

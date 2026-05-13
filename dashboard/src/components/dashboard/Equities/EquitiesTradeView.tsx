@@ -243,17 +243,49 @@ export default function EquitiesTradeView() {
               ))}
             </div>
           ) : (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: colors.textMuted,
-                fontSize: 13,
-              }}
-            >
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textMuted, fontSize: 13 }}>
               No active position
+            </div>
+          )}
+
+          {isInTrade && activePosition && (
+            <div style={{ marginTop: 'auto', paddingTop: 20, borderTop: `1px solid ${colors.border}` }}>
+              <button
+                onClick={async () => {
+                  if (window.confirm('EMERGENCY: Are you sure you want to CANCEL all orders and CLOSE all positions?')) {
+                    try {
+                      const res = await fetch('/.netlify/functions/alpaca-flatten', {
+                        method: 'POST',
+                        headers: { 'x-admin-api-key': 'your-admin-key' } // This should be retrieved from a secure place
+                      });
+                      if (res.ok) {
+                        alert('Emergency flatten initiated successfully.');
+                      } else {
+                        alert('Failed to initiate flatten. Check console for details.');
+                      }
+                    } catch (e) {
+                      console.error('Flatten error:', e);
+                      alert('Network error while initiating flatten.');
+                    }
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: `${colors.red}22`,
+                  color: colors.red,
+                  border: `1px solid ${colors.red}44`,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.backgroundColor = `${colors.red}33`)}
+                onMouseOut={(e) => (e.currentTarget.style.backgroundColor = `${colors.red}22`)}
+              >
+                FLATTEN ALL POSITIONS
+              </button>
             </div>
           )}
         </div>

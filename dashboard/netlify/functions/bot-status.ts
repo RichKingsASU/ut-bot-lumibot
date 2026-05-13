@@ -19,6 +19,17 @@ const JSON_HEADERS = {
 };
 
 export default async (req: Request, _context: Context) => {
+  // ── [SECURITY FIX] Simple API Key Authorization ──────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get("X-Admin-API-Key");
+
+  if (adminKey && requestKey !== adminKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: JSON_HEADERS,
+    });
+  }
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
