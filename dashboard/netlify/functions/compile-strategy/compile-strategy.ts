@@ -1,21 +1,13 @@
-import type { Handler } from '@netlify/functions';
 import { execSync } from 'child_process';
-import { writeFileSync, unlinkSync, existsSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import type { Handler } from '@netlify/functions';
 
-const VENV_PATH = '/tmp/strategy-venv';
-const REQUIREMENTS = [
-  'pandas>=2.0.0,<3.0.0',
-  'numpy>=1.24.0,<2.0.0',
-  'lumibot>=4.4.56',
-  'alpaca-trade-api>=3.0.0',
-  'ta>=0.10.0',
-];
-
-function stripHtmlFromCode(code: string): string {
+// ── HTML / entity stripping ───────────────────────────────────────────────────
+function stripHtml(code: string): string {
   return code
-    .replace(/<[^>]+>/g, '')
+    .replace(/<[^>]+>/g, '')   // remove all HTML tags
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
@@ -23,122 +15,107 @@ function stripHtmlFromCode(code: string): string {
     .replace(/&#39;/g, "'");
 }
 
-function ensureVenv(): string | null {
+// ── Resolve python3 on the current PATH ──────────────────────────────────────
+function getPython(): string {
   try {
-    if (!existsSync(`${VENV_PATH}/bin/python`)) {
-      execSync(`python3 -m venv ${VENV_PATH}`, { timeout: 30000 });
-      execSync(
-        `${VENV_PATH}/bin/pip install --quiet --disable-pip-version-check ${REQUIREMENTS.join(' ')}`,
-        { timeout: 120000 }
-      );
-    }
-    return null;
-  } catch (err: unknown) {
-    return err instanceof Error ? err.message : String(err);
-  }
+    const py = execSync('which python3', { timeout: 5000 }).toString().trim();
+    if (py) return py;
+  } catch {}
+  return 'python3';
 }
 
-const handler: Handler = async (event) => {
+// ── Main handler ─────────────────────────────────────────────────────────────
+export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
-      headers: { 'Content-Type': 'application/json' },
-    };
+    return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let code: string;
+  let rawCode: string;
   try {
-    const body = JSON.parse(event.body || '{}');
-    code = body.code || '';
+    rawCode = JSON.parse(event.body ?? '{}').code ?? '';
   } catch {
     return {
       statusCode: 400,
       body: JSON.stringify({ success: false, errors: 'Invalid request body' }),
-      headers: { 'Content-Type': 'application/json' },
     };
   }
 
-  if (!code.trim()) {
+  if (!rawCode.trim()) {
     return {
       statusCode: 400,
       body: JSON.stringify({ success: false, errors: 'No code provided' }),
-      headers: { 'Content-Type': 'application/json' },
     };
   }
 
-  code = stripHtmlFromCode(code);
+  // Defense-in-depth: strip any HTML the highlighter may have leaked in
+  const cleanCode = stripHtml(rawCode);
 
-  const strategyPath = join(tmpdir(), `strategy_${Date.now()}.py`);
+  // Write to a unique temp file
+  const tmpDir = os.tmpdir();
+  const strategyPath = path.join(tmpDir, `strategy_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
 
   try {
-    writeFileSync(strategyPath, code, 'utf8');
+    fs.writeFileSync(strategyPath, cleanCode, 'utf8');
+  } catch (err) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, errors: 'Failed to write temp file' }),
+    };
+  }
 
-    const venvErr = ensureVenv();
-    const pythonBin = venvErr ? 'python3' : `${VENV_PATH}/bin/python`;
+  const python = getPython();
 
-    try {
-      execSync(`${pythonBin} -m py_compile "${strategyPath}" 2>&1`, { timeout: 30000 });
-    } catch (compileErr: unknown) {
-      const raw =
-        (compileErr as { stdout?: Buffer })?.stdout?.toString() ||
-        (compileErr as { stderr?: Buffer })?.stderr?.toString() ||
-        (compileErr instanceof Error ? compileErr.message : String(compileErr));
-      const cleaned = raw.replace(new RegExp(strategyPath.replace(/\\/g, '\\\\'), 'g'), 'strategy.py');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ success: false, errors: cleaned }),
-        headers: { 'Content-Type': 'application/json' },
-      };
-    }
-
-    const warnings: string[] = [];
-
-    if (!venvErr) {
-      const importLines = code
-        .split('\n')
-        .filter((l) => l.trim().startsWith('import ') || l.trim().startsWith('from '))
-        .slice(0, 20)
-        .join('\n');
-
-      if (importLines) {
-        try {
-          execSync(`${pythonBin} -c "${importLines.replace(/"/g, '\\"')}" 2>&1`, { timeout: 20000 });
-        } catch (importErr: unknown) {
-          const out =
-            (importErr as { stdout?: Buffer })?.stdout?.toString() ||
-            (importErr as { stderr?: Buffer })?.stderr?.toString() ||
-            (importErr instanceof Error ? importErr.message : 'Unknown import issue');
-          warnings.push(`Import warning: ${out.split('\n').filter(Boolean).pop() || 'Unknown import issue'}`);
-        }
-      }
-    } else {
-      warnings.push(`Venv bootstrap skipped: ${venvErr.split('\n')[0]}`);
-    }
-
-    if (!code.includes('Strategy')) {
-      warnings.push('Warning: No Strategy class detected. Ensure your class extends lumibot Strategy.');
-    }
-    if (!code.includes('initialize') && !code.includes('on_trading_iteration')) {
-      warnings.push('Warning: No initialize() or on_trading_iteration() method found.');
-    }
-
+  // ── Step 1: Syntax check via py_compile ────────────────────────────────────
+  try {
+    execSync(`${python} -m py_compile "${strategyPath}" 2>&1`, { timeout: 15000 });
+  } catch (err: any) {
+    const raw: string = err.stdout?.toString() ?? err.stderr?.toString() ?? err.message ?? 'Unknown error';
+    // Normalize the temp path out of the error message
+    const cleaned = raw.replace(new RegExp(strategyPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 'strategy.py');
+    fs.unlink(strategyPath, () => {});
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        warnings,
-        message: `Compilation successful. 0 errors, ${warnings.length} warning${warnings.length !== 1 ? 's' : ''}.`,
-      }),
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, errors: cleaned }),
     };
-  } finally {
+  }
+
+  // ── Step 2: AST import scan via validate_imports.py ────────────────────────
+  // The script lives alongside this function file.
+  const validatorPath = path.join(__dirname, 'validate_imports.py');
+  const warnings: string[] = [];
+
+  if (fs.existsSync(validatorPath)) {
     try {
-      unlinkSync(strategyPath);
+      const result = execSync(
+        `${python} "${validatorPath}"`,
+        {
+          input: cleanCode,
+          timeout: 10000,
+          encoding: 'utf8',
+        }
+      );
+      const unknown: string[] = JSON.parse(result.trim() || '[]');
+      for (const mod of unknown) {
+        warnings.push(
+          `Package '${mod}' is not in the supported allowlist — ensure it is available in your deployment environment.`
+        );
+      }
     } catch {
-      /* ignore cleanup errors */
+      // Non-fatal: if the validator itself errors, skip it silently
     }
   }
-};
 
-export { handler };
+  // ── Cleanup ────────────────────────────────────────────────────────────────
+  fs.unlink(strategyPath, () => {});
+
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      success: true,
+      message: 'Compilation successful. 0 errors, 0 warnings.',
+      warnings,
+    }),
+  };
+};
