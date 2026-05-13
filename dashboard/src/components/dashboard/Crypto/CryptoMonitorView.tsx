@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Bitcoin, Clock, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { Clock, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
 import { PageHeader } from '../../ui/PageHeader'
 
 interface CryptoQuote {
@@ -9,6 +9,13 @@ interface CryptoQuote {
 }
 
 const CRYPTO_SYMBOLS = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD']
+
+const CRYPTO_META: Record<string, { symbol: string; color: string }> = {
+  'BTC/USD': { symbol: '₿', color: '#F7931A' },
+  'ETH/USD': { symbol: 'Ξ', color: '#627EEA' },
+  'SOL/USD': { symbol: '◎', color: '#9945FF' },
+  'AVAX/USD': { symbol: 'A', color: '#E84142' },
+}
 
 const CryptoMonitorView: React.FC = () => {
   const [quotes, setQuotes] = useState<CryptoQuote[]>([])
@@ -110,6 +117,7 @@ const CryptoMonitorView: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {quotes.map(q => {
             const isPositive = q.change24h >= 0
+            const meta = CRYPTO_META[q.symbol] ?? { symbol: '?', color: '#888' }
             return (
               <div key={q.symbol} style={{
                 background: 'var(--bg-secondary, #161b22)',
@@ -118,12 +126,17 @@ const CryptoMonitorView: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: '50%',
-                      background: 'var(--bg-tertiary, #21262d)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Bitcoin size={20} style={{ color: 'var(--amber, #e3b341)' }} />
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        background: `${meta.color}22`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: meta.color,
+                        fontSize: 20, fontWeight: 700, lineHeight: 1,
+                      }}
+                    >
+                      {meta.symbol}
                     </div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{q.symbol}</div>
