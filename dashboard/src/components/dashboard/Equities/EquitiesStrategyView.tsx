@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
+import { formatTimestamp } from '../../../lib/time'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -185,7 +186,7 @@ export default function EquitiesStrategyView() {
                 {allSignals.map((sig, i) => (
                   <tr key={`${sig.index}-${i}`}>
                     <td style={{ padding: '8px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                      {new Date(sig.time).toLocaleString()}
+                      {formatTimestamp(sig.time)}
                     </td>
                     <td style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}` }}>
                       <span
