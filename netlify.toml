@@ -4,6 +4,10 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  NODE_VERSION = "20"
+  PYTHON_VERSION = "3.11"
+
 
 [dev]
   command = "npm run dev"
