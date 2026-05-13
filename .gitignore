@@ -1,10 +1,23 @@
 # Environment
 .env
-.env.example
-! .env.example
+.env.*
+!.env.example
+
+# Claude Code / agent debris
+.claude/
+.claude/worktrees/
+
+# Node
+node_modules/
+*/node_modules/
+
+# Netlify
+.netlify/
+*/.netlify/
 
 # Python
 __pycache__/
+*/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -70,21 +83,20 @@ Thumbs.db
 # Runtime config (written by UI, never committed)
 runtime_config.json
 
+# Supabase CLI metadata
+dashboard/supabase/.temp/
+
 # Project Specific
 *.csv
 *.pkl
 *.json
-! **/package.json
-! **/package-lock.json
-! composer.json
-! **/tsconfig.json
-! *.ipynb
-
+!**/package.json
+!**/package-lock.json
+!composer.json
+!**/tsconfig.json
+!*.ipynb
 
 # Dashboard
-dashboard/node_modules/
 dashboard/dist/
-dashboard/.netlify/
 dashboard/.env
 !dashboard/src/lib/
-
