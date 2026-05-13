@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
+import { PageHeader } from '../../ui/PageHeader'
 import {
   calculateWinRate,
   calculateMaxDrawdown,
@@ -113,10 +114,11 @@ const AccountHealthView: React.FC = () => {
 
   return (
     <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Account Health</h2>
-        <DataFreshness lastUpdated={lastUpdated} />
-      </div>
+      <PageHeader
+        title="Account health"
+        subtitle="Drawdown & scoring"
+        actions={<DataFreshness lastUpdated={lastUpdated} />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, marginBottom: 20 }}>
         {/* Risk Score Gauge */}

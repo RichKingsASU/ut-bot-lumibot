@@ -4,6 +4,7 @@ import { CodeEditor } from './CodeEditor';
 import { TerminalPanel, TerminalLine } from './TerminalPanel';
 import { BacktestPanel } from './BacktestPanel';
 import { supabase } from '../../../lib/supabaseClient';
+import { PageHeader } from '../../ui/PageHeader';
 
 /** Strip any residual HTML tags from code (safety net against highlighted innerHTML leaking). */
 function stripHtml(text: string): string {
@@ -427,7 +428,11 @@ const StrategyLabView: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-full overflow-hidden" style={{ height: 'calc(100vh - 48px)' }}>
+    <div className="flex flex-col h-full overflow-hidden" style={{ height: 'calc(100vh - 48px)' }}>
+      <div style={{ padding: '16px 24px 0' }}>
+        <PageHeader title="Strategy lab" subtitle="Editor · Backtest" />
+      </div>
+      <div className="flex flex-1 overflow-hidden min-h-0">
       {/* LEFT: Strategy Library — fixed width */}
       <div className="w-48 flex-shrink-0">
         <StrategyLibrary
@@ -477,6 +482,7 @@ const StrategyLabView: React.FC = () => {
           onSetSymbol={setDeploySymbol}
           onDeploy={handleDeploy}
         />
+      </div>
       </div>
     </div>
   );

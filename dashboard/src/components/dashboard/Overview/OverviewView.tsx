@@ -4,6 +4,7 @@ import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
 import { calculateAllTimeWinRate } from '../../../data/historicalTrades'
 import { formatTimestamp } from '../../../lib/time'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -80,10 +81,11 @@ export default function OverviewView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
-      {/* Stat Cards */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <DataFreshness lastUpdated={lastUpdated} />
-      </div>
+      <PageHeader
+        title="Overview"
+        subtitle="Live trading dashboard"
+        actions={<DataFreshness lastUpdated={lastUpdated} />}
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((card) => {
           const Icon = card.icon

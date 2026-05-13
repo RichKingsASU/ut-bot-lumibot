@@ -1,6 +1,7 @@
 import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { formatTimestamp } from '../../../lib/time'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -48,6 +49,7 @@ export default function EquitiesStrategyView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
+      <PageHeader title="Strategy config" subtitle="UT Bot ATR Trailing Stop" />
       {/* Strategy Header */}
       <div
         style={{

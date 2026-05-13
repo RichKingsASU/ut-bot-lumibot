@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Database, Cloud, Activity, RefreshCw, Table, ScrollText, Wifi } from 'lucide-react'
 import { useBotStatus } from '../../../hooks/useBotStatus'
+import { PageHeader } from '../../ui/PageHeader'
 
 const styles = {
   container: {
@@ -220,12 +221,7 @@ export function DataView() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.title}>
-          <Database size={22} />
-          Data Management
-        </div>
-      </div>
+      <PageHeader title="Data connections" subtitle="Feeds · Tables · Logs" />
 
       <div style={styles.tabs}>
         {(['CONNECTION', 'SEEDING', 'TABLES', 'LOGS'] as Tab[]).map(tab => (

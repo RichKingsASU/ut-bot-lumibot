@@ -17,6 +17,7 @@ import {
   type Trade,
 } from '../../../utils/tradeStats'
 import { HISTORICAL_TRADES } from '../../../data/historicalTrades'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -110,25 +111,27 @@ export default function EquitiesPerformanceView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>Performance</div>
-        <button
-          onClick={handleExportCSV}
-          style={{
-            padding: '8px 16px',
-            borderRadius: 6,
-            border: `1px solid ${colors.border}`,
-            backgroundColor: colors.bgTertiary,
-            color: colors.textPrimary,
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          Export CSV
-        </button>
-      </div>
+      <PageHeader
+        title="Equities performance"
+        subtitle="Paper account results"
+        actions={
+          <button
+            onClick={handleExportCSV}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              border: `1px solid ${colors.border}`,
+              backgroundColor: colors.bgTertiary,
+              color: colors.textPrimary,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Export CSV
+          </button>
+        }
+      />
 
       {/* Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>

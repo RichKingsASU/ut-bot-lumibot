@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Bitcoin, Clock, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { PageHeader } from '../../ui/PageHeader'
 
 interface CryptoQuote {
   symbol: string
@@ -53,28 +54,32 @@ const CryptoMonitorView: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: 'var(--bg-primary, #0d1117)', minHeight: '100vh', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Crypto — Monitor</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {lastUpdated && (
-            <span style={{ fontSize: '13px', color: 'var(--text-muted, #8b949e)' }}>
-              <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              Updated {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-          <button
-            onClick={fetchPrices}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '6px 12px', fontSize: 12, color: 'var(--blue, #58a6ff)',
-              background: 'none', border: '1px solid var(--border, #30363d)',
-              borderRadius: 6, cursor: 'pointer',
-            }}
-          >
-            <RefreshCw size={12} /> Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Crypto monitor"
+        subtitle="24/7 price feed"
+        actions={
+          <>
+            {lastUpdated && (
+              <span style={{ fontSize: '13px', color: 'var(--text-muted, #8b949e)' }}>
+                <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Updated {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+            <button
+              onClick={fetchPrices}
+              aria-label="Refresh"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '6px 12px', fontSize: 12, color: 'var(--blue, #58a6ff)',
+                background: 'none', border: '1px solid var(--border, #30363d)',
+                borderRadius: 6, cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </>
+        }
+      />
 
       {/* 24/7 badge */}
       <div style={{

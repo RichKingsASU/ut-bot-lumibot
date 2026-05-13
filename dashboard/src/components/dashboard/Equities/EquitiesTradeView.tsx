@@ -1,6 +1,7 @@
 import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { formatTimestamp } from '../../../lib/time'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -42,6 +43,9 @@ export default function EquitiesTradeView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.bgPrimary }}>
+      <div style={{ padding: '20px 24px 0' }}>
+        <PageHeader title="Equities trading" subtitle="IWM · SPY · QQQ" />
+      </div>
       {/* Symbol Tabs */}
       <div
         style={{

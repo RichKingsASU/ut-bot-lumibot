@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Bell, ToggleLeft, ToggleRight, Filter, CheckCircle, XCircle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { PageHeader } from '../../ui/PageHeader'
 
 const styles = {
   container: {
@@ -162,10 +163,7 @@ export function AlertsView() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <Bell size={22} />
-        Alerts Management
-      </div>
+      <PageHeader title="Alerts" subtitle="Notifications & history" />
 
       {/* Prominent banner when the master toggle is off, so the user can see
           alerts are silenced and enable them in one click. */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
+import { PageHeader } from '../../ui/PageHeader'
 
 const SYMBOL_LIMITS = [
   { symbol: 'IWM', maxShares: 500, maxValue: 105000 },
@@ -62,10 +63,11 @@ const PositionSizingView: React.FC = () => {
 
   return (
     <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Position Sizing</h2>
-        <DataFreshness lastUpdated={lastUpdated} />
-      </div>
+      <PageHeader
+        title="Position sizing"
+        subtitle="Kelly & allocation"
+        actions={<DataFreshness lastUpdated={lastUpdated} />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {/* Max Position Size Slider */}

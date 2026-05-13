@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
+import { PageHeader } from '../../ui/PageHeader'
 
 const RiskManagerView: React.FC = () => {
   const [tradingEnabled, setTradingEnabled] = useState(true)
@@ -99,7 +100,7 @@ const RiskManagerView: React.FC = () => {
 
   return (
     <div style={pageStyle}>
-      <h1 style={{ margin: '0 0 24px', fontSize: 20, fontWeight: 600 }}>Risk Manager</h1>
+      <PageHeader title="Risk manager" subtitle="Kill switch & limits" />
 
       {loading ? (
         <div style={{ color: 'var(--text-muted, #8b949e)', fontSize: 13 }}>Loading...</div>
