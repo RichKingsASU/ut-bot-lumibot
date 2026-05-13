@@ -24,10 +24,12 @@ export function calculateMaxDrawdown(equityValues: number[]): number {
   return Math.round(maxDrawdown * 100) / 100
 }
 
-export function calculateSharpe(returns: number[], rfr = 0.05 / 252): number {
+/** @deprecated Use `sharpeRatio` from `lib/metrics.ts` — that version uses
+ * sample stddev, configurable periodsPerYear, and returns null when undefined. */
+export function calculateSharpe(returns: number[], rfr = 0.053 / 252): number {
   if (returns.length < 2) return 0
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length
-  const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length
+  const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (returns.length - 1)
   const stdDev = Math.sqrt(variance)
   if (stdDev === 0) return 0
   return Math.round(((mean - rfr) / stdDev) * Math.sqrt(252) * 100) / 100

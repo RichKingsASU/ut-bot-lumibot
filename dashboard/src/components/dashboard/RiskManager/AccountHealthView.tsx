@@ -6,11 +6,11 @@ import { PageHeader } from '../../ui/PageHeader'
 import {
   calculateWinRate,
   calculateMaxDrawdown,
-  calculateSharpe,
   calculateSortino,
   calculateProfitFactor,
   sampleSizeWarning,
 } from '../../../utils/tradeStats'
+import { formatSharpe } from '../../../lib/metrics'
 
 const AccountHealthView: React.FC = () => {
   const { account, signals } = useTradingContext()
@@ -58,7 +58,10 @@ const AccountHealthView: React.FC = () => {
   const maxDrawdown = calculateMaxDrawdown(equityValues)
 
   const dailyReturns = trades.map((t) => t.pnl / (equity || 1))
-  const sharpe = calculateSharpe(dailyReturns)
+  // TODO: replace with real trade returns once paper trading is verified.
+  // Per-trade P&L is not a daily return series, so annualized Sharpe is not
+  // computable here yet.
+  const sharpe: number | null = null
   const sortino = calculateSortino(dailyReturns)
   const profitFactor = calculateProfitFactor(trades)
   const sampleWarning = sampleSizeWarning(trades.length)
@@ -89,7 +92,7 @@ const AccountHealthView: React.FC = () => {
   const STAT_CARDS = [
     { label: 'Current Drawdown', value: `${currentDrawdown >= 0 ? '+' : ''}${currentDrawdown}%`, color: currentDrawdown >= 0 ? '#3fb950' : '#e3b341' },
     { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: '#f85149' },
-    { label: 'Sharpe Ratio', value: sharpe.toFixed(2), color: '#3fb950' },
+    { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: '#3fb950' },
     { label: 'Sortino Ratio', value: sortino.toFixed(2), color: '#3fb950' },
     { label: 'Win Rate', value: `${winRate}%`, color: '#58a6ff' },
     { label: 'Profit Factor', value: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2), color: '#3fb950' },

@@ -12,11 +12,11 @@ import { useTradingContext } from '../../../context/TradingContext'
 import {
   calculateWinRate,
   calculateMaxDrawdown,
-  calculateSharpe,
   sampleSizeWarning,
   type Trade,
 } from '../../../utils/tradeStats'
 import { HISTORICAL_TRADES } from '../../../data/historicalTrades'
+import { formatSharpe } from '../../../lib/metrics'
 import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
@@ -84,15 +84,17 @@ export default function EquitiesPerformanceView() {
     return acc
   }, [] as number[])
   const maxDrawdown = calculateMaxDrawdown(equityValues)
-  const dailyReturns = trades.map((t) => t.pnl / 100000)
-  const sharpeRatio = calculateSharpe(dailyReturns)
+  // TODO: replace with real trade returns once paper trading is verified.
+  // Historical trades here are per-trade P&L, not period returns, so we cannot
+  // compute a meaningful annualized Sharpe yet.
+  const sharpe: number | null = null
   const warning = sampleSizeWarning(totalTrades)
 
   const statCards = [
     { label: 'Total P&L', value: currency.format(totalPnl), color: totalPnl >= 0 ? colors.green : colors.red },
     { label: 'Win Rate', value: `${winRate}%`, color: colors.green },
     { label: 'Total Trades', value: String(totalTrades), color: colors.blue },
-    { label: 'Sharpe Ratio', value: sharpeRatio.toFixed(2), color: colors.amber },
+    { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: colors.amber },
     { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: colors.red },
   ]
 
