@@ -257,10 +257,33 @@ export function AlertsView() {
           </button>
         </div>
 
-        <div style={{
-          opacity: alertsEnabled ? 1 : 0.4,
-          pointerEvents: alertsEnabled ? 'auto' as const : 'none' as const,
-        }}>
+        {!alertsEnabled && (
+          <div
+            role="status"
+            style={{
+              padding: '10px 12px',
+              marginBottom: '12px',
+              borderRadius: 6,
+              border: '1px solid var(--border, #30363d)',
+              background: 'rgba(139,148,158,0.08)',
+              fontSize: '12px',
+              color: 'var(--text-muted, #8b949e)',
+            }}
+          >
+            Individual alerts are disabled. Enable alerts above to configure channels.
+          </div>
+        )}
+
+        <div
+          aria-disabled={!alertsEnabled}
+          style={{
+            opacity: alertsEnabled ? 1 : 0.4,
+            pointerEvents: alertsEnabled ? 'auto' as const : 'none' as const,
+            filter: alertsEnabled ? 'none' : 'grayscale(1)',
+            transition: 'opacity 150ms ease, filter 150ms ease',
+            userSelect: alertsEnabled ? 'auto' as const : 'none' as const,
+          }}
+        >
           <div style={styles.toggleGrid}>
             {alertToggles.map(toggle => (
               <div key={toggle.key} style={styles.toggleRow}>
@@ -268,7 +291,13 @@ export function AlertsView() {
                   <div style={styles.toggleLabel}>{toggle.label}</div>
                   <div style={styles.toggleDesc}>{toggle.desc}</div>
                 </div>
-                <div style={{ cursor: 'pointer' }} onClick={() => handleToggle(toggle.key)}>
+                <div
+                  role="switch"
+                  aria-checked={!!toggles[toggle.key]}
+                  aria-label={toggle.label}
+                  style={{ cursor: alertsEnabled ? 'pointer' : 'not-allowed' }}
+                  onClick={() => handleToggle(toggle.key)}
+                >
                   {toggles[toggle.key] ? (
                     <ToggleRight size={26} style={{ color: 'var(--green, #3fb950)' }} />
                   ) : (
@@ -279,20 +308,6 @@ export function AlertsView() {
             ))}
           </div>
         </div>
-
-        {!alertsEnabled && (
-          <div style={{
-            paddingTop: '12px',
-            marginTop: '12px',
-            borderTop: '1px solid var(--border, #30363d)',
-            fontSize: '12px',
-            color: '#484f58',
-          }}>
-            Enable alerts above to configure individual alert types.
-            Telegram is configured in{' '}
-            <span style={{ color: '#58a6ff' }}>Settings &rarr; Notifications</span>.
-          </div>
-        )}
       </div>
 
       {/* Alert History */}
