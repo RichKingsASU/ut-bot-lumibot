@@ -224,7 +224,11 @@ function MaskedInput({ label, value, onChange, placeholder }: { label: string; v
           value={value}
           onChange={e => onChange(e.target.value)}
         />
-        <button style={styles.eyeBtn} onClick={() => setVisible(!visible)}>
+        <button
+          style={styles.eyeBtn}
+          onClick={() => setVisible(!visible)}
+          aria-label={visible ? 'Hide value' : 'Show value'}
+        >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
