@@ -63,11 +63,13 @@
 
   /* Typography Scales */
   .text-gradient-blue {
-    @apply bg-clip-text text-transparent bg-gradient-to-br from-blue-400 via-cyan-400 to-indigo-500;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(to bottom right, #60a5fa, #22d3ee, #6366f1);
   }
 
   .text-gradient-gold {
-    @apply bg-clip-text text-transparent bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-500;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(to bottom right, #fcd34d, #facc15, #f97316);
   }
 
   /* Interaction States */
