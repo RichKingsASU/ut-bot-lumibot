@@ -4,16 +4,16 @@ import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
 import { PageHeader } from '../../ui/PageHeader'
 import {
-  calculateWinRate,
-  calculateMaxDrawdown,
   calculateSortino,
   calculateProfitFactor,
   sampleSizeWarning,
 } from '../../../utils/tradeStats'
 import { formatSharpe } from '../../../lib/metrics'
+import { useMetrics } from '../../../hooks/useMetrics'
 
 const AccountHealthView: React.FC = () => {
   const { account, signals } = useTradingContext()
+  const { winRate: liveWinRate, maxDrawdown: liveMaxDrawdown, totalTrades: liveTotalTrades } = useMetrics()
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const equity = account ? parseFloat(account.equity) : 0
@@ -47,15 +47,12 @@ const AccountHealthView: React.FC = () => {
     return result
   }, [signals])
 
-  const winRate = calculateWinRate(trades)
-  const equityValues = trades.length > 0
-    ? trades.reduce((acc, t) => {
-        const last = acc[acc.length - 1] || equity
-        acc.push(last + t.pnl)
-        return acc
-      }, [] as number[])
-    : [equity]
-  const maxDrawdown = calculateMaxDrawdown(equityValues)
+  // KPIs that exist on every page (win rate, drawdown) come from the shared
+  // useMetrics hook so Overview, /equities/performance, and /risk/health all
+  // agree. Falls back to '—' until portfolio_snapshots has real data.
+  const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
+  const maxDrawdownDisplay = liveMaxDrawdown == null ? '—' : `${liveMaxDrawdown}%`
+  const maxDrawdown = liveMaxDrawdown ?? 0
 
   const dailyReturns = trades.map((t) => t.pnl / (equity || 1))
   // TODO: replace with real trade returns once paper trading is verified.
@@ -64,7 +61,7 @@ const AccountHealthView: React.FC = () => {
   const sharpe: number | null = null
   const sortino = calculateSortino(dailyReturns)
   const profitFactor = calculateProfitFactor(trades)
-  const sampleWarning = sampleSizeWarning(trades.length)
+  const sampleWarning = sampleSizeWarning(liveTotalTrades ?? trades.length)
 
   // Current drawdown from account
   const currentDrawdown = equity > 0 && lastEquity > 0
@@ -91,10 +88,10 @@ const AccountHealthView: React.FC = () => {
 
   const STAT_CARDS = [
     { label: 'Current Drawdown', value: `${currentDrawdown >= 0 ? '+' : ''}${currentDrawdown}%`, color: currentDrawdown >= 0 ? '#3fb950' : '#e3b341' },
-    { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: '#f85149' },
+    { label: 'Max Drawdown', value: maxDrawdownDisplay, color: '#f85149' },
     { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: '#3fb950' },
     { label: 'Sortino Ratio', value: sortino.toFixed(2), color: '#3fb950' },
-    { label: 'Win Rate', value: `${winRate}%`, color: '#58a6ff' },
+    { label: 'Win Rate', value: winRateDisplay, color: '#58a6ff' },
     { label: 'Profit Factor', value: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2), color: '#3fb950' },
   ]
 
