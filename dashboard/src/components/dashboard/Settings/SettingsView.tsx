@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, Chevr
 import { supabase } from '../../../lib/supabaseClient'
 import { API } from '../../../lib/api'
 import { PageHeader } from '../../ui/PageHeader'
+import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
 
 const styles = {
   container: {
@@ -237,6 +238,8 @@ function MaskedInput({ label, value, onChange, placeholder }: { label: string; v
 }
 
 export function SettingsView() {
+  const tradingMode = useTradingMode()
+  const modeBadge = tradingModeBadgeStyle(tradingMode)
   const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['broker']))
   const [alpacaKey, setAlpacaKey] = useState('')
   const [alpacaSecret, setAlpacaSecret] = useState('')
@@ -439,7 +442,21 @@ export function SettingsView() {
               <div style={styles.toggleRow}>
                 <span style={{ ...styles.toggleLabel, marginRight: '10px' }}>
                   {paperMode ? 'Paper Mode' : 'Live Mode'}
-                  <span style={styles.badge(paperMode)}>{paperMode ? 'Paper' : 'Live'}</span>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase' as const,
+                      backgroundColor: modeBadge.background,
+                      color: modeBadge.color,
+                      border: modeBadge.border,
+                      marginLeft: '8px',
+                    }}
+                  >
+                    {modeBadge.label}
+                  </span>
                 </span>
                 <Toggle on={!paperMode} onClick={() => {
                   if (paperMode) {

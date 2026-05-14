@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { fmtPrice } from '../../../utils/formatters'
 import { supabase } from '../../../lib/supabaseClient'
+import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
 
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D'
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
@@ -99,6 +100,8 @@ export function TopBar() {
 
   const botRunning = botStatus?.status === 'online'
   const online = connected
+  const tradingMode = useTradingMode()
+  const modeBadge = tradingModeBadgeStyle(tradingMode)
 
   return (
     <header
@@ -259,20 +262,20 @@ export function TopBar() {
         {botRunning ? 'RUNNING' : 'STOPPED'}
       </span>
 
-      {/* PAPER badge */}
+      {/* Trading mode badge */}
       <span
         style={{
           fontSize: 10,
           fontWeight: 700,
           padding: '3px 8px',
           borderRadius: 3,
-          background: '#58a6ff22',
-          color: '#58a6ff',
-          border: '1px solid #58a6ff44',
+          background: modeBadge.background,
+          color: modeBadge.color,
+          border: modeBadge.border,
           letterSpacing: 0.5,
         }}
       >
-        PAPER
+        {modeBadge.label}
       </span>
 
       {/* Online dot */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Activity, Shield, Zap, AlertCircle, CheckCircle, Server, Globe, Lock } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { PageHeader } from '../../ui/PageHeader'
+import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -19,6 +20,10 @@ export default function SystemHealthView() {
   const [healthData, setHealthData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [lastAudit, setLastAudit] = useState<any[]>([])
+  const tradingMode = useTradingMode()
+  const modeBadge = tradingModeBadgeStyle(tradingMode)
+  const envColor =
+    tradingMode === 'paper' ? colors.green : tradingMode === 'live' ? colors.red : colors.textMuted
 
   useEffect(() => {
     const fetchData = async () => {
@@ -92,11 +97,11 @@ export default function SystemHealthView() {
           icon={Server} 
           color={healthData?.health?.status === 'ready' ? colors.green : colors.red} 
         />
-        <StatCard 
-          title="Environment" 
-          value={process.env.ALPACA_IS_PAPER === 'true' ? 'PAPER' : 'LIVE'} 
-          icon={Globe} 
-          color={process.env.ALPACA_IS_PAPER === 'true' ? colors.blue : colors.red} 
+        <StatCard
+          title="Environment"
+          value={modeBadge.label}
+          icon={Globe}
+          color={envColor}
         />
         <StatCard 
           title="Websocket" 
