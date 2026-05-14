@@ -1,3 +1,6 @@
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
 interface Props {
   filename: string;
   code: string;
@@ -7,39 +10,7 @@ interface Props {
   onSave: () => void;
 }
 
-// Minimal tokeniser for Python syntax highlighting
-function highlight(code: string): string {
-  const keywords = ['import','from','class','def','if','elif','else','return',
-    'for','while','in','and','or','not','True','False','None','self','as'];
-  let html = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // comments
-  html = html.replace(/(#[^\n]*)/g, '<span class="text-gray-600 italic">$1</span>');
-  // strings
-  html = html.replace(/("""[\s\S]*?"""|'''[\s\S]*?'''|"[^"]*"|'[^']*')/g,
-    '<span class="text-yellow-300">$1</span>');
-  // numbers
-  html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="text-orange-400">$1</span>');
-  // keywords
-  keywords.forEach(kw => {
-    html = html.replace(new RegExp(`\\b(${kw})\\b`, 'g'),
-      '<span class="text-indigo-400">$1</span>');
-  });
-  // function/class names
-  html = html.replace(/\b(def|class)\s+([A-Za-z_]\w*)/g,
-    '$1 <span class="text-emerald-400">$2</span>');
-  // method calls
-  html = html.replace(/\.([a-z_]\w*)\(/g, '.<span class="text-emerald-400">$1</span>(');
-
-  return html;
-}
-
 export function CodeEditor({ filename, code, lastSaved, onCompile, onBacktest, onSave }: Props) {
-  const lines = code.split('\n');
-
   return (
     <div className="flex flex-col h-full bg-black">
       {/* Toolbar */}
@@ -84,24 +55,23 @@ export function CodeEditor({ filename, code, lastSaved, onCompile, onBacktest, o
       </div>
 
       {/* Code area */}
-      <div className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed">
-        <div className="flex gap-4">
-          {/* Line numbers */}
-          <div className="select-none text-right text-gray-700 pr-3 border-r border-gray-900 flex-shrink-0" style={{ minWidth: '28px' }}>
-            {lines.map((_, i) => (
-              <div key={i} className="text-[10.5px] leading-[1.75]">{i + 1}</div>
-            ))}
-          </div>
-          {/* Code with syntax highlighting */}
-          <div className="flex-1 whitespace-pre leading-[1.75] text-gray-400 text-[11.5px]">
-            {lines.map((line, i) => (
-              <div
-                key={i}
-                dangerouslySetInnerHTML={{ __html: highlight(line) || '&nbsp;' }}
-              />
-            ))}
-          </div>
-        </div>
+      <div className="flex-1 overflow-auto bg-black">
+        <SyntaxHighlighter
+          language="python"
+          style={vscDarkPlus}
+          showLineNumbers
+          customStyle={{
+            margin: 0,
+            padding: '12px 0',
+            borderRadius: 0,
+            fontSize: 13,
+            background: 'transparent',
+            fontFamily: 'var(--font-mono)',
+          }}
+          lineNumberStyle={{ color: '#4a5568', minWidth: '2.5em' }}
+        >
+          {code}
+        </SyntaxHighlighter>
       </div>
     </div>
   );
