@@ -146,13 +146,3 @@
   @apply bg-white/[0.02] text-vibrant;
 }
 
-/* Specific component colors for Tailwind */
-.text-vibrant { color: var(--color-vibrant-white); }
-.text-secondary { color: var(--color-secondary); }
-.text-dim { color: var(--color-dim); }
-.bg-space { background-color: var(--color-bg-space); }
-.bg-surface-0 { background-color: #000000; }
-.bg-surface-1 { background-color: var(--color-surface-1); }
-.bg-surface-2 { background-color: var(--color-surface-2); }
-.border-border-muted { border-color: rgba(255,255,255,0.08); }
-.border-border-active { border-color: rgba(255,255,255,0.2); }
