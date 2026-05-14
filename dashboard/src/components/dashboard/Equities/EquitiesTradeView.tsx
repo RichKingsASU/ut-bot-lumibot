@@ -265,15 +265,22 @@ export default function EquitiesTradeView() {
               <button
                 onClick={async () => {
                   if (window.confirm('EMERGENCY: Are you sure you want to CANCEL all orders and CLOSE all positions?')) {
+                    const storedKey = localStorage.getItem('ADMIN_API_KEY');
+                    if (!storedKey) {
+                      alert('Error: Admin API Key not found in local storage. Please set it in System Settings.');
+                      return;
+                    }
+
                     try {
                       const res = await fetch('/.netlify/functions/alpaca-flatten', {
                         method: 'POST',
-                        headers: { 'x-admin-api-key': 'your-admin-key' } // This should be retrieved from a secure place
+                        headers: { 'x-admin-api-key': storedKey }
                       });
                       if (res.ok) {
                         alert('Emergency flatten initiated successfully.');
                       } else {
-                        alert('Failed to initiate flatten. Check console for details.');
+                        const errData = await res.json();
+                        alert(`Failed to initiate flatten: ${errData.error || res.statusText}`);
                       }
                     } catch (e) {
                       console.error('Flatten error:', e);

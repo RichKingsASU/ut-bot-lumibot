@@ -10,7 +10,8 @@ export function toUserMessage(error: unknown): string {
     return 'Connection error. Check your internet connection and try again.';
   }
   if (msg.includes('401') || msg.includes('unauthorized')) {
-    return 'Session expired. Please sign in again.';
+    if (msg.includes('Alpaca')) return 'Alpaca API credentials invalid or expired.';
+    return 'Authentication failed or session expired.';
   }
   return 'Something went wrong. Please try again.';
 }

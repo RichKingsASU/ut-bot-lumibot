@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.100.0",
     "axios": "^1.14.0",
+    "framer-motion": "^12.38.0",
     "lightweight-charts": "^4.2.0",
     "lucide-react": "^1.6.0",
     "node-fetch": "^3.3.2",

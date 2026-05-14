@@ -51,7 +51,7 @@ def set_last_signal(signal: str | None, signal_time: str | None = None):
     _last_signal_time = signal_time or datetime.now(timezone.utc).isoformat()
 
 
-def _upsert_status(status: str = "online"):
+def _upsert_status(status: str = "online", target_status: str = "running"):
     """Fire-and-forget upsert to Supabase bot_status table via REST."""
     url = _supabase_url()
     key = _supabase_key()
@@ -62,6 +62,7 @@ def _upsert_status(status: str = "online"):
     payload = {
         "id": 1,
         "status": status,
+        "target_status": target_status,
         "last_heartbeat": datetime.now(timezone.utc).isoformat(),
         "session_id": SESSION_ID,
         "symbol": _symbol(),
@@ -94,10 +95,53 @@ def _upsert_status(status: str = "online"):
         logger.warning("Heartbeat failed (non-blocking): %s", e)
 
 
+def _check_remote_commands() -> str:
+    """Fetch current row from bot_status to see if a remote command was sent."""
+    url = _supabase_url()
+    key = _supabase_key()
+    if not url or not key:
+        return "running"
+
+    try:
+        import httpx
+        resp = httpx.get(
+            f"{url}/rest/v1/bot_status?id=eq.1&select=target_status",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+            },
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                return data[0].get("target_status", "running")
+    except Exception as e:
+        logger.debug("Failed to check remote commands: %s", e)
+    return "running"
+
+
 def _heartbeat_loop():
     """Background thread that sends heartbeats every HEARTBEAT_INTERVAL seconds."""
     while not _stop_event.is_set():
+        # 1. Update online status
         _upsert_status("online")
+
+        # 2. Check for remote commands
+        cmd = _check_remote_commands()
+        if cmd == "shutdown":
+            from logger import bot_logger, ErrorCategory
+            bot_logger.warning("REMOTE SHUTDOWN COMMAND RECEIVED via Supabase. Exiting...", category=ErrorCategory.INFRASTRUCTURE)
+            
+            # Reset target_status to 'running' so it doesn't immediately kill the next session
+            _upsert_status("offline", target_status="running")
+            
+            # Trigger process exit
+            import os
+            import signal
+            os.kill(os.getpid(), signal.SIGTERM)
+            break
+
         _stop_event.wait(HEARTBEAT_INTERVAL)
 
 

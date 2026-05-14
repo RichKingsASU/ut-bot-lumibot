@@ -1,18 +1,21 @@
 import { Context } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-/**
- * POST /.netlify/functions/bootstrap-tables
- *
- * Checks if streaming tables exist and reports status.
- * Tables must be created via the Supabase SQL Editor using:
- *   dashboard/supabase/migrations/20260326000000_streaming_tables.sql
- */
 export default async (req: Request, context: Context) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get('x-admin-api-key');
+  if (adminKey && requestKey !== adminKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   const tables = ["bar_log", "signal_log", "paper_trades", "sessions"];
   const results: Record<string, { exists: boolean; rows: number }> = {};
 
@@ -27,7 +30,8 @@ export default async (req: Request, context: Context) => {
       } else {
         results[table] = { exists: true, rows: count || 0 };
       }
-    } catch {
+    } catch (err) {
+      console.error(`[bootstrap-tables] Error checking table ${table}:`, err);
       results[table] = { exists: false, rows: 0 };
     }
   }

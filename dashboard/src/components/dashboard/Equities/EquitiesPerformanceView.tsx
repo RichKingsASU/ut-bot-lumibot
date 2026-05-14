@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   LineChart,
   Line,
@@ -9,10 +9,10 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
-import { HISTORICAL_TRADES } from '../../../data/historicalTrades'
 import { formatSharpe } from '../../../lib/metrics'
 import { PageHeader } from '../../ui/PageHeader'
 import { useMetrics } from '../../../hooks/useMetrics'
+import { supabase } from '../../../lib/supabaseClient'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -29,31 +29,12 @@ const colors = {
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
-// Mock equity curve data (30 points)
-const generateEquityCurve = () => {
-  const data: { date: string; equity: number }[] = []
-  let equity = 100000
-  const now = new Date()
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(d.getDate() - i)
-    equity += (Math.random() - 0.42) * 1200
-    data.push({
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
-      equity: Math.round(equity * 100) / 100,
-    })
-  }
-  return data
-}
-
-const equityCurveData = generateEquityCurve()
-
-// Trade history is sourced from the shared historicalTrades module so the
-// Overview Win Rate card and this page's KPIs always agree.
-const mockTrades = HISTORICAL_TRADES
-
 export default function EquitiesPerformanceView() {
-  const { account, loading } = useTradingContext()
+  const { loading: contextLoading } = useTradingContext()
+  const [liveTrades, setLiveTrades] = useState<any[]>([])
+  const [equityCurve, setEquityCurve] = useState<any[]>([])
+  const [fetching, setFetching] = useState(true)
+
   const {
     winRate: liveWinRate,
     totalPnl: liveTotalPnl,
@@ -61,43 +42,46 @@ export default function EquitiesPerformanceView() {
     maxDrawdown: liveMaxDrawdown,
   } = useMetrics()
 
-  if (loading) {
+  const fetchData = useCallback(async () => {
+    setFetching(true)
+    try {
+      // 1. Fetch trade history
+      const { data: trades } = await supabase
+        .from('paper_trades')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setLiveTrades(trades || []);
+
+      // 2. Fetch equity snapshots for curve
+      const { data: snapshots } = await supabase
+        .from('portfolio_snapshots')
+        .select('created_at, equity')
+        .order('created_at', { ascending: true })
+        .limit(100);
+      
+      const curve = (snapshots || []).map(s => ({
+        date: new Date(s.created_at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }),
+        equity: Number(s.equity)
+      }));
+      setEquityCurve(curve);
+    } catch (e) {
+      console.error('Failed to fetch performance data:', e);
+    } finally {
+      setFetching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (contextLoading || fetching) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted }}>
-        Loading performance data...
+        Loading live performance data...
       </div>
     )
-  }
-
-  // KPIs come from the shared useMetrics hook. Fall back to '—' when
-  // portfolio_snapshots has no real data — same behaviour as Overview and
-  // /risk/health so all three pages agree.
-  const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
-  const totalPnlDisplay = liveTotalPnl == null ? '—' : currency.format(liveTotalPnl)
-  const totalTradesDisplay = liveTotalTrades == null ? '—' : String(liveTotalTrades)
-  const maxDrawdownDisplay = liveMaxDrawdown == null ? '—' : `${liveMaxDrawdown}%`
-  const sharpe: number | null = null
-  const pnlColor = liveTotalPnl == null || liveTotalPnl >= 0 ? colors.green : colors.red
-
-  const statCards = [
-    { label: 'Total P&L', value: totalPnlDisplay, color: pnlColor },
-    { label: 'Win Rate', value: winRateDisplay, color: colors.green },
-    { label: 'Total Trades', value: totalTradesDisplay, color: colors.blue },
-    { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: colors.amber },
-    { label: 'Max Drawdown', value: maxDrawdownDisplay, color: colors.red },
-  ]
-
-  const handleExportCSV = () => {
-    const headers = ['Date', 'Symbol', 'Side', 'Entry', 'Exit', 'P&L', 'Return %']
-    const rows = mockTrades.map((t) => [t.date, t.symbol, t.side, t.entry, t.exit, t.pnl, t.returnPct])
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'trade_history.csv'
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -159,7 +143,7 @@ export default function EquitiesPerformanceView() {
         </div>
         <div style={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={equityCurveData}>
+            <LineChart data={equityCurve.length > 0 ? equityCurve : [{ date: 'No Data', equity: 100000 }]}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
               <XAxis dataKey="date" tick={{ fill: colors.textMuted, fontSize: 11 }} stroke={colors.border} />
               <YAxis
@@ -200,7 +184,7 @@ export default function EquitiesPerformanceView() {
         }}
       >
         <div style={{ padding: '14px 20px', fontSize: 14, fontWeight: 600, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-          Trade History
+          Trade History (Last 50)
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -224,61 +208,70 @@ export default function EquitiesPerformanceView() {
             </tr>
           </thead>
           <tbody>
-            {mockTrades.map((trade, i) => (
-              <tr key={i}>
-                <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                  {trade.date}
-                </td>
-                <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, fontWeight: 500, borderBottom: `1px solid ${colors.border}` }}>
-                  {trade.symbol}
-                </td>
-                <td style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      padding: '2px 10px',
-                      borderRadius: 4,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      backgroundColor: trade.side === 'BUY' ? `${colors.green}22` : `${colors.red}22`,
-                      color: trade.side === 'BUY' ? colors.green : colors.red,
-                    }}
-                  >
-                    {trade.side}
-                  </span>
-                </td>
-                <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                  {currency.format(trade.entry)}
-                </td>
-                <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                  {currency.format(trade.exit)}
-                </td>
-                <td
-                  style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: trade.pnl >= 0 ? colors.green : colors.red,
-                    borderBottom: `1px solid ${colors.border}`,
-                  }}
-                >
-                  {trade.pnl >= 0 ? '+' : ''}
-                  {currency.format(trade.pnl)}
-                </td>
-                <td
-                  style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: trade.returnPct >= 0 ? colors.green : colors.red,
-                    borderBottom: `1px solid ${colors.border}`,
-                  }}
-                >
-                  {trade.returnPct >= 0 ? '+' : ''}
-                  {trade.returnPct.toFixed(2)}%
+            {liveTrades.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 40, textAlign: 'center', color: colors.textMuted }}>
+                  No historical trades found.
                 </td>
               </tr>
-            ))}
+            ) : liveTrades.map((trade, i) => {
+              const returnPct = trade.entry_price ? ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100 : 0;
+              return (
+                <tr key={i}>
+                  <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                    {new Date(trade.created_at).toLocaleDateString()}
+                  </td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, fontWeight: 500, borderBottom: `1px solid ${colors.border}` }}>
+                    {trade.symbol}
+                  </td>
+                  <td style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '2px 10px',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        backgroundColor: trade.side === 'BUY' ? `${colors.green}22` : `${colors.red}22`,
+                        color: trade.side === 'BUY' ? colors.green : colors.red,
+                      }}
+                    >
+                      {trade.side}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                    {currency.format(trade.entry_price)}
+                  </td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                    {currency.format(trade.exit_price)}
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: trade.trade_pnl >= 0 ? colors.green : colors.red,
+                      borderBottom: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    {trade.trade_pnl >= 0 ? '+' : ''}
+                    {currency.format(trade.trade_pnl)}
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: returnPct >= 0 ? colors.green : colors.red,
+                      borderBottom: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    {returnPct >= 0 ? '+' : ''}
+                    {returnPct.toFixed(2)}%
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

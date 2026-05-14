@@ -26,21 +26,19 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function TerminalPanel({ lines, status, strategyName }: Props) {
   return (
-    <div className="flex flex-col h-full bg-[#060810] border-t border-gray-800">
-      {/* Bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0d0f1a] border-b border-gray-800 flex-shrink-0">
-        <div className={`w-1.5 h-1.5 rounded-full ${STATUS_COLORS[status]}`} />
-        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">Terminal Output</span>
-        <span className="ml-auto text-[9px] text-gray-700 font-mono">{strategyName} · {status}</span>
-      </div>
+    <div className="flex flex-col h-full bg-transparent">
       {/* Output */}
-      <div className="flex-1 overflow-y-auto px-3.5 py-2 font-mono text-[10px] leading-relaxed space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-4 py-2 font-mono text-[11px] leading-relaxed space-y-0.5 custom-scrollbar">
         {lines.map((l, i) => (
-          <div key={i} className={TYPE_CLASSES[l.type]}>{l.text}</div>
+          <div key={i} className={`flex gap-3 ${TYPE_CLASSES[l.type] || 'text-primary'}`}>
+            <span className="text-dim opacity-50 select-none">{(i + 1).toString().padStart(2, '0')}</span>
+            <span className="break-all">{l.text}</span>
+          </div>
         ))}
-        {(status === 'running' || status === 'ready') && (
-          <div>
-            <span className="inline-block w-1.5 h-3 bg-green-500 align-text-bottom animate-pulse" />
+        {status === 'running' && (
+          <div className="flex gap-3">
+             <span className="text-dim opacity-50 select-none">{(lines.length + 1).toString().padStart(2, '0')}</span>
+             <span className="inline-block w-1.5 h-3.5 bg-blue-500 align-text-bottom animate-pulse" />
           </div>
         )}
       </div>

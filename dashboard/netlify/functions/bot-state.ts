@@ -15,6 +15,16 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 
 export default async (req: Request, _context: Context) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get('x-admin-api-key');
+  if (adminKey && requestKey !== adminKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
   try {
     // Fetch last signal from Supabase
     let lastSignal = "FLAT";

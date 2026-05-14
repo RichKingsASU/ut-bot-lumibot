@@ -1,5 +1,6 @@
 import { Config, Context } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import { logAlert } from "./lib/alerts"
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,6 +11,29 @@ const alpacaFeed = process.env.ALPACA_FEED || 'sip';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export default async (req: Request, context: Context) => {
+  // ── [SECURITY FIX] Admin Auth (for manual triggers) ────────────────
+  // Netlify internal CRON doesn't pass headers, so we skip if it's a cron trigger
+  // (actually Netlify Cron doesn't provide an easy way to distinguish in code 
+  // without checking IP or a custom secret, but we'll enforce it for now or 
+  // check if context has cron info).
+  
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = req.headers.get('x-admin-api-key');
+  
+  // If it's a browser/curl request, enforce key.
+  // If it's the scheduler, we might need to bypass.
+  // For safety, we'll allow it if NO key is provided BUT it's within the schedule window?
+  // No, let's just enforce it. The scheduler won't be able to call it if it's a public URL.
+  // Wait, Netlify Schedule functions are NOT callable via URL unless they are also exported as default.
+  // This IS the default export.
+  
+  if (adminKey && requestKey !== adminKey && !req.headers.get('user-agent')?.includes('Netlify')) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
   console.log("[INGEST] Starting bar ingestion...");
 
   try {
@@ -20,6 +44,16 @@ export default async (req: Request, context: Context) => {
         "APCA-API-SECRET-KEY": alpacaSecret
       }
     });
+
+    if (clockRes.status === 401) {
+      await logAlert(
+        "Alpaca API Authentication Failed (401) during Ingest. Critical: Ingestion halted.",
+        "CRITICAL",
+        "SECURITY"
+      );
+      return new Response(JSON.stringify({ status: "failed", error: "auth_failed" }), { status: 401 });
+    }
+
     const clock = await clockRes.json() as { is_open: boolean, timestamp: string };
 
     if (!clock.is_open) {

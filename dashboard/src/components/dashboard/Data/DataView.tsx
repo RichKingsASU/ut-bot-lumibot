@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Database, Cloud, Activity, RefreshCw, Table, ScrollText, Wifi } from 'lucide-react'
-import { useBotStatus } from '../../../hooks/useBotStatus'
+import { useTradingContext } from '../../../context/TradingContext'
 import { PageHeader } from '../../ui/PageHeader'
+import { supabase } from '../../../lib/supabaseClient'
 
 const styles = {
   container: {
@@ -9,19 +10,6 @@ const styles = {
     backgroundColor: 'var(--bg-primary, #0d1117)',
     color: 'var(--text-primary, #e6edf3)',
     minHeight: '100vh',
-  },
-  header: {
-    display: 'flex' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: '24px',
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: 700,
-    display: 'flex' as const,
-    alignItems: 'center' as const,
-    gap: '10px',
   },
   tabs: {
     display: 'flex' as const,
@@ -53,13 +41,6 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
     gap: '16px',
   },
-  statusDot: (connected: boolean) => ({
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%',
-    backgroundColor: connected ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
-    display: 'inline-block' as const,
-  }),
   badge: (connected: boolean) => ({
     padding: '2px 8px',
     borderRadius: '12px',
@@ -130,7 +111,7 @@ const styles = {
     padding: '8px 12px',
     fontSize: '13px',
     fontFamily: 'monospace',
-    borderLeft: `3px solid ${level === 'ERROR' ? 'var(--red, #f85149)' : level === 'WARN' ? 'var(--amber, #e3b341)' : 'var(--blue, #58a6ff)'}`,
+    borderLeft: `3px solid ${level === 'CRITICAL' || level === 'ERROR' ? 'var(--red, #f85149)' : level === 'WARNING' ? 'var(--amber, #e3b341)' : 'var(--blue, #58a6ff)'}`,
     marginBottom: '4px',
     backgroundColor: 'var(--bg-secondary, #161b22)',
     borderRadius: '0 4px 4px 0',
@@ -142,8 +123,8 @@ const styles = {
     borderRadius: '4px',
     minWidth: '44px',
     textAlign: 'center' as const,
-    color: level === 'ERROR' ? 'var(--red, #f85149)' : level === 'WARN' ? 'var(--amber, #e3b341)' : 'var(--blue, #58a6ff)',
-    backgroundColor: level === 'ERROR' ? 'rgba(248,81,73,0.12)' : level === 'WARN' ? 'rgba(227,179,65,0.12)' : 'rgba(88,166,255,0.12)',
+    color: level === 'CRITICAL' || level === 'ERROR' ? 'var(--red, #f85149)' : level === 'WARNING' ? 'var(--amber, #e3b341)' : 'var(--blue, #58a6ff)',
+    backgroundColor: level === 'CRITICAL' || level === 'ERROR' ? 'rgba(248,81,73,0.12)' : level === 'WARNING' ? 'rgba(227,179,65,0.12)' : 'rgba(88,166,255,0.12)',
   }),
   muted: {
     color: 'var(--text-muted, #8b949e)',
@@ -163,68 +144,62 @@ const styles = {
 
 type Tab = 'CONNECTION' | 'SEEDING' | 'TABLES' | 'LOGS'
 
-// Build the connections list from live state where available so that the
-// Bot Engine row never disagrees with the Header / Overview bot indicators.
 function useConnections() {
-  const bot = useBotStatus()
+  const { botStatus: bot } = useTradingContext()
   const botUpdated = bot.last_heartbeat
     ? new Date(bot.last_heartbeat).toLocaleTimeString()
     : '—'
   return [
     { name: 'Alpaca SIP',   type: 'Market Data',  status: true,        latency: '12ms', lastChecked: '2 sec ago' },
     { name: 'Database',     type: 'Database',     status: true,        latency: '34ms', lastChecked: '5 sec ago' },
-    { name: 'OPRA Options', type: 'Options Data', status: false,       latency: '--',   lastChecked: '1 min ago' },
     { name: 'Bot Engine',   type: 'Execution',    status: bot.online,  latency: '8ms',  lastChecked: botUpdated },
   ]
 }
-
-const seedingData = [
-  { symbol: 'IWM', progress: 100 },
-  { symbol: 'SPY', progress: 85 },
-  { symbol: 'QQQ', progress: 72 },
-  { symbol: 'AAPL', progress: 0 },
-]
-
-const tablesData = [
-  { name: '1-minute bars', rows: 45230, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
-  { name: '15-minute bars', rows: 3015, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
-  { name: 'Trading signals', rows: 1247, columns: ['id', 'timestamp', 'symbol', 'direction', 'strength', 'strategy_id'] },
-  { name: 'Portfolio snapshots', rows: 890, columns: ['id', 'timestamp', 'equity', 'cash', 'positions_value'] },
-  { name: 'Strategies', rows: 5, columns: ['id', 'name', 'parameters', 'active', 'created_at'] },
-]
-
-const mockLogs = [
-  { time: '2026-04-02 09:30:01', level: 'INFO', message: 'Market session opened. Starting data stream.' },
-  { time: '2026-04-02 09:30:02', level: 'INFO', message: 'Alpaca SIP WebSocket connected successfully.' },
-  { time: '2026-04-02 09:30:03', level: 'INFO', message: 'Subscribed to IWM, SPY, QQQ bar data.' },
-  { time: '2026-04-02 09:30:15', level: 'WARN', message: 'OPRA options feed connection timeout. Retrying...' },
-  { time: '2026-04-02 09:30:18', level: 'ERROR', message: 'OPRA connection failed after 3 attempts.' },
-  { time: '2026-04-02 09:31:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
-  { time: '2026-04-02 09:31:01', level: 'INFO', message: 'Signal generated: IWM BUY strength=0.82' },
-  { time: '2026-04-02 09:32:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
-  { time: '2026-04-02 09:33:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
-  { time: '2026-04-02 09:33:05', level: 'WARN', message: 'Database response latency above threshold: 450ms' },
-  { time: '2026-04-02 09:34:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
-  { time: '2026-04-02 09:35:00', level: 'INFO', message: '15-minute bars aggregation complete for IWM, SPY, QQQ.' },
-  { time: '2026-04-02 09:35:02', level: 'ERROR', message: 'Failed to write portfolio snapshot: constraint violation.' },
-  { time: '2026-04-02 09:36:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
-  { time: '2026-04-02 09:36:30', level: 'INFO', message: 'Daily P&L summary dispatched to Telegram.' },
-]
 
 export function DataView() {
   const [activeTab, setActiveTab] = useState<Tab>('CONNECTION')
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [logFilter, setLogFilter] = useState<string>('ALL')
+  const [liveTables, setLiveTables] = useState<any[]>([])
+  const [liveLogs, setLiveLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
   const connections = useConnections()
 
-  const filteredLogs = logFilter === 'ALL' ? mockLogs : mockLogs.filter(l => l.level === logFilter)
+  const fetchLiveData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const tables = ['ohlcv_bars', 'bot_status', 'system_alerts', 'system_audit', 'sessions']
+      const counts = await Promise.all(tables.map(async (name) => {
+        const { count } = await supabase.from(name).select('*', { count: 'exact', head: true })
+        return { name, rows: count || 0, columns: ['timestamp', 'symbol', 'data...'] }
+      }))
+      setLiveTables(counts)
+
+      const { data: logs } = await supabase
+        .from('system_alerts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      setLiveLogs(logs || [])
+    } catch (e) {
+      console.error('Failed to fetch data stats:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchLiveData()
+  }, [fetchLiveData])
+
+  const filteredLogs = logFilter === 'ALL' ? liveLogs : liveLogs.filter(l => l.level === logFilter)
 
   return (
     <div style={styles.container}>
-      <PageHeader title="Data connections" subtitle="Feeds · Tables · Logs" />
+      <PageHeader title="Data connections" subtitle="Live metrics & audits" />
 
       <div style={styles.tabs}>
-        {(['CONNECTION', 'SEEDING', 'TABLES', 'LOGS'] as Tab[]).map(tab => (
+        {(['CONNECTION', 'TABLES', 'LOGS'] as Tab[]).map(tab => (
           <button key={tab} style={styles.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
             {tab}
           </button>
@@ -234,8 +209,8 @@ export function DataView() {
       {activeTab === 'CONNECTION' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button style={styles.btn}>
-              <RefreshCw size={14} /> Refresh
+            <button style={styles.btn} onClick={fetchLiveData} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
             </button>
           </div>
           <div style={styles.grid}>
@@ -243,41 +218,17 @@ export function DataView() {
               <div key={conn.name} style={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {conn.type === 'Market Data' ? <Wifi size={16} /> : conn.type === 'Database' ? <Database size={16} /> : conn.type === 'Options Data' ? <Cloud size={16} /> : <Activity size={16} />}
+                    {conn.type === 'Market Data' ? <Wifi size={16} /> : <Database size={16} />}
                     <span style={{ fontWeight: 600, fontSize: '15px' }}>{conn.name}</span>
                   </div>
                   <span style={styles.badge(conn.status)}>
                     {conn.status ? 'CONNECTED' : 'DISCONNECTED'}
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={styles.muted}>Type: {conn.type}</div>
-                  <div style={styles.muted}>Latency: <span style={{ color: 'var(--text-primary, #e6edf3)' }}>{conn.latency}</span></div>
                   <div style={styles.muted}>Last checked: {conn.lastChecked}</div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'SEEDING' && (
-        <div>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <button style={styles.btnPrimary}>Start Seeding</button>
-            <button style={styles.btnDanger}>Stop Seeding</button>
-          </div>
-          <div style={styles.card}>
-            <div style={{ fontWeight: 600, marginBottom: '16px', fontSize: '15px' }}>Seeding Status</div>
-            {seedingData.map(s => (
-              <div key={s.symbol} style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
-                <span style={{ fontWeight: 600, minWidth: '50px', fontFamily: 'monospace' }}>{s.symbol}</span>
-                <div style={styles.progressBar(s.progress)}>
-                  <div style={styles.progressFill(s.progress)} />
-                </div>
-                <span style={{ minWidth: '44px', textAlign: 'right' as const, fontSize: '13px', fontWeight: 600, color: s.progress === 100 ? 'var(--green, #3fb950)' : s.progress === 0 ? 'var(--text-muted, #8b949e)' : 'var(--blue, #58a6ff)' }}>
-                  {s.progress}%
-                </span>
               </div>
             ))}
           </div>
@@ -288,9 +239,9 @@ export function DataView() {
         <div>
           <div style={styles.card}>
             <div style={{ fontWeight: 600, marginBottom: '12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Table size={16} /> Data tables
+              <Table size={16} /> Live Data tables
             </div>
-            {tablesData.map(t => (
+            {liveTables.map(t => (
               <div key={t.name}>
                 <div
                   style={{
@@ -302,18 +253,6 @@ export function DataView() {
                   <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{t.name}</span>
                   <span style={styles.muted}>{t.rows.toLocaleString()} rows</span>
                 </div>
-                {selectedTable === t.name && (
-                  <div style={{ padding: '12px 14px', backgroundColor: 'var(--bg-tertiary, #21262d)', borderBottom: '1px solid var(--border, #30363d)' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted, #8b949e)', marginBottom: '8px' }}>Schema Preview</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '6px' }}>
-                      {t.columns.map(col => (
-                        <span key={col} style={{ padding: '3px 10px', borderRadius: '4px', backgroundColor: 'var(--bg-secondary, #161b22)', border: '1px solid var(--border, #30363d)', fontSize: '12px', fontFamily: 'monospace' }}>
-                          {col}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -325,16 +264,18 @@ export function DataView() {
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
             <ScrollText size={16} style={{ color: 'var(--text-muted, #8b949e)' }} />
             <span style={{ ...styles.muted, marginRight: '8px' }}>Filter:</span>
-            {['ALL', 'INFO', 'WARN', 'ERROR'].map(level => (
+            {['ALL', 'INFO', 'WARNING', 'CRITICAL'].map(level => (
               <button key={level} style={styles.filterBtn(logFilter === level)} onClick={() => setLogFilter(level)}>
                 {level}
               </button>
             ))}
           </div>
-          <div style={{ maxHeight: '500px', overflowY: 'auto' as const }}>
+          <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
             {filteredLogs.map((log, i) => (
               <div key={i} style={styles.logEntry(log.level)}>
-                <span style={{ color: 'var(--text-muted, #8b949e)', minWidth: '155px', flexShrink: 0 }}>{log.time}</span>
+                <span style={{ color: 'var(--text-muted, #8b949e)', minWidth: '155px', flexShrink: 0 }}>
+                  {new Date(log.created_at).toLocaleString()}
+                </span>
                 <span style={styles.levelBadge(log.level)}>{log.level}</span>
                 <span>{log.message}</span>
               </div>

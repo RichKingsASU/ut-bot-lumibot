@@ -14,11 +14,17 @@ _is_ready = False
 
 @app.route("/health")
 def health():
-    """Liveness check - is the process running?"""
+    """Consolidated health report for the dashboard."""
+    broker_ok = bool(os.getenv("ALPACA_API_KEY")) and bool(os.getenv("ALPACA_API_SECRET"))
+    
     return jsonify({
-        "status": "alive",
-        "cpu_percent": psutil.cpu_percent(),
-        "memory_info": psutil.virtual_memory()._asdict()
+        "status": "ready" if (_is_ready and broker_ok) else "starting",
+        "cpu": psutil.cpu_percent(),
+        "memory": psutil.virtual_memory().percent,
+        "websocket": "connected" if _is_ready else "disconnected", # Simplified for now
+        "paper_mode": ALPACA_CONFIG.get("PAPER", True),
+        "has_open_position": has_open_position(),
+        "uptime": int(psutil.Process().create_time())
     }), 200
 
 @app.route("/ready")

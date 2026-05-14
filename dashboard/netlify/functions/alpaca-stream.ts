@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions'
+import { logAlert } from "./lib/alerts"
 import { createServer } from 'http'
 import { WebSocket, WebSocketServer } from 'ws'
 
@@ -12,6 +13,13 @@ import { WebSocket, WebSocketServer } from 'ws'
  * This function upgrades the HTTP connection and streams until disconnect.
  */
 const handler: Handler = async (event, context) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = event.headers['x-admin-api-key'];
+  if (adminKey && requestKey !== adminKey) {
+    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+
   const streamUrl = process.env.ALPACA_STREAM_URL || 'wss://stream.data.alpaca.markets/v2/iex'
   const apiKey = process.env.ALPACA_API_KEY || ''
   const apiSecret = process.env.ALPACA_API_SECRET || ''
@@ -33,6 +41,13 @@ const handler: Handler = async (event, context) => {
     )
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await logAlert(
+          "Alpaca API Authentication Failed (401) in Stream Polling. Please check your credentials.",
+          "CRITICAL",
+          "SECURITY"
+        );
+      }
       return {
         statusCode: response.status,
         body: JSON.stringify({ error: 'Failed to fetch latest trade' }),
@@ -56,9 +71,10 @@ const handler: Handler = async (event, context) => {
       },
     }
   } catch (err) {
+    console.error("[alpaca-stream] Error:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: String(err) }),
+      body: JSON.stringify({ error: "Internal Server Error" }),
       headers: { 'Content-Type': 'application/json' },
     }
   }

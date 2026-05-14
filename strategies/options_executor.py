@@ -140,11 +140,23 @@ def _log_trade_to_supabase(trade_record: dict):
     supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supa_url or not supa_key:
         return
+    import httpx
     try:
-        from supabase import create_client
-        client = create_client(supa_url, supa_key)
-        client.table("trade_log").insert(trade_record).execute()
-        logger.info("Trade logged to Supabase")
+        resp = httpx.post(
+            f"{supa_url}/rest/v1/trade_log",
+            json=trade_record,
+            headers={
+                "apikey": supa_key,
+                "Authorization": f"Bearer {supa_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            timeout=10
+        )
+        if resp.status_code >= 300:
+            logger.warning("Supabase log failed: %d %s", resp.status_code, resp.text)
+        else:
+            logger.info("Trade logged to Supabase")
     except Exception as e:
         logger.warning("Supabase log failed (non-blocking): %s", e)
 
@@ -388,22 +400,28 @@ def get_daily_realized_pnl() -> float:
     if not supa_url or not supa_key:
         return 0.0
         
+    import httpx
     try:
-        from supabase import create_client
-        client = create_client(supa_url, supa_key)
-        
         # Today's date in YYYY-MM-DD
         today = datetime.now(ET).strftime("%Y-%m-%d")
         
-        # Query realized trades from today
-        resp = client.table("paper_trades") \
-            .select("trade_pnl") \
-            .eq("side", "EXIT") \
-            .gte("created_at", today) \
-            .execute()
-            
-        total_pnl = sum(float(row.get("trade_pnl", 0)) for row in resp.data)
-        return total_pnl
+        # Query realized trades from today using REST API
+        resp = httpx.get(
+            f"{supa_url}/rest/v1/paper_trades?side=eq.EXIT&created_at=gte.{today}&select=trade_pnl",
+            headers={
+                "apikey": supa_key,
+                "Authorization": f"Bearer {supa_key}",
+            },
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            total_pnl = sum(float(row.get("trade_pnl", 0)) for row in data)
+            return total_pnl
+        else:
+            logger.warning("Failed to fetch daily P&L: %d %s", resp.status_code, resp.text)
+            return 0.0
     except Exception as e:
         logger.warning("Failed to fetch daily P&L from Supabase: %s", e)
         return 0.0
@@ -419,21 +437,28 @@ def get_daily_trade_count() -> int:
     if not supa_url or not supa_key:
         return 0
         
+    import httpx
     try:
-        from supabase import create_client
-        client = create_client(supa_url, supa_key)
-        
         # Today's date in YYYY-MM-DD
         today = datetime.now(ET).strftime("%Y-%m-%d")
         
-        # Query entry signals from today
-        resp = client.table("paper_trades") \
-            .select("id", count="exact") \
-            .eq("side", "ENTRY") \
-            .gte("created_at", today) \
-            .execute()
-            
-        return resp.count if resp.count is not None else 0
+        # Query entry signals from today using REST API + Count header
+        resp = httpx.get(
+            f"{supa_url}/rest/v1/paper_trades?side=eq.ENTRY&created_at=gte.{today}&select=id",
+            headers={
+                "apikey": supa_key,
+                "Authorization": f"Bearer {supa_key}",
+                "Prefer": "count=exact"
+            },
+            timeout=10
+        )
+        
+        if resp.status_code in (200, 206):
+            # Extract count from Content-Range header: "0-0/5"
+            content_range = resp.headers.get("Content-Range", "*/0")
+            count_str = content_range.split("/")[-1]
+            return int(count_str) if count_str.isdigit() else 0
+        return 0
     except Exception as e:
         logger.warning("Failed to fetch daily trade count from Supabase: %s", e)
         return 0

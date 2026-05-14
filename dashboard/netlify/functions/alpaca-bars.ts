@@ -1,6 +1,25 @@
 import type { Handler } from '@netlify/functions'
+import { logAlert } from "./lib/alerts"
+
+// Simple in-memory cooldown for serverless environment (per execution context)
+const lastRequestTime = new Map<string, number>();
+const COOLDOWN_MS = 1000; // 1s
 
 const handler: Handler = async (event) => {
+  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = event.headers['x-admin-api-key'];
+  if (adminKey && requestKey !== adminKey) {
+    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+
+  const clientIp = event.headers['client-ip'] || 'unknown';
+  const now = Date.now();
+  if (lastRequestTime.has(clientIp) && (now - lastRequestTime.get(clientIp)!) < COOLDOWN_MS) {
+    return { statusCode: 429, body: JSON.stringify({ error: "Too Many Requests" }) };
+  }
+  lastRequestTime.set(clientIp, now);
+
   const dataUrl = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets'
   const apiKey = process.env.ALPACA_API_KEY || ''
   const apiSecret = process.env.ALPACA_API_SECRET || ''
@@ -28,10 +47,16 @@ const handler: Handler = async (event) => {
     })
 
     if (!response.ok) {
-      const text = await response.text()
+      if (response.status === 401) {
+        await logAlert(
+          "Alpaca API Authentication Failed (401). Please check your ALPACA_API_KEY and SECRET.",
+          "CRITICAL",
+          "SECURITY"
+        );
+      }
       return {
         statusCode: response.status,
-        body: JSON.stringify({ error: text }),
+        body: JSON.stringify({ error: "Failed to fetch bars from Alpaca" }),
         headers: { 'Content-Type': 'application/json' },
       }
     }
@@ -57,9 +82,10 @@ const handler: Handler = async (event) => {
       },
     }
   } catch (err) {
+    console.error("[alpaca-bars] Error:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: String(err) }),
+      body: JSON.stringify({ error: "Internal Server Error" }),
       headers: { 'Content-Type': 'application/json' },
     }
   }

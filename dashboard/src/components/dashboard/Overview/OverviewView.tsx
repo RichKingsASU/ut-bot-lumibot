@@ -5,6 +5,7 @@ import { DataFreshness } from '../../DataFreshness'
 import { formatTimestamp } from '../../../lib/time'
 import { PageHeader } from '../../ui/PageHeader'
 import { useMetrics } from '../../../hooks/useMetrics'
+import { EmergencyShutdown } from './EmergencyShutdown'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -84,7 +85,12 @@ export default function OverviewView() {
       <PageHeader
         title="Overview"
         subtitle="Live trading dashboard"
-        actions={<DataFreshness lastUpdated={lastUpdated} />}
+        actions={
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <EmergencyShutdown />
+            <DataFreshness lastUpdated={lastUpdated} />
+          </div>
+        }
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((card) => {

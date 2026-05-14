@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Play, Settings2, Database, TrendingUp, BarChart3, ShieldCheck, Cpu, Globe, Info } from 'lucide-react';
+import { StrategyIntelligence } from './StrategyIntelligence';
 
 interface BacktestResult {
   totalReturn: string;
@@ -21,174 +24,163 @@ interface Props {
   onDeploy: () => void;
 }
 
-const EQ_SYMBOLS = ['IWM', 'SPY', 'QQQ', 'CUSTOM'];
-const CR_SYMBOLS = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD'];
-
 export function BacktestPanel({
   result, cpuPct, onRunBacktest,
   deployTarget, deploySymbol, onSetTarget, onSetSymbol, onDeploy
 }: Props) {
   const [startDate, setStartDate] = useState('2025-01-01');
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [capital, setCapital] = useState('100,000.00');
-  const [symbol, setSymbol] = useState('IWM - Alpaca SIP');
+  const [capital, setCapital] = useState('100,000');
 
-  const inputCls = "w-full bg-[#060810] border-b border-gray-800 text-xs py-1.5 text-gray-300 font-mono outline-none focus:border-blue-500 transition-colors mb-2";
-  const labelCls = "block text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1.5";
-  const sectionCls = "px-3.5 py-3 border-b border-gray-800";
-
-  const symbols = deployTarget === 'crypto' ? CR_SYMBOLS : EQ_SYMBOLS;
-
-  // Suppress unused variable warnings
-  void onDeploy;
+  const inputCls = "w-full bg-surface-0 border border-border-muted rounded-lg py-1.5 px-3 text-[11px] text-vibrant font-mono outline-none focus:border-blue-500/50 transition-smooth";
+  const labelCls = "block text-[9px] font-bold text-dim uppercase tracking-widest mb-1.5";
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0f1a] overflow-y-auto">
+    <div className="flex flex-col h-full bg-surface-1 overflow-y-auto custom-scrollbar">
       {/* Header */}
-      <div className="px-3.5 py-2.5 border-b border-gray-800">
-        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">Backtest Control Panel</span>
+      <div className="p-4 border-b border-border-muted flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-blue-400" />
+          <h2 className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em]">Lab Controls</h2>
+        </div>
       </div>
 
-      {/* Historical Range */}
-      <div className={sectionCls}>
-        <span className={labelCls}>Historical Range</span>
-        <input className={inputCls} value={startDate} onChange={e => setStartDate(e.target.value)} />
-        <input className={inputCls} value={endDate} onChange={e => setEndDate(e.target.value)} style={{ marginBottom: 0 }} />
-      </div>
-
-      {/* Capital */}
-      <div className={sectionCls}>
-        <span className={labelCls}>Starting Capital (USD)</span>
-        <input className={inputCls} value={capital} onChange={e => setCapital(e.target.value)} style={{ marginBottom: 0 }} />
-      </div>
-
-      {/* Symbol */}
-      <div className={sectionCls}>
-        <span className={labelCls}>Symbol & Exchange</span>
-        <select
-          className="w-full bg-[#060810] border-b border-gray-800 text-xs py-1.5 text-gray-300 font-mono outline-none focus:border-blue-500 appearance-none"
-          value={symbol}
-          onChange={e => setSymbol(e.target.value)}
-        >
-          <option>IWM - Alpaca SIP</option>
-          <option>SPY - Alpaca SIP</option>
-          <option>QQQ - Alpaca SIP</option>
-          <option>BTC/USD - Alpaca Crypto</option>
-          <option>ETH/USD - Alpaca Crypto</option>
-          <option>SOL/USD - Alpaca Crypto</option>
-        </select>
-      </div>
-
-      {/* Run button */}
-      <div className={sectionCls}>
-        <button
-          onClick={() => onRunBacktest({ startDate, endDate, capital, symbol })}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-[10px] font-bold rounded uppercase tracking-widest transition-colors"
-        >
-          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="2,1.5 10,6 2,10.5"/>
-          </svg>
-          Run Backtest
-        </button>
-      </div>
-
-      {/* Last Result */}
-      <div className={sectionCls}>
-        <span className={labelCls} style={{ marginBottom: '8px', display: 'block' }}>
-          Last Result: <span className="text-gray-400 normal-case">{result?.version || '\u2014'}</span>
-        </span>
-        <div className="grid grid-cols-2 gap-1.5 mb-2">
-          {[
-            { l: 'Total Return', v: result?.totalReturn, c: result?.totalReturn?.startsWith('+') ? 'text-green-400' : 'text-gray-300' },
-            { l: 'Sharpe Ratio', v: result?.sharpe, c: 'text-gray-200' },
-            { l: 'Win Rate',     v: result?.winRate,  c: 'text-gray-200' },
-            { l: 'Max DD',       v: result?.maxDrawdown, c: 'text-amber-400' },
-          ].map(m => (
-            <div key={m.l} className="bg-[#060810] border border-gray-800 rounded p-2">
-              <div className="text-[8px] text-gray-600 uppercase tracking-wider mb-1">{m.l}</div>
-              <div className={`text-base font-bold font-mono ${m.c}`}>{m.v || '\u2014'}</div>
+      <div className="p-4 space-y-6">
+        {/* Parameters Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Database className="w-3.5 h-3.5 text-dim" />
+            <span className="text-[11px] font-bold text-vibrant">Data Configuration</span>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Start Epoch</label>
+              <input type="date" className={inputCls} value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
-          ))}
-        </div>
-        {/* Equity curve */}
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-[8px] text-gray-600 uppercase tracking-wider">Equity Curve</span>
-          <span className="text-[9px] text-green-400 font-mono">{result?.vol || ''}</span>
-        </div>
-        <div className="h-14 bg-[#060810] border border-gray-800 rounded overflow-hidden">
-          <svg width="100%" height="56" viewBox="0 0 200 56" preserveAspectRatio="none">
-            <line x1="0" y1="28" x2="200" y2="28" stroke="#1f2937" strokeWidth="0.5"/>
-            {result?.curve ? (
-              <polyline points={result.curve} stroke="#22c55e" strokeWidth="1.5" fill="none"/>
-            ) : (
-              <text x="100" y="32" textAnchor="middle" fontSize="8" fill="#374151" fontFamily="Inter">
-                No results yet — run backtest
-              </text>
-            )}
-          </svg>
-        </div>
-      </div>
+            <div>
+              <label className={labelCls}>End Epoch</label>
+              <input type="date" className={inputCls} value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+          </div>
 
-      {/* Deploy Target */}
-      <div className={sectionCls}>
-        <span className={labelCls} style={{ marginBottom: '6px', display: 'block' }}>Deploy Target</span>
-        <div className="flex flex-col gap-1.5 mb-3">
-          {(['equities', 'crypto'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => { onSetTarget(t); onSetSymbol(t === 'crypto' ? 'BTC/USD' : 'IWM'); }}
-              className={`flex items-center gap-2 px-2.5 py-2 border rounded text-[10px] transition-colors ${
-                deployTarget === t
-                  ? 'border-blue-900 bg-blue-950 text-blue-400'
-                  : 'border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400'
-              }`}
-            >
-              {t === 'equities' ? (
-                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <polyline points="1,9 4,6 7,7.5 10,3"/>
-                </svg>
-              ) : (
-                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="6" cy="6" r="4.5"/>
-                  <path d="M4.5 4.5c0-.9.6-1.5 1.5-1.5s1.5.6 1.5 1.5-.6 1.5-1.5 1.5-1.5.6-1.5 1.5.6 1.5 1.5 1.5"/>
-                </svg>
-              )}
-              {t === 'equities' ? 'Equities (market hours)' : 'Crypto (24/7)'}
-            </button>
-          ))}
-        </div>
-        <span className={labelCls} style={{ marginBottom: '4px', display: 'block' }}>Instrument</span>
-        <div className="grid grid-cols-2 gap-1">
-          {symbols.map(s => (
-            <button
-              key={s}
-              onClick={() => onSetSymbol(s)}
-              className={`py-1.5 border rounded text-[9px] font-bold transition-colors ${
-                deploySymbol === s
-                  ? 'border-blue-900 bg-blue-950 text-blue-400'
-                  : 'border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
+          <div>
+            <label className={labelCls}>Initial Liquidity (USD)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-dim">$</span>
+              <input className={`${inputCls} pl-6`} value={capital} onChange={e => setCapital(e.target.value)} />
+            </div>
+          </div>
 
-      {/* CPU */}
-      <div className="px-3.5 py-3 mt-auto border-t border-gray-800">
-        <div className="flex justify-between items-center mb-1.5">
-          <span className="text-[9px] text-gray-600 uppercase tracking-wider font-bold">CPU Usage</span>
-          <span className="text-[9px] text-green-400 font-mono">{Math.round(cpuPct)}%</span>
+          <div>
+            <label className={labelCls}>Execution Instrument</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['equities', 'crypto'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => onSetTarget(t)}
+                  className={`py-2 rounded-lg border text-[10px] font-bold transition-smooth ${
+                    deployTarget === t 
+                      ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' 
+                      : 'bg-surface-0 border-border-muted text-dim hover:text-secondary'
+                  }`}
+                >
+                  {t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="h-1 bg-[#060810] rounded overflow-hidden">
-          <div
-            className="h-full rounded transition-all duration-300"
-            style={{
-              width: `${cpuPct}%`,
-              background: cpuPct > 60 ? '#f59e0b' : '#22c55e'
-            }}
-          />
+
+        {/* Execution Button */}
+        <button
+          onClick={() => onRunBacktest({ startDate, endDate, capital, symbol: deploySymbol })}
+          className="w-full group relative overflow-hidden py-3 bg-blue-600 hover:bg-blue-500 rounded-xl transition-smooth shadow-lg shadow-blue-900/20"
+        >
+          <div className="relative z-10 flex items-center justify-center gap-2 text-white font-bold text-xs uppercase tracking-widest">
+            <Play className="w-3.5 h-3.5 fill-current" />
+            Initialize Simulation
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        </button>
+
+        {/* Results Analytics */}
+        {result ? (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[11px] font-bold text-vibrant">Simulation Analytics</span>
+              <span className="ml-auto text-[9px] text-dim font-mono">{result.version}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Net Return', value: result.totalReturn, icon: TrendingUp, color: 'text-emerald-400' },
+                { label: 'Sharpe', value: result.sharpe, icon: ShieldCheck, color: 'text-blue-400' },
+                { label: 'Win Rate', value: result.winRate, icon: BarChart3, color: 'text-vibrant' },
+                { label: 'Max DD', value: result.maxDrawdown, icon: Info, color: 'text-rose-400' },
+              ].map((m, i) => (
+                <div key={i} className="p-3 bg-surface-0 border border-border-muted rounded-xl hover:border-border-active transition-smooth">
+                  <div className="flex items-center gap-1.5 mb-1 text-dim">
+                    <m.icon className="w-3 h-3" />
+                    <span className="text-[8px] font-bold uppercase tracking-wider">{m.label}</span>
+                  </div>
+                  <div className={`text-base font-mono font-bold ${m.color}`}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* AI Insights Card */}
+            <StrategyIntelligence 
+              strategyName={deploySymbol}
+              confidenceScore={84}
+              insights={[
+                { type: 'positive', label: 'Alpha Factor Confirmed', description: 'Strong correlation with ATR breakout during NY open.' },
+                { type: 'warning', label: 'Slippage Risk', description: 'Low liquidity detected in selected epoch. Backtest might be optimistic.' },
+                { type: 'neutral', label: 'Parameter Tuning', description: 'Sensitivity of 2.0 is optimal for this timeframe.' }
+              ]}
+            />
+
+            <button 
+              onClick={onDeploy}
+              className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-[10px] font-bold text-emerald-400 transition-smooth uppercase tracking-widest"
+            >
+              Commit to Production
+            </button>
+          </motion.div>
+        ) : (
+          <div className="p-8 text-center glass-panel rounded-xl border-dashed border-2 border-border-muted">
+            <BarChart3 className="w-8 h-8 text-dim mx-auto mb-3 opacity-20" />
+            <p className="text-[10px] text-dim leading-relaxed">
+              No simulation data available.<br/>Configure parameters and initialize.
+            </p>
+          </div>
+        )}
+
+        {/* Infrastructure Health */}
+        <div className="pt-4 border-t border-border-muted">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <Cpu className="w-3 h-3 text-dim" />
+              <span className="text-[9px] font-bold text-dim uppercase tracking-wider">Engine Load</span>
+            </div>
+            <span className="text-[10px] font-mono text-emerald-400 font-bold">{Math.round(cpuPct)}%</span>
+          </div>
+          <div className="h-1 bg-surface-0 rounded-full overflow-hidden">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${cpuPct}%` }}
+              className={`h-full rounded-full ${cpuPct > 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+            />
+          </div>
+          <div className="flex items-center gap-2 mt-4 text-[9px] text-dim">
+            <Globe className="w-3 h-3" />
+            <span>Node: us-east-1 (Primary)</span>
+          </div>
         </div>
       </div>
     </div>

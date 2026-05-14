@@ -69,6 +69,24 @@ def main():
         trader.add_strategy(strategy)
         heartbeat.start()
         
+        # ── [LATENCY FIX] Start real-time WebSocket data ingestion ───────────
+        import threading
+        from adapters.alpaca_streamer import AlpacaStreamer
+        import asyncio
+
+        def _run_streamer():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            streamer = AlpacaStreamer(symbols=[symbol, "SPY", "QQQ", "IWM"])
+            try:
+                loop.run_until_complete(streamer.start())
+            except Exception as e:
+                bot_logger.error(f"Streamer background error: {e}", category=ErrorCategory.INFRASTRUCTURE)
+
+        stream_thread = threading.Thread(target=_run_streamer, daemon=True, name="AlpacaStreamer")
+        stream_thread.start()
+        bot_logger.info("Real-time WebSocket Streamer started in background.", category=ErrorCategory.INFRASTRUCTURE)
+
         bot_logger.info("Starting Lumibot Trader Loop...", category=ErrorCategory.INFRASTRUCTURE)
         trader.run_all()
         

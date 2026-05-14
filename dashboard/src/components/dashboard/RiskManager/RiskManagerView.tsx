@@ -1,343 +1,319 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../../../lib/supabaseClient'
-import { PageHeader } from '../../ui/PageHeader'
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../../lib/supabaseClient';
+import { PageHeader } from '../../ui/PageHeader';
+import { MetricTile } from '../common/MetricTile';
+import { 
+  ShieldAlert, ShieldCheck, ZapOff, 
+  Settings2, Activity, Save, 
+  AlertTriangle, History, Info,
+  Unlock, Lock, Trash2
+} from 'lucide-react';
 
-const MAX_DAILY_LOSS_CAP = 1_000_000
+const MAX_DAILY_LOSS_CAP = 1_000_000;
 
-type FieldErrors = {
-  maxDailyLoss?: string
-  maxPositionPct?: string
+interface RiskState {
+  trading_enabled: boolean;
+  max_daily_loss: number;
+  max_position_pct: number;
+  account_equity: number;
 }
 
-type Toast = { kind: 'success' | 'error'; message: string } | null
+export default function RiskManagerView() {
+    const [state, setState] = useState<RiskState>({
+        trading_enabled: true,
+        max_daily_loss: 500,
+        max_position_pct: 10,
+        account_equity: 100000
+    });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [isKillSwitchLocked, setIsKillSwitchLocked] = useState(true);
 
-const validateMaxDailyLoss = (raw: string, equityCap?: number): string | undefined => {
-  if (raw === '' || raw == null) return 'Daily loss limit must be a positive dollar amount'
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) {
-    return 'Daily loss limit must be a positive dollar amount'
-  }
-  const cap = equityCap && equityCap > 0 ? equityCap : MAX_DAILY_LOSS_CAP
-  if (n > cap) {
-    return 'Daily loss limit must be a positive dollar amount'
-  }
-  return undefined
-}
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const { data } = await supabase
+                    .from('user_settings')
+                    .select('*')
+                    .eq('id', 1)
+                    .single();
+                if (data) {
+                    setState({
+                        trading_enabled: data.trading_enabled ?? true,
+                        max_daily_loss: data.max_daily_loss ?? 500,
+                        max_position_pct: data.max_position_pct ?? 10,
+                        account_equity: data.account_equity ?? 100000
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
 
-const validateMaxPositionPct = (raw: string): string | undefined => {
-  if (raw === '' || raw == null) return 'Position size must be between 1% and 100%'
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n < 1 || n > 100) {
-    return 'Position size must be between 1% and 100%'
-  }
-  return undefined
-}
-
-const RiskManagerView: React.FC = () => {
-  const [tradingEnabled, setTradingEnabled] = useState(true)
-  const [maxDailyLoss, setMaxDailyLoss] = useState<string>('')
-  const [maxPositionPct, setMaxPositionPct] = useState<string>('')
-  const [accountEquity, setAccountEquity] = useState<number | undefined>(undefined)
-  const [saving, setSaving] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [errors, setErrors] = useState<FieldErrors>({})
-  const [touched, setTouched] = useState<{ maxDailyLoss?: boolean; maxPositionPct?: boolean }>({})
-  const [toast, setToast] = useState<Toast>(null)
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await supabase
-          .from('user_settings')
-          .select('trading_enabled, max_daily_loss, max_position_pct, account_equity')
-          .eq('id', 1)
-          .single()
-        if (data) {
-          setTradingEnabled(data.trading_enabled ?? true)
-          setMaxDailyLoss(data.max_daily_loss != null ? String(data.max_daily_loss) : '')
-          setMaxPositionPct(data.max_position_pct != null ? String(data.max_position_pct) : '')
-          if (typeof data.account_equity === 'number' && data.account_equity > 0) {
-            setAccountEquity(data.account_equity)
-          }
+    const toggleKillSwitch = async () => {
+        if (isKillSwitchLocked) return;
+        const newVal = !state.trading_enabled;
+        setState(prev => ({ ...prev, trading_enabled: newVal }));
+        try {
+            await supabase
+                .from('user_settings')
+                .upsert({ id: 1, trading_enabled: newVal }, { onConflict: 'id' });
+        } catch (e) {
+            console.error(e);
         }
-      } catch {
-        // Row may not exist yet — keep defaults
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+    };
 
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 3000)
-    return () => clearTimeout(t)
-  }, [toast])
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await supabase
+                .from('user_settings')
+                .upsert({
+                    id: 1,
+                    max_daily_loss: state.max_daily_loss,
+                    max_position_pct: state.max_position_pct
+                }, { onConflict: 'id' });
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setSaving(false);
+        }
+    };
 
-  const liveErrors = useMemo<FieldErrors>(() => ({
-    maxDailyLoss: validateMaxDailyLoss(maxDailyLoss, accountEquity),
-    maxPositionPct: validateMaxPositionPct(maxPositionPct),
-  }), [maxDailyLoss, maxPositionPct, accountEquity])
+    if (loading) return <div className="p-8 text-dim animate-pulse">Initializing Risk Engine...</div>;
 
-  const hasAnyError = Boolean(liveErrors.maxDailyLoss || liveErrors.maxPositionPct)
-
-  const showError = (field: keyof FieldErrors): string | undefined => {
-    if (errors[field]) return errors[field]
-    if (touched[field]) return liveErrors[field]
-    return undefined
-  }
-
-  const toggleKillSwitch = async () => {
-    const newVal = !tradingEnabled
-    setTradingEnabled(newVal)
-    try {
-      await supabase
-        .from('user_settings')
-        .upsert({ id: 1, trading_enabled: newVal }, { onConflict: 'id' })
-    } catch {
-      console.error('Failed to update trading_enabled')
-    }
-  }
-
-  const saveSettings = async () => {
-    const submitErrors: FieldErrors = {
-      maxDailyLoss: validateMaxDailyLoss(maxDailyLoss, accountEquity),
-      maxPositionPct: validateMaxPositionPct(maxPositionPct),
-    }
-    setErrors(submitErrors)
-    setTouched({ maxDailyLoss: true, maxPositionPct: true })
-    if (submitErrors.maxDailyLoss || submitErrors.maxPositionPct) {
-      return
-    }
-
-    setSaving(true)
-    try {
-      const { error: dbError } = await supabase
-        .from('user_settings')
-        .upsert(
-          {
-            id: 1,
-            max_daily_loss: parseFloat(maxDailyLoss),
-            max_position_pct: parseFloat(maxPositionPct),
-          },
-          { onConflict: 'id' }
-        )
-      if (dbError) throw dbError
-      setToast({ kind: 'success', message: 'Risk settings saved' })
-    } catch {
-      setToast({ kind: 'error', message: 'Failed to save — please try again' })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const pageStyle: React.CSSProperties = {
-    padding: 24,
-    backgroundColor: 'var(--bg-primary, #0d1117)',
-    minHeight: '100%',
-    color: 'var(--text-primary, #e6edf3)',
-  }
-
-  const cardBase: React.CSSProperties = {
-    border: '1px solid var(--border, #30363d)',
-    borderRadius: 8,
-    padding: 20,
-    marginBottom: 16,
-    backgroundColor: 'var(--bg-secondary, #161b22)',
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: 180,
-    padding: '8px 12px',
-    borderRadius: 6,
-    border: '1px solid var(--border, #30363d)',
-    backgroundColor: 'var(--bg-tertiary, #21262d)',
-    color: 'var(--text-primary, #e6edf3)',
-    fontSize: 14,
-    boxSizing: 'border-box',
-  }
-
-  const errorInputStyle: React.CSSProperties = {
-    ...inputStyle,
-    borderColor: '#f85149',
-  }
-
-  const errorTextStyle: React.CSSProperties = {
-    color: '#f85149',
-    fontSize: 12,
-    marginTop: 6,
-  }
-
-  const killCardStyle: React.CSSProperties = {
-    ...cardBase,
-    borderColor: tradingEnabled ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)',
-    backgroundColor: tradingEnabled ? 'rgba(63,185,80,0.08)' : 'rgba(248,81,73,0.12)',
-  }
-
-  const toastStyle: React.CSSProperties | null = toast
-    ? {
-        position: 'fixed',
-        top: 24,
-        right: 24,
-        zIndex: 1000,
-        padding: '10px 16px',
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: 500,
-        color: '#fff',
-        backgroundColor: toast.kind === 'success' ? '#238636' : '#da3633',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      }
-    : null
-
-  const dailyLossError = showError('maxDailyLoss')
-  const positionPctError = showError('maxPositionPct')
-  const saveDisabled = saving || hasAnyError
-
-  return (
-    <div style={pageStyle}>
-      <PageHeader title="Risk manager" subtitle="Kill switch & limits" />
-
-      {toastStyle && toast && (
-        <div role="status" aria-live="polite" style={toastStyle}>
-          {toast.message}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ color: 'var(--text-muted, #8b949e)', fontSize: 13 }}>Loading...</div>
-      ) : (
-        <div style={{ maxWidth: 640 }}>
-          {/* Kill Switch */}
-          <div style={killCardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                  {tradingEnabled ? 'Trading Enabled' : 'Trading STOPPED'}
+    return (
+        <div className="flex flex-col h-full bg-space overflow-hidden">
+            {/* Header */}
+            <div className="p-6 bg-surface-1/50 border-b border-border-muted backdrop-blur-md">
+                <div className="flex items-center justify-between">
+                    <PageHeader 
+                        title="Risk Control Tower" 
+                        subtitle="Institutional Safety Guards & Interventions" 
+                    />
+                    <div className="flex items-center gap-3">
+                         <div className={`px-3 py-1.5 rounded-full border text-[10px] font-bold flex items-center gap-2 ${
+                            state.trading_enabled 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_20px_rgba(239,68,68,0.2)]'
+                         }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${state.trading_enabled ? 'bg-emerald-500 pulse-dot' : 'bg-rose-500'}`} />
+                            {state.trading_enabled ? 'OPERATIONAL' : 'HALTED'}
+                         </div>
+                    </div>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted, #8b949e)' }}>
-                  {tradingEnabled
-                    ? 'Bot will execute trades when signals fire'
-                    : 'Bot will skip all trades — kill switch is active'}
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+                <main className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                    
+                    {/* Emergency Control Hub */}
+                    <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Master Kill Switch */}
+                        <div className={`p-6 rounded-2xl border transition-smooth relative overflow-hidden group ${
+                            state.trading_enabled 
+                                ? 'bg-surface-1 border-border-muted hover:border-emerald-500/30' 
+                                : 'bg-rose-500/5 border-rose-500/40 shadow-[0_0_40px_rgba(239,68,68,0.1)]'
+                        }`}>
+                            <div className="flex items-center justify-between mb-6 relative z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-3 rounded-xl ${state.trading_enabled ? 'bg-zinc-500/10' : 'bg-rose-500/20'}`}>
+                                        {state.trading_enabled ? <ShieldCheck className="w-6 h-6 text-emerald-400" /> : <ZapOff className="w-6 h-6 text-rose-400" />}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-vibrant uppercase tracking-widest">Master Kill Switch</h3>
+                                        <p className="text-[10px] text-secondary">Instant Halt of All Trading Activity</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setIsKillSwitchLocked(!isKillSwitchLocked)}
+                                    className={`p-2 rounded-lg transition-smooth border ${isKillSwitchLocked ? 'bg-zinc-500/10 border-border-muted text-dim' : 'bg-blue-500/20 border-blue-500/40 text-blue-400 animate-pulse'}`}
+                                >
+                                    {isKillSwitchLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                                </button>
+                            </div>
+
+                            <button 
+                                onClick={toggleKillSwitch}
+                                disabled={isKillSwitchLocked}
+                                className={`w-full py-4 rounded-xl font-bold uppercase tracking-[0.2em] transition-smooth border shadow-2xl ${
+                                    isKillSwitchLocked 
+                                        ? 'bg-zinc-800/50 border-border-muted text-dim cursor-not-allowed' 
+                                        : state.trading_enabled 
+                                            ? 'bg-rose-600 hover:bg-rose-500 border-rose-400 text-white shadow-rose-900/40' 
+                                            : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-emerald-900/40'
+                                }`}
+                            >
+                                {state.trading_enabled ? 'TRIGGER SYSTEM HALT' : 'RE-AUTHORIZE SYSTEM'}
+                            </button>
+                            
+                            {isKillSwitchLocked && (
+                                <p className="text-[9px] text-center mt-3 text-dim font-bold uppercase tracking-widest">Toggle Lock to Interface</p>
+                            )}
+                        </div>
+
+                        {/* Liquidation & Panic */}
+                        <div className="p-6 bg-surface-1 border border-border-muted rounded-2xl hover:border-rose-500/30 transition-smooth group flex flex-col justify-between">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-rose-500/10 rounded-xl">
+                                    <Trash2 className="w-6 h-6 text-rose-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-vibrant uppercase tracking-widest">Panic Liquidation</h3>
+                                    <p className="text-[10px] text-secondary">Force Exit All Active Positions</p>
+                                </div>
+                            </div>
+                            
+                            <div className="p-3 bg-surface-0 rounded-xl border border-border-muted mb-4">
+                                <div className="flex justify-between items-center text-[10px] mb-1">
+                                    <span className="text-dim font-bold uppercase">Exposure Risk</span>
+                                    <span className="text-rose-400 font-bold">$12,480.00</span>
+                                </div>
+                                <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                                    <motion.div className="h-full bg-rose-500" initial={{ width: 0 }} animate={{ width: '42%' }} />
+                                </div>
+                            </div>
+
+                            <button className="w-full py-3 bg-transparent hover:bg-rose-500/10 border border-rose-500/40 text-rose-400 rounded-xl font-bold text-xs uppercase tracking-widest transition-smooth">
+                                Force Global Liquidation
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Risk Rules Engine */}
+                    <section>
+                        <div className="flex items-center gap-2 mb-4">
+                            <Settings2 className="w-4 h-4 text-blue-400" />
+                            <h2 className="text-[11px] font-bold text-secondary uppercase tracking-[0.2em]">Risk Rules Engine</h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Daily Loss Limit */}
+                            <div className="p-6 bg-surface-1 border border-border-muted rounded-2xl space-y-4 shadow-premium group">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                        <span className="text-xs font-bold text-vibrant">Daily Drawdown Cap</span>
+                                    </div>
+                                    <Info className="w-3.5 h-3.5 text-dim cursor-help" />
+                                </div>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-dim font-mono">$</span>
+                                    <input 
+                                        type="number"
+                                        value={state.max_daily_loss}
+                                        onChange={e => setState(prev => ({ ...prev, max_daily_loss: parseFloat(e.target.value) }))}
+                                        className="w-full bg-surface-0 border border-border-muted rounded-xl py-3 pl-8 pr-4 text-sm font-mono text-vibrant outline-none focus:border-blue-500/50 transition-smooth"
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] text-dim font-bold uppercase">
+                                    <span>Safe Limit: $10k</span>
+                                    <span className={state.max_daily_loss > 5000 ? 'text-rose-400' : 'text-emerald-400'}>
+                                        {state.max_daily_loss > 5000 ? 'HIGH RISK' : 'CONSERVATIVE'}
+                                    </span>
+                                </div>
+                                <div className="h-1 bg-surface-2 rounded-full overflow-hidden">
+                                    <motion.div 
+                                        className={`h-full ${state.max_daily_loss > 5000 ? 'bg-rose-500' : 'bg-emerald-500'}`} 
+                                        initial={{ width: 0 }} 
+                                        animate={{ width: `${Math.min((state.max_daily_loss / 10000) * 100, 100)}%` }} 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Max Position Pct */}
+                            <div className="p-6 bg-surface-1 border border-border-muted rounded-2xl space-y-4 shadow-premium group">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Activity className="w-4 h-4 text-blue-400" />
+                                        <span className="text-xs font-bold text-vibrant">Max Position Allocation</span>
+                                    </div>
+                                    <Info className="w-3.5 h-3.5 text-dim cursor-help" />
+                                </div>
+                                <div className="relative">
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-dim font-mono">%</span>
+                                    <input 
+                                        type="number"
+                                        value={state.max_position_pct}
+                                        onChange={e => setState(prev => ({ ...prev, max_position_pct: parseFloat(e.target.value) }))}
+                                        className="w-full bg-surface-0 border border-border-muted rounded-xl py-3 pl-4 pr-10 text-sm font-mono text-vibrant outline-none focus:border-blue-500/50 transition-smooth"
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] text-dim font-bold uppercase">
+                                    <span>Limit: 1-100%</span>
+                                    <span className={state.max_position_pct > 25 ? 'text-rose-400' : 'text-emerald-400'}>
+                                        {state.max_position_pct > 25 ? 'AGGRESSIVE' : 'OPTIMAL'}
+                                    </span>
+                                </div>
+                                <div className="h-1 bg-surface-2 rounded-full overflow-hidden">
+                                    <motion.div 
+                                        className={`h-full ${state.max_position_pct > 25 ? 'bg-rose-500' : 'bg-emerald-500'}`} 
+                                        initial={{ width: 0 }} 
+                                        animate={{ width: `${state.max_position_pct}%` }} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Risk Audit Trail */}
+                    <section>
+                         <div className="flex items-center gap-2 mb-4">
+                            <History className="w-4 h-4 text-secondary" />
+                            <h2 className="text-[11px] font-bold text-secondary uppercase tracking-[0.2em]">Risk Intervention Audit</h2>
+                        </div>
+                        <div className="bg-surface-0 border border-border-muted rounded-2xl overflow-hidden shadow-2xl">
+                            <table className="w-full text-left">
+                                <thead className="bg-surface-1/50 border-b border-border-muted">
+                                    <tr>
+                                        {['Timestamp', 'User', 'Action', 'Status'].map(h => (
+                                            <th key={h} className="px-6 py-3 text-[9px] font-bold text-dim uppercase tracking-widest">{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="text-[11px]">
+                                    <tr className="border-b border-border-muted/30">
+                                        <td className="px-6 py-4 text-secondary font-mono">2026-05-13 22:42:11</td>
+                                        <td className="px-6 py-4 text-vibrant font-bold">Admin</td>
+                                        <td className="px-6 py-4 text-secondary">Updated Max Daily Loss: $500 → $800</td>
+                                        <td className="px-6 py-4"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">SUCCESS</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </main>
+
+                {/* Fixed Footer for Save */}
+                <div className="fixed bottom-6 right-6 z-30">
+                    <button 
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-2xl shadow-blue-900/40 transition-smooth group"
+                    >
+                        <Save className={`w-4 h-4 ${saving ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
+                        {saving ? 'UPDATING...' : 'SAVE RISK PROFILE'}
+                    </button>
                 </div>
-              </div>
-              <button
-                onClick={toggleKillSwitch}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  color: '#fff',
-                  backgroundColor: tradingEnabled ? '#da3633' : '#238636',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {tradingEnabled ? 'Stop Trading' : 'Resume Trading'}
-              </button>
-            </div>
-          </div>
 
-          {/* Daily Loss Limit */}
-          <div style={cardBase}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Max daily loss ($)</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted, #8b949e)', marginBottom: 12 }}>
-              Bot stops trading if this loss is reached today
+                {/* Right Analytics Sidebar */}
+                <aside className="w-80 border-l border-border-muted bg-surface-1/30 p-6 space-y-8 hidden xl:block">
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-4 h-4 text-rose-400" />
+                            <h2 className="text-[11px] font-bold text-secondary uppercase tracking-[0.2em]">Active Exposure</h2>
+                        </div>
+                        <div className="space-y-4">
+                            <MetricTile label="Total Value at Risk" value="$12,480" change="-12% from cap" isPositive={true} />
+                            <MetricTile label="Margin Usage" value="8.4%" change="OPTIMAL" isPositive={true} status="fresh" />
+                        </div>
+                    </div>
+                </aside>
             </div>
-            <input
-              type="number"
-              min="0.01"
-              max={accountEquity && accountEquity > 0 ? accountEquity : MAX_DAILY_LOSS_CAP}
-              step="0.01"
-              value={maxDailyLoss}
-              onChange={e => {
-                setMaxDailyLoss(e.target.value)
-                if (errors.maxDailyLoss) {
-                  setErrors(prev => ({ ...prev, maxDailyLoss: undefined }))
-                }
-              }}
-              onBlur={() => {
-                setTouched(prev => ({ ...prev, maxDailyLoss: true }))
-                setErrors(prev => ({
-                  ...prev,
-                  maxDailyLoss: validateMaxDailyLoss(maxDailyLoss, accountEquity),
-                }))
-              }}
-              placeholder="e.g. 500"
-              aria-invalid={Boolean(dailyLossError)}
-              aria-describedby={dailyLossError ? 'maxDailyLoss-error' : undefined}
-              style={dailyLossError ? errorInputStyle : inputStyle}
-            />
-            {dailyLossError && (
-              <div id="maxDailyLoss-error" style={errorTextStyle}>
-                {dailyLossError}
-              </div>
-            )}
-          </div>
-
-          {/* Max Position Size */}
-          <div style={cardBase}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Max position size (% of portfolio)
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted, #8b949e)', marginBottom: 12 }}>
-              Maximum allocation per single trade
-            </div>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              step="1"
-              value={maxPositionPct}
-              onChange={e => {
-                setMaxPositionPct(e.target.value)
-                if (errors.maxPositionPct) {
-                  setErrors(prev => ({ ...prev, maxPositionPct: undefined }))
-                }
-              }}
-              onBlur={() => {
-                setTouched(prev => ({ ...prev, maxPositionPct: true }))
-                setErrors(prev => ({
-                  ...prev,
-                  maxPositionPct: validateMaxPositionPct(maxPositionPct),
-                }))
-              }}
-              placeholder="e.g. 10"
-              aria-invalid={Boolean(positionPctError)}
-              aria-describedby={positionPctError ? 'maxPositionPct-error' : undefined}
-              style={positionPctError ? errorInputStyle : inputStyle}
-            />
-            {positionPctError && (
-              <div id="maxPositionPct-error" style={errorTextStyle}>
-                {positionPctError}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={saveSettings}
-            disabled={saveDisabled}
-            style={{
-              padding: '9px 18px',
-              borderRadius: 6,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: saveDisabled ? 'not-allowed' : 'pointer',
-              border: '1px solid var(--border, #30363d)',
-              backgroundColor: 'var(--bg-tertiary, #21262d)',
-              color: 'var(--text-primary, #e6edf3)',
-              opacity: saveDisabled ? 0.6 : 1,
-            }}
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
         </div>
-      )}
-    </div>
-  )
+    );
 }
-
-export default RiskManagerView

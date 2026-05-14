@@ -20,11 +20,15 @@ export default function SystemHealthView() {
   const [healthData, setHealthData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [lastAudit, setLastAudit] = useState<any[]>([])
+  const [activeAlerts, setActiveAlerts] = useState<any[]>([])
   const tradingMode = useTradingMode()
   const modeBadge = tradingModeBadgeStyle(tradingMode)
-  const envColor =
-    tradingMode === 'paper' ? colors.green : tradingMode === 'live' ? colors.red : colors.textMuted
-
+  const envColor = tradingMode === 'live' ? colors.red : tradingMode === 'paper' ? colors.green : colors.textMuted
+  const [adminKey, setAdminKey] = useState(localStorage.getItem('ADMIN_API_KEY') || '')
+  const [showKey, setShowKey] = useState(false)
+  const [shutdownLoading, setShutdownLoading] = useState(false)
+  const [shutdownSuccess, setShutdownSuccess] = useState(false)
+  
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -36,19 +40,33 @@ export default function SystemHealthView() {
           .limit(1)
           .single()
 
-        // Fetch latest health status from bot
-        const resp = await fetch('http://localhost:8000/health')
-        const health = await resp.json()
+        // Fetch latest health status from bot (Local only)
+        let health = null;
+        try {
+          const resp = await fetch('http://localhost:8000/health', { signal: AbortSignal.timeout(2000) })
+          health = await resp.json()
+        } catch (e) {
+          // Expected in cloud environment unless tunneled
+          health = { status: 'UNKNOWN', websocket: 'UNKNOWN' };
+        }
 
         // Fetch recent audits
         const { data: audits } = await supabase
             .from('system_audit')
             .select('*')
             .order('ts', { ascending: false })
-            .limit(5)
+            .limit(10)
+
+        // Fetch active system alerts
+        const { data: alerts } = await supabase
+            .from('system_alerts')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10)
 
         setHealthData({ session, health })
         setLastAudit(audits || [])
+        setActiveAlerts(alerts || [])
       } catch (e) {
         console.error('Failed to fetch health data:', e)
       } finally {
@@ -117,6 +135,93 @@ export default function SystemHealthView() {
         />
       </div>
 
+      {/* Operator Control Panel */}
+      <div style={{ 
+        backgroundColor: colors.bgSecondary, 
+        border: `1px solid ${colors.amber}55`, 
+        borderRadius: 12, 
+        padding: 24, 
+        marginBottom: 32,
+        backgroundImage: 'linear-gradient(180deg, rgba(227,179,65,0.03) 0%, transparent 100%)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Lock size={18} color={colors.amber} />
+              Operator Command Center
+            </div>
+            <div style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
+              Institutional control for session {healthData?.session?.id?.substring(0,8) || '...' }
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: colors.bgPrimary, padding: '4px 12px', borderRadius: 6, border: `1px solid ${colors.border}` }}>
+                <span style={{ fontSize: 11, color: colors.textMuted }}>ADMIN API KEY:</span>
+                <input 
+                  type={showKey ? "text" : "password"}
+                  value={adminKey}
+                  onChange={(e) => {
+                    setAdminKey(e.target.value)
+                    localStorage.setItem('ADMIN_API_KEY', e.target.value)
+                  }}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    color: colors.blue, 
+                    fontSize: 12, 
+                    fontFamily: 'monospace',
+                    width: 120,
+                    outline: 'none'
+                  }}
+                />
+                <button onClick={() => setShowKey(!showKey)} style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', display: 'flex' }}>
+                   <Activity size={14} />
+                </button>
+             </div>
+             <button 
+               disabled={shutdownLoading || shutdownSuccess}
+               onClick={async () => {
+                 if (!window.confirm("EMERGENCY SHUTDOWN: Are you sure you want to stop the bot session immediately?")) return
+                 setShutdownLoading(true)
+                 try {
+                   const { error } = await supabase
+                     .from('bot_status')
+                     .update({ target_status: 'shutdown' })
+                     .eq('id', 1)
+                   
+                   if (error) throw error
+                   setShutdownSuccess(true)
+                   setTimeout(() => setShutdownSuccess(false), 5000)
+                 } catch (e) {
+                   alert("Shutdown command failed. Check console for details.")
+                   console.error(e)
+                 } finally {
+                   setShutdownLoading(false)
+                 }
+               }}
+               style={{ 
+                 backgroundColor: shutdownSuccess ? colors.green : colors.red, 
+                 color: 'white', 
+                 border: 'none', 
+                 borderRadius: 6, 
+                 padding: '8px 16px', 
+                 fontSize: 13, 
+                 fontWeight: 600, 
+                 cursor: shutdownLoading ? 'not-allowed' : 'pointer',
+                 opacity: shutdownLoading ? 0.7 : 1,
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: 8
+               }}>
+               {shutdownLoading ? 'SIGNALING...' : shutdownSuccess ? 'SIGNAL SENT' : 'SHUTDOWN BOT'}
+             </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: colors.textMuted, backgroundColor: 'rgba(248,81,73,0.05)', padding: '8px 12px', borderRadius: 6, border: `1px solid ${colors.red}22` }}>
+           <strong>WARNING:</strong> Shutdown command is processed within {30}s. For immediate liquidation of all positions, use the <strong>FLATTEN</strong> command in the Trade view.
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* System Alerts */}
         <div style={{ backgroundColor: colors.bgSecondary, border: `1px solid ${colors.border}`, borderRadius: 12, overflow: 'hidden' }}>
@@ -125,21 +230,28 @@ export default function SystemHealthView() {
             <div style={{ fontSize: 11, color: colors.textMuted }}>Last 24h</div>
           </div>
           <div style={{ padding: 20 }}>
-             {/* Mocking for now, will connect to real table in next step */}
              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {[
-                  { msg: 'Websocket re-established after 1200ms', type: 'INFO', time: '2 mins ago' },
-                  { msg: 'Rate limit approaching (85/100 requests)', type: 'WARNING', time: '15 mins ago' },
-                  { msg: 'Heartbeat latency spike: 450ms', type: 'WARNING', time: '1 hour ago' }
-                ].map((alert, i) => (
+                {activeAlerts.length > 0 ? activeAlerts.map((alert, i) => (
                   <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'start' }}>
-                    {alert.type === 'WARNING' ? <AlertCircle size={16} color={colors.amber} /> : <CheckCircle size={16} color={colors.green} />}
+                    {alert.level === 'CRITICAL' || alert.level === 'ERROR' 
+                      ? <AlertCircle size={16} color={colors.red} /> 
+                      : alert.level === 'WARNING' 
+                        ? <AlertCircle size={16} color={colors.amber} /> 
+                        : <CheckCircle size={16} color={colors.green} />}
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, color: colors.textPrimary }}>{alert.msg}</div>
-                      <div style={{ fontSize: 11, color: colors.textMuted }}>{alert.time}</div>
+                      <div style={{ fontSize: 13, color: colors.textPrimary, fontWeight: alert.level === 'CRITICAL' ? 600 : 400 }}>
+                        {alert.message}
+                      </div>
+                      <div style={{ fontSize: 11, color: colors.textMuted }}>
+                        {new Date(alert.created_at).toLocaleString()} · {alert.category}
+                      </div>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div style={{ fontSize: 13, color: colors.textMuted, textAlign: 'center', padding: 20 }}>
+                    No active system alerts.
+                  </div>
+                )}
              </div>
           </div>
         </div>
