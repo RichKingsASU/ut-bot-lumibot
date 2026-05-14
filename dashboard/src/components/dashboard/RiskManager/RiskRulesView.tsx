@@ -180,7 +180,7 @@ const RiskRulesView: React.FC = () => {
             }}
           >
             <Save size={14} />
-            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save to Supabase'}
+            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save settings'}
           </button>
         }
       />

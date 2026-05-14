@@ -563,10 +563,10 @@ export function SettingsView() {
         <div style={styles.accordionBody(isOpen('database'))}>
           <div style={styles.accordionContent}>
             <div style={styles.inputRow}>
-              <label style={styles.label}>Supabase URL</label>
+              <label style={styles.label}>Database endpoint</label>
               <input type="text" style={{ ...styles.input, opacity: 0.7 }} value={supabaseUrl} readOnly />
             </div>
-            <MaskedInput label="Supabase Anon Key" value={supabaseKey} onChange={setSupabaseKey} placeholder="Enter anon key" />
+            <MaskedInput label="Database token" value={supabaseKey} onChange={setSupabaseKey} placeholder="Enter database token" />
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
               <button style={styles.btn}>Test Connection</button>
               <div style={{ display: 'flex', alignItems: 'center' }}>

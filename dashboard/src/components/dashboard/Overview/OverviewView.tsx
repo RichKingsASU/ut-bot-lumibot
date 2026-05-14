@@ -75,7 +75,7 @@ export default function OverviewView() {
 
   const connectionItems = [
     { name: 'Alpaca', online: connected },
-    { name: 'Supabase', online: true },
+    { name: 'Database', online: true },
     { name: 'Bot Engine', online: botStatus.online },
   ]
 

@@ -144,7 +144,7 @@ export const LoginPage: React.FC = () => {
 
         <div style={{ marginTop: '32px', borderTop: '1px solid var(--border)', paddingTop: '24px' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-            Secure access powered by Supabase Auth
+            Secure access powered by Database Auth
           </p>
         </div>
       </div>

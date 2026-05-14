@@ -36,7 +36,7 @@ export default function App() {
 
   useEffect(() => {
     if (supabaseMisconfigured) {
-      setAuthError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in environment variables.')
+      setAuthError('Database is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in environment variables.')
       setAuthLoading(false)
       return
     }
