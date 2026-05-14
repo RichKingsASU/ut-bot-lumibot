@@ -290,7 +290,7 @@ const StrategyLabView: React.FC = () => {
       { type: 'dim',  text: `${ts()} Validating strategy manifest...` },
       { type: 'ok',   text: `${ts()} Compilation successful. 0 errors, 0 warnings.` },
       { type: 'info', text: `${ts()} Building backtest engine for ${sym}...` },
-      { type: 'dim',  text: `${ts()} Loading 1,632,271 bars from Supabase...` },
+      { type: 'dim',  text: `${ts()} Loading 1,632,271 bars from database...` },
       { type: 'dim',  text: `${ts()} Running simulation...` },
       { type: 'info', text: `${ts()} Progress: 25%` },
       { type: 'info', text: `${ts()} Progress: 50%` },
