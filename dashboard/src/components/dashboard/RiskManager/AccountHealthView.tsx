@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react'
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
+import { PageHeader } from '../../ui/PageHeader'
 import {
   calculateWinRate,
   calculateMaxDrawdown,
-  calculateSharpe,
   calculateSortino,
   calculateProfitFactor,
   sampleSizeWarning,
 } from '../../../utils/tradeStats'
+import { formatSharpe } from '../../../lib/metrics'
 
 const AccountHealthView: React.FC = () => {
   const { account, signals } = useTradingContext()
@@ -57,7 +58,10 @@ const AccountHealthView: React.FC = () => {
   const maxDrawdown = calculateMaxDrawdown(equityValues)
 
   const dailyReturns = trades.map((t) => t.pnl / (equity || 1))
-  const sharpe = calculateSharpe(dailyReturns)
+  // TODO: replace with real trade returns once paper trading is verified.
+  // Per-trade P&L is not a daily return series, so annualized Sharpe is not
+  // computable here yet.
+  const sharpe: number | null = null
   const sortino = calculateSortino(dailyReturns)
   const profitFactor = calculateProfitFactor(trades)
   const sampleWarning = sampleSizeWarning(trades.length)
@@ -88,7 +92,7 @@ const AccountHealthView: React.FC = () => {
   const STAT_CARDS = [
     { label: 'Current Drawdown', value: `${currentDrawdown >= 0 ? '+' : ''}${currentDrawdown}%`, color: currentDrawdown >= 0 ? '#3fb950' : '#e3b341' },
     { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: '#f85149' },
-    { label: 'Sharpe Ratio', value: sharpe.toFixed(2), color: '#3fb950' },
+    { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: '#3fb950' },
     { label: 'Sortino Ratio', value: sortino.toFixed(2), color: '#3fb950' },
     { label: 'Win Rate', value: `${winRate}%`, color: '#58a6ff' },
     { label: 'Profit Factor', value: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2), color: '#3fb950' },
@@ -113,10 +117,11 @@ const AccountHealthView: React.FC = () => {
 
   return (
     <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Account Health</h2>
-        <DataFreshness lastUpdated={lastUpdated} />
-      </div>
+      <PageHeader
+        title="Account health"
+        subtitle="Drawdown & scoring"
+        actions={<DataFreshness lastUpdated={lastUpdated} />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, marginBottom: 20 }}>
         {/* Risk Score Gauge */}

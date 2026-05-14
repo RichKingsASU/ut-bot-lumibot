@@ -1,5 +1,7 @@
 import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
+import { formatTimestamp } from '../../../lib/time'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -47,6 +49,7 @@ export default function EquitiesStrategyView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
+      <PageHeader title="Strategy config" subtitle="UT Bot ATR Trailing Stop" />
       {/* Strategy Header */}
       <div
         style={{
@@ -185,7 +188,7 @@ export default function EquitiesStrategyView() {
                 {allSignals.map((sig, i) => (
                   <tr key={`${sig.index}-${i}`}>
                     <td style={{ padding: '8px 16px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                      {new Date(sig.time).toLocaleString()}
+                      {formatTimestamp(sig.time)}
                     </td>
                     <td style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}` }}>
                       <span

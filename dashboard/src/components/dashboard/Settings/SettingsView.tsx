@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send, CheckCircle2, XCircle, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { API } from '../../../lib/api'
+import { PageHeader } from '../../ui/PageHeader'
 
 const styles = {
   container: {
@@ -223,7 +224,11 @@ function MaskedInput({ label, value, onChange, placeholder }: { label: string; v
           value={value}
           onChange={e => onChange(e.target.value)}
         />
-        <button style={styles.eyeBtn} onClick={() => setVisible(!visible)}>
+        <button
+          style={styles.eyeBtn}
+          onClick={() => setVisible(!visible)}
+          aria-label={visible ? 'Hide value' : 'Show value'}
+        >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
@@ -390,10 +395,7 @@ export function SettingsView() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <SettingsIcon size={22} />
-        Settings
-      </div>
+      <PageHeader title="Settings" subtitle="Broker · Database · Bot" />
 
       {/* BROKER */}
       <div style={styles.accordion}>

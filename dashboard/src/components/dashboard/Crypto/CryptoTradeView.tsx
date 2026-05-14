@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -60,6 +61,9 @@ export default function CryptoTradeView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.bgPrimary }}>
+      <div style={{ padding: '20px 24px 0' }}>
+        <PageHeader title="Crypto trading" subtitle="BTC · ETH · SOL" />
+      </div>
       {/* Symbol Tabs */}
       <div style={{
         display: 'flex', gap: 0,

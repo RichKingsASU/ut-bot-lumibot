@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Activity, Shield, Zap, AlertCircle, CheckCircle, Server, Globe, Lock } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -82,12 +83,7 @@ export default function SystemHealthView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-        <Activity size={24} color={colors.blue} />
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: colors.textPrimary }}>
-          Operational Hardening — System Health
-        </h1>
-      </div>
+      <PageHeader title="System health" subtitle="Operational status" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
         <StatCard 

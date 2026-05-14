@@ -1,5 +1,7 @@
 import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
+import { formatTimestamp } from '../../../lib/time'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -41,6 +43,9 @@ export default function EquitiesTradeView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.bgPrimary }}>
+      <div style={{ padding: '20px 24px 0' }}>
+        <PageHeader title="Equities trading" subtitle="IWM · SPY · QQQ" />
+      </div>
       {/* Symbol Tabs */}
       <div
         style={{
@@ -157,7 +162,7 @@ export default function EquitiesTradeView() {
                   {recentSignals.map((sig, i) => (
                     <tr key={`${sig.index}-${i}`}>
                       <td style={{ padding: '6px 12px', fontSize: 12, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                        {new Date(sig.time).toLocaleTimeString()}
+                        {formatTimestamp(sig.time, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </td>
                       <td style={{ padding: '6px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <span

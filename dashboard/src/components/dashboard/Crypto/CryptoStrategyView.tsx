@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Settings, Zap, Activity, ToggleLeft, ToggleRight } from 'lucide-react'
+import { PageHeader } from '../../ui/PageHeader'
 
 interface AssetToggle {
   symbol: string
@@ -47,30 +48,29 @@ const CryptoStrategyView: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: 'var(--bg-primary, #0d1117)', minHeight: '100vh', color: 'var(--text-primary, #e6edf3)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 4px 0' }}>Crypto Momentum Scanner</h1>
-          <p style={{ margin: 0, color: 'var(--text-muted, #8b949e)', fontSize: '14px' }}>Strategy Configuration</p>
-        </div>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '6px 14px',
-            borderRadius: '20px',
-            fontSize: '12px',
-            fontWeight: 700,
-            background: 'rgba(63,185,80,0.15)',
-            color: 'var(--green, #3fb950)',
-            border: '1px solid rgba(63,185,80,0.3)',
-          }}
-        >
-          <Zap size={12} />
-          24/7 ACTIVE
-        </span>
-      </div>
+      <PageHeader
+        title="Crypto strategy"
+        subtitle="Momentum scanner"
+        actions={
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 700,
+              background: 'rgba(63,185,80,0.15)',
+              color: 'var(--green, #3fb950)',
+              border: '1px solid rgba(63,185,80,0.3)',
+            }}
+          >
+            <Zap size={12} />
+            24/7 ACTIVE
+          </span>
+        }
+      />
 
       {/* Parameters grid */}
       <div style={{ ...cardStyle, marginBottom: '16px' }}>

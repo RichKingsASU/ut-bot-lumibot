@@ -304,6 +304,7 @@ export function TopBar() {
       {/* Logout button */}
       <button
         onClick={() => supabase.auth.signOut()}
+        aria-label="Sign out"
         title="Sign out"
         style={{
           background: 'none',

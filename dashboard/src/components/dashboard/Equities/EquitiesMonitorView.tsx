@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
+import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -137,14 +138,15 @@ export default function EquitiesMonitorView() {
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>
-          Equities — Data Monitor
-        </div>
-        <span style={{ fontSize: 12, color: colors.textMuted }}>
-          {lastFetched ? `Updated ${lastFetched.toLocaleTimeString()} · refreshes every 30s` : 'Refreshes every 30s'}
-        </span>
-      </div>
+      <PageHeader
+        title="Bar inventory"
+        subtitle="Market data health"
+        actions={
+          <span style={{ fontSize: 12, color: colors.textMuted }}>
+            {lastFetched ? `Updated ${lastFetched.toLocaleTimeString()} · refreshes every 30s` : 'Refreshes every 30s'}
+          </span>
+        }
+      />
 
       {/* Market Hours Banner */}
       <div style={{

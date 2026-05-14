@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { TrendingUp, TrendingDown, Download, DollarSign, Target, BarChart3, Award, AlertTriangle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { PageHeader } from '../../ui/PageHeader'
 
 interface CryptoTrade {
   id: number
@@ -89,27 +90,30 @@ const CryptoPerformanceView: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: 'var(--bg-primary, #0d1117)', minHeight: '100vh', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Crypto Performance</h1>
-        <button
-          onClick={handleExportCSV}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 16px',
-            background: 'var(--bg-tertiary, #21262d)',
-            border: '1px solid var(--border, #30363d)',
-            borderRadius: '8px',
-            color: 'var(--text-primary, #e6edf3)',
-            cursor: 'pointer',
-            fontSize: '13px',
-          }}
-        >
-          <Download size={14} />
-          Export CSV
-        </button>
-      </div>
+      <PageHeader
+        title="Crypto performance"
+        subtitle="Paper account results"
+        actions={
+          <button
+            onClick={handleExportCSV}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              background: 'var(--bg-tertiary, #21262d)',
+              border: '1px solid var(--border, #30363d)',
+              borderRadius: '8px',
+              color: 'var(--text-primary, #e6edf3)',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
+        }
+      />
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>

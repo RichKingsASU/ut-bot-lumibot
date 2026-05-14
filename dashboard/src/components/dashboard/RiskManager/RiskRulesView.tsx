@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Shield, Save, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { PageHeader } from '../../ui/PageHeader'
 
 interface RiskRule {
   enabled: boolean
@@ -160,36 +161,42 @@ const RiskRulesView: React.FC = () => {
 
   return (
     <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-primary, #e6edf3)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield size={22} color="var(--blue, #58a6ff)" />
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Risk Rules Configuration</h2>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 18px', borderRadius: 6,
-            border: 'none',
-            backgroundColor: saved ? '#3fb950' : 'var(--blue, #58a6ff)',
-            color: '#fff', fontWeight: 600, fontSize: 13,
-            cursor: saving ? 'not-allowed' : 'pointer',
-            opacity: saving ? 0.7 : 1,
-            transition: 'background-color 0.2s',
-          }}
-        >
-          <Save size={14} />
-          {saving ? 'Saving...' : saved ? 'Saved!' : 'Save to Supabase'}
-        </button>
-      </div>
+      <PageHeader
+        title="Risk rules"
+        subtitle="Paper & live limits"
+        actions={
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 18px', borderRadius: 6,
+              border: 'none',
+              backgroundColor: saved ? '#3fb950' : 'var(--blue, #58a6ff)',
+              color: '#fff', fontWeight: 600, fontSize: 13,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+              transition: 'background-color 0.2s',
+            }}
+          >
+            <Save size={14} />
+            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save to Supabase'}
+          </button>
+        }
+      />
 
       {/* Two columns */}
-      <div style={{ display: 'flex', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }} className="risk-rules-grid">
         {renderColumn('PAPER Trading Rules', 'PAPER', paperRules, setPaperRules)}
         {renderColumn('LIVE Trading Rules', 'LIVE', liveRules, setLiveRules)}
       </div>
+      <style>{`
+        @media (min-width: 1280px) {
+          .risk-rules-grid {
+            grid-template-columns: 1fr 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }

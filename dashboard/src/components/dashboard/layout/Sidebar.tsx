@@ -156,6 +156,8 @@ export function Sidebar() {
       >
         <button
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
           style={{
             background: 'none',
             border: 'none',
@@ -217,6 +219,8 @@ export function Sidebar() {
                       toggleSection(item.label)
                     }
                   }}
+                  aria-label={item.label}
+                  aria-expanded={isExpanded}
                   style={{
                     width: '100%',
                     display: 'flex',
@@ -250,6 +254,7 @@ export function Sidebar() {
               ) : (
                 <Link
                   to={item.path!}
+                  aria-label={collapsed ? item.label : undefined}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

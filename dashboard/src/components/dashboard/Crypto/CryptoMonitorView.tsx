@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Bitcoin, Clock, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { Clock, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { PageHeader } from '../../ui/PageHeader'
 
 interface CryptoQuote {
   symbol: string
@@ -8,6 +9,13 @@ interface CryptoQuote {
 }
 
 const CRYPTO_SYMBOLS = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD']
+
+const CRYPTO_META: Record<string, { symbol: string; color: string }> = {
+  'BTC/USD': { symbol: '₿', color: '#F7931A' },
+  'ETH/USD': { symbol: 'Ξ', color: '#627EEA' },
+  'SOL/USD': { symbol: '◎', color: '#9945FF' },
+  'AVAX/USD': { symbol: 'A', color: '#E84142' },
+}
 
 const CryptoMonitorView: React.FC = () => {
   const [quotes, setQuotes] = useState<CryptoQuote[]>([])
@@ -53,28 +61,32 @@ const CryptoMonitorView: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: 'var(--bg-primary, #0d1117)', minHeight: '100vh', color: 'var(--text-primary, #e6edf3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Crypto — Monitor</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {lastUpdated && (
-            <span style={{ fontSize: '13px', color: 'var(--text-muted, #8b949e)' }}>
-              <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              Updated {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-          <button
-            onClick={fetchPrices}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '6px 12px', fontSize: 12, color: 'var(--blue, #58a6ff)',
-              background: 'none', border: '1px solid var(--border, #30363d)',
-              borderRadius: 6, cursor: 'pointer',
-            }}
-          >
-            <RefreshCw size={12} /> Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Crypto monitor"
+        subtitle="24/7 price feed"
+        actions={
+          <>
+            {lastUpdated && (
+              <span style={{ fontSize: '13px', color: 'var(--text-muted, #8b949e)' }}>
+                <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Updated {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+            <button
+              onClick={fetchPrices}
+              aria-label="Refresh"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '6px 12px', fontSize: 12, color: 'var(--blue, #58a6ff)',
+                background: 'none', border: '1px solid var(--border, #30363d)',
+                borderRadius: 6, cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </>
+        }
+      />
 
       {/* 24/7 badge */}
       <div style={{
@@ -105,6 +117,7 @@ const CryptoMonitorView: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {quotes.map(q => {
             const isPositive = q.change24h >= 0
+            const meta = CRYPTO_META[q.symbol] ?? { symbol: '?', color: '#888' }
             return (
               <div key={q.symbol} style={{
                 background: 'var(--bg-secondary, #161b22)',
@@ -113,12 +126,17 @@ const CryptoMonitorView: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: '50%',
-                      background: 'var(--bg-tertiary, #21262d)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Bitcoin size={20} style={{ color: 'var(--amber, #e3b341)' }} />
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        background: `${meta.color}22`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: meta.color,
+                        fontSize: 20, fontWeight: 700, lineHeight: 1,
+                      }}
+                    >
+                      {meta.symbol}
                     </div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{q.symbol}</div>
