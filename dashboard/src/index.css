@@ -78,7 +78,14 @@
   }
 
   .button-secondary {
-    @apply px-6 py-2.5 bg-surface-2 border border-border-muted hover:border-border-active rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 text-secondary hover:text-vibrant;
+    @apply px-6 py-2.5 border rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300;
+    background-color: var(--color-surface-2);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--color-secondary);
+  }
+  .button-secondary:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-vibrant-white);
   }
 
   /* Institutional Spacing & Density */
@@ -122,8 +129,16 @@
 }
 
 /* Depth Layers */
-.depth-1 { @apply bg-surface-1 border border-border-muted; }
-.depth-2 { @apply bg-surface-2 border border-border-muted; }
+.depth-1 {
+  @apply border;
+  background-color: var(--color-surface-1);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.depth-2 {
+  @apply border;
+  background-color: var(--color-surface-2);
+  border-color: rgba(255, 255, 255, 0.08);
+}
 
 /* Grid Background */
 .bg-grid {
@@ -137,15 +152,21 @@
 }
 
 .ids-table th {
-  @apply text-left px-6 py-4 text-[10px] font-bold text-dim uppercase tracking-[0.2em] border-b border-border-muted bg-surface-1/50;
+  @apply text-left px-6 py-4 text-[10px] font-bold uppercase tracking-[0.2em] border-b;
+  color: var(--color-dim);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background-color: color-mix(in srgb, var(--color-surface-1) 50%, transparent);
 }
 
 .ids-table td {
-  @apply px-6 py-4 text-xs font-medium text-secondary border-b border-border-muted/30;
+  @apply px-6 py-4 text-xs font-medium border-b;
+  color: var(--color-secondary);
+  border-bottom-color: rgba(255, 255, 255, 0.024);
 }
 
 .ids-table tr:hover td {
-  @apply bg-white/[0.02] text-vibrant;
+  @apply bg-white/[0.02];
+  color: var(--color-vibrant-white);
 }
 
 /* Specific component colors for Tailwind */
