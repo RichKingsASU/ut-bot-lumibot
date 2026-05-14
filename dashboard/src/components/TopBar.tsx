@@ -3,6 +3,7 @@ import type { Timeframe } from '../types/dashboard'
 import { fmtPrice } from '../utils/formatters'
 import { supabase } from '../lib/supabaseClient'
 import { useTradingContext } from '../context/TradingContext'
+import { useTradingMode, tradingModeBadgeStyle } from '../hooks/useTradingMode'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
 
@@ -31,7 +32,8 @@ export const TopBar: React.FC = () => {
   const botRunning = botStatus.online
   const tradeSide = activePosition?.side ?? null
 
-  const paperMode = true // TODO: read from settings/context when paper mode toggle is wired
+  const tradingMode = useTradingMode()
+  const modeBadge = tradingModeBadgeStyle(tradingMode)
 
   const [editingSymbol, setEditingSymbol] = useState(false)
   const [inputVal, setInputVal] = useState(symbol)
@@ -144,15 +146,15 @@ export const TopBar: React.FC = () => {
       <span
         className="badge"
         style={{
-          backgroundColor: paperMode ? 'rgba(63,185,80,0.2)' : 'rgba(248,81,73,0.25)',
-          color: paperMode ? '#3fb950' : '#f85149',
-          border: paperMode ? '1px solid #3fb950' : '1px solid #f85149',
+          backgroundColor: modeBadge.background,
+          color: modeBadge.color,
+          border: modeBadge.border,
           fontWeight: 700,
-          fontSize: paperMode ? '11px' : '12px',
-          animation: paperMode ? undefined : 'pulse-live 1.5s ease-in-out infinite',
+          fontSize: tradingMode === 'live' ? '12px' : '11px',
+          animation: tradingMode === 'live' ? 'pulse-live 1.5s ease-in-out infinite' : undefined,
         }}
       >
-        {paperMode ? 'PAPER' : 'LIVE'}
+        {modeBadge.label}
       </span>
 
       <span className={`badge ${botRunning ? 'badge-green' : botStatus.status === 'stale' ? 'badge-amber' : 'badge-gray'}`}>
