@@ -1,6 +1,6 @@
 import { Handler } from '@netlify/functions';
 import axios from 'axios';
-import { logAlert } from "./lib/alerts"
+import { logAlert, setBotTargetStatus } from "./lib/alerts"
 
 let lastFlattenTime = 0;
 const FLATTEN_COOLDOWN = 30000; // 30s
@@ -51,6 +51,12 @@ export const handler: Handler = async (event) => {
     // 2. Close all open positions
     await axios.delete(`${baseUrl}/v2/positions`, { headers });
     console.log('[FLATTEN] All open positions liquidation initiated.');
+
+    // 3. Signal bot to shutdown
+    const signalSent = await setBotTargetStatus('shutdown');
+    if (signalSent) {
+      console.log('[FLATTEN] Bot shutdown signal sent to Supabase.');
+    }
 
     return {
       statusCode: 200,

@@ -39,6 +39,8 @@ export default function OverviewView() {
     if (account) setLastUpdated(new Date())
   }, [account?.equity])
 
+  const { winRate: liveWinRate } = useMetrics()
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted }}>
@@ -53,10 +55,6 @@ export default function OverviewView() {
   const dayPnlPct = lastEquity !== 0 ? (dayPnl / lastEquity) * 100 : 0
   const openPositions = positions.length
 
-  // Win Rate comes from the shared useMetrics hook (single source of truth
-  // across Overview, /equities/performance, and /risk/health). Shows '—'
-  // when portfolio_snapshots has no real trade data.
-  const { winRate: liveWinRate } = useMetrics()
   const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
 
   const statCards = [
