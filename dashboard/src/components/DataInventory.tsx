@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toUserMessage } from '../lib/apiError';
 
 interface InventoryItem {
   symbol: string;
@@ -33,7 +34,7 @@ export const DataInventory: React.FC = () => {
       const json = await res.json();
       setData(json);
     } catch (err: any) {
-      setError(err.message);
+      setError(toUserMessage(err));
     } finally {
       setLoading(false);
     }
