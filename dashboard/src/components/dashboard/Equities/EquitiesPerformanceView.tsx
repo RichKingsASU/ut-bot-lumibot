@@ -9,15 +9,10 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
-import {
-  calculateWinRate,
-  calculateMaxDrawdown,
-  sampleSizeWarning,
-  type Trade,
-} from '../../../utils/tradeStats'
 import { HISTORICAL_TRADES } from '../../../data/historicalTrades'
 import { formatSharpe } from '../../../lib/metrics'
 import { PageHeader } from '../../ui/PageHeader'
+import { useMetrics } from '../../../hooks/useMetrics'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -59,6 +54,12 @@ const mockTrades = HISTORICAL_TRADES
 
 export default function EquitiesPerformanceView() {
   const { account, loading } = useTradingContext()
+  const {
+    winRate: liveWinRate,
+    totalPnl: liveTotalPnl,
+    totalTrades: liveTotalTrades,
+    maxDrawdown: liveMaxDrawdown,
+  } = useMetrics()
 
   if (loading) {
     return (
@@ -68,34 +69,22 @@ export default function EquitiesPerformanceView() {
     )
   }
 
-  const totalPnl = mockTrades.reduce((sum, t) => sum + t.pnl, 0)
-  const trades: Trade[] = mockTrades.map((t) => ({
-    entry: t.entry,
-    exit: t.exit,
-    side: t.side as 'BUY' | 'SELL',
-    pnl: t.pnl,
-    date: t.date,
-  }))
-  const winRate = calculateWinRate(trades)
-  const totalTrades = mockTrades.length
-  const equityValues = trades.reduce((acc, t) => {
-    const last = acc[acc.length - 1] || 100000
-    acc.push(last + t.pnl)
-    return acc
-  }, [] as number[])
-  const maxDrawdown = calculateMaxDrawdown(equityValues)
-  // TODO: replace with real trade returns once paper trading is verified.
-  // Historical trades here are per-trade P&L, not period returns, so we cannot
-  // compute a meaningful annualized Sharpe yet.
+  // KPIs come from the shared useMetrics hook. Fall back to '—' when
+  // portfolio_snapshots has no real data — same behaviour as Overview and
+  // /risk/health so all three pages agree.
+  const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
+  const totalPnlDisplay = liveTotalPnl == null ? '—' : currency.format(liveTotalPnl)
+  const totalTradesDisplay = liveTotalTrades == null ? '—' : String(liveTotalTrades)
+  const maxDrawdownDisplay = liveMaxDrawdown == null ? '—' : `${liveMaxDrawdown}%`
   const sharpe: number | null = null
-  const warning = sampleSizeWarning(totalTrades)
+  const pnlColor = liveTotalPnl == null || liveTotalPnl >= 0 ? colors.green : colors.red
 
   const statCards = [
-    { label: 'Total P&L', value: currency.format(totalPnl), color: totalPnl >= 0 ? colors.green : colors.red },
-    { label: 'Win Rate', value: `${winRate}%`, color: colors.green },
-    { label: 'Total Trades', value: String(totalTrades), color: colors.blue },
+    { label: 'Total P&L', value: totalPnlDisplay, color: pnlColor },
+    { label: 'Win Rate', value: winRateDisplay, color: colors.green },
+    { label: 'Total Trades', value: totalTradesDisplay, color: colors.blue },
     { label: 'Sharpe Ratio', value: formatSharpe(sharpe), color: colors.amber },
-    { label: 'Max Drawdown', value: `${maxDrawdown}%`, color: colors.red },
+    { label: 'Max Drawdown', value: maxDrawdownDisplay, color: colors.red },
   ]
 
   const handleExportCSV = () => {

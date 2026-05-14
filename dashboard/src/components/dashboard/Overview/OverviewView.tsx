@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { DollarSign, TrendingUp, Briefcase, Target } from 'lucide-react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
-import { calculateAllTimeWinRate } from '../../../data/historicalTrades'
 import { formatTimestamp } from '../../../lib/time'
 import { PageHeader } from '../../ui/PageHeader'
+import { useMetrics } from '../../../hooks/useMetrics'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -52,11 +52,11 @@ export default function OverviewView() {
   const dayPnlPct = lastEquity !== 0 ? (dayPnl / lastEquity) * 100 : 0
   const openPositions = positions.length
 
-  // Win Rate is sourced from the historical trade log (same source as the
-  // Performance page) so both screens always show the same number. The old
-  // implementation read from live session signals which had 0 trades and
-  // therefore always rendered 0%.
-  const winRate = calculateAllTimeWinRate()
+  // Win Rate comes from the shared useMetrics hook (single source of truth
+  // across Overview, /equities/performance, and /risk/health). Shows '—'
+  // when portfolio_snapshots has no real trade data.
+  const { winRate: liveWinRate } = useMetrics()
+  const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
 
   const statCards = [
     { label: 'Total Equity', value: currency.format(equity), icon: DollarSign, color: colors.blue },
@@ -67,7 +67,7 @@ export default function OverviewView() {
       color: dayPnl >= 0 ? colors.green : colors.red,
     },
     { label: 'Open Positions', value: String(openPositions), icon: Briefcase, color: colors.amber },
-    { label: 'Win Rate (all time)', value: `${winRate}%`, icon: Target, color: colors.green },
+    { label: 'Win Rate (all time)', value: winRateDisplay, icon: Target, color: colors.green },
   ]
 
   const recentSignals = [...signals].reverse().slice(0, 10)

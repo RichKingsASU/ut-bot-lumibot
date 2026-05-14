@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { PageHeader } from '../../ui/PageHeader'
+import { PriceChart, type PriceChartBar } from '../../ui/PriceChart'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -59,6 +60,18 @@ export default function CryptoTradeView() {
 
   const latestBar = bars.length > 0 ? bars[bars.length - 1] : null
 
+  const chartBars: PriceChartBar[] = useMemo(
+    () =>
+      bars.map((b) => ({
+        time: Math.floor(new Date(b.t).getTime() / 1000),
+        open: b.o,
+        high: b.h,
+        low: b.l,
+        close: b.c,
+      })),
+    [bars],
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.bgPrimary }}>
       <div style={{ padding: '20px 24px 0' }}>
@@ -106,22 +119,32 @@ export default function CryptoTradeView() {
         {/* Chart Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flex: 1,
             backgroundColor: colors.bgSecondary, margin: 16, marginRight: 0,
             borderRadius: 8, border: `1px solid ${colors.border}`,
+            padding: 12,
+            minHeight: 320,
+            display: 'flex', flexDirection: 'column',
           }}>
-            {loading ? (
-              <span style={{ color: colors.textMuted, fontSize: 14 }}>Loading chart data...</span>
-            ) : (
-              <span style={{ color: colors.textMuted, fontSize: 16 }}>
-                Candlestick Chart &mdash; {symbol} 1Min
-                {latestBar && (
-                  <span style={{ display: 'block', fontSize: 13, marginTop: 8 }}>
-                    Latest: {currency.format(latestBar.c)} | Bars: {bars.length}
-                  </span>
-                )}
-              </span>
-            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: colors.textMuted, fontWeight: 600 }}>
+                {symbol} · 1Min
+              </div>
+              {latestBar && (
+                <div style={{ fontSize: 12, color: colors.textMuted }}>
+                  Latest: {currency.format(latestBar.c)} | Bars: {bars.length}
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {loading && bars.length === 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted, fontSize: 14 }}>
+                  Loading chart data...
+                </div>
+              ) : (
+                <PriceChart bars={chartBars} symbol={symbol} height={320} />
+              )}
+            </div>
           </div>
 
           {/* Recent Bars Log */}

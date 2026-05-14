@@ -2,6 +2,8 @@ import React from 'react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { formatTimestamp } from '../../../lib/time'
 import { PageHeader } from '../../ui/PageHeader'
+import { PriceChart } from '../../ui/PriceChart'
+import { useAlpacaBars } from '../../../hooks/useAlpacaBars'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -32,6 +34,7 @@ export default function EquitiesTradeView() {
   } = useTradingContext()
 
   const recentSignals = [...signals].reverse().slice(0, 20)
+  const { bars: chartBars } = useAlpacaBars(symbol, timeframe || '15Min', 200)
 
   if (loading) {
     return (
@@ -84,19 +87,23 @@ export default function EquitiesTradeView() {
           <div
             style={{
               flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               backgroundColor: colors.bgSecondary,
               margin: 16,
               marginRight: 0,
               borderRadius: 8,
               border: `1px solid ${colors.border}`,
+              padding: 12,
+              minHeight: 320,
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
-            <span style={{ color: colors.textMuted, fontSize: 16 }}>
-              Candlestick Chart &mdash; {symbol} {timeframe}
-            </span>
+            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8, fontWeight: 600 }}>
+              {symbol} · {timeframe || '15Min'}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <PriceChart bars={chartBars} symbol={symbol} height={320} />
+            </div>
           </div>
 
           {/* Signal Log */}

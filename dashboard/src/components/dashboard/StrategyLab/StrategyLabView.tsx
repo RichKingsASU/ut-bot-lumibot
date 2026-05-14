@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { StrategyLibrary, LabStrategy } from './StrategyLibrary';
 import { CodeEditor } from './CodeEditor';
 import { TerminalPanel, TerminalLine } from './TerminalPanel';
@@ -191,6 +192,9 @@ const ts = () => {
 };
 
 const StrategyLabView: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const onBacktestTab = location.pathname === '/strategy-lab/backtest';
   const [strategies, setStrategies] = useState<LabStrategy[]>(DEFAULT_STRATEGIES);
   const [selectedId, setSelectedId] = useState('ut-bot-v2');
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([
@@ -431,6 +435,32 @@ const StrategyLabView: React.FC = () => {
     <div className="flex flex-col h-full overflow-hidden" style={{ height: 'calc(100vh - 48px)' }}>
       <div style={{ padding: '16px 24px 0' }}>
         <PageHeader title="Strategy lab" subtitle="Editor · Backtest" />
+        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #30363d', marginTop: 12 }}>
+          {([
+            { key: 'editor',   label: 'Editor',   path: '/strategy-lab/editor' },
+            { key: 'backtest', label: 'Backtest', path: '/strategy-lab/backtest' },
+          ] as const).map((tab) => {
+            const active = tab.key === 'backtest' ? onBacktestTab : !onBacktestTab;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => navigate(tab.path)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: 'transparent',
+                  border: 'none',
+                  color: active ? '#58a6ff' : '#8b949e',
+                  borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
+                  cursor: 'pointer',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="flex flex-1 overflow-hidden min-h-0">
       {/* LEFT: Strategy Library — fixed width */}
