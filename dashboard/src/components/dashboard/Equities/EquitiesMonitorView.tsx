@@ -57,7 +57,7 @@ export default function EquitiesMonitorView() {
           .in('symbol', EQUITY_SYMBOLS)
 
         if (invErr) {
-          console.error('[EquitiesMonitor] bar_inventory query failed:', invErr)
+          console.error('[EquitiesMonitor] Data could not be loaded. Please refresh or try again.', invErr)
           setError(toUserMessage(invErr))
           setLoading(false)
           return
