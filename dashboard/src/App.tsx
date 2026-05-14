@@ -12,6 +12,7 @@ import CryptoMonitorView from './components/dashboard/Crypto/CryptoMonitorView'
 import CryptoPerformanceView from './components/dashboard/Crypto/CryptoPerformanceView'
 import CryptoStrategyView from './components/dashboard/Crypto/CryptoStrategyView'
 import StrategyLabView from './components/dashboard/StrategyLab/StrategyLabView'
+import BacktestView from './components/dashboard/StrategyLab/BacktestView'
 import NewsFeedView from './components/dashboard/NewsSocial/NewsFeedView'
 import SentimentView from './components/dashboard/NewsSocial/SentimentView'
 import WatchlistView from './components/dashboard/NewsSocial/WatchlistView'
@@ -102,7 +103,7 @@ export default function App() {
             <Route path="/crypto/strategy" element={<CryptoStrategyView />} />
             <Route path="/strategy-lab" element={<StrategyLabView />} />
             <Route path="/strategy-lab/editor" element={<StrategyLabView />} />
-            <Route path="/strategy-lab/backtest" element={<StrategyLabView />} />
+            <Route path="/strategy-lab/backtest" element={<BacktestView />} />
             <Route path="/news/feed" element={<NewsFeedView />} />
             <Route path="/news/sentiment" element={<SentimentView />} />
             <Route path="/news/watchlist" element={<WatchlistView />} />
