@@ -30,6 +30,7 @@ eggs/
 .eggs/
 lib/
 !dashboard/src/lib/
+!dashboard/netlify/functions/lib/
 lib64/
 parts/
 sdist/
