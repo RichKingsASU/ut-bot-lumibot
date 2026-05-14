@@ -72,7 +72,7 @@ export const DataInventory: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-100 uppercase tracking-wider">Supabase Data Inventory</h3>
+        <h3 className="text-lg font-bold text-slate-100 uppercase tracking-wider">Database Data Inventory</h3>
         <button 
           onClick={runBacktest}
           className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-xs font-bold rounded transition-colors"

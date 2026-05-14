@@ -73,7 +73,7 @@ export function PortfolioView() {
         color: 'var(--text-muted)',
         fontSize: '14px'
       }}>
-        Equity Curve Chart Loading (Supabase `portfolio_snapshots`)
+        Equity Curve Chart Loading (Portfolio snapshots)
       </div>
     </div>
   )

@@ -172,7 +172,7 @@ function useConnections() {
     : '—'
   return [
     { name: 'Alpaca SIP',   type: 'Market Data',  status: true,        latency: '12ms', lastChecked: '2 sec ago' },
-    { name: 'Supabase',     type: 'Database',     status: true,        latency: '34ms', lastChecked: '5 sec ago' },
+    { name: 'Database',     type: 'Database',     status: true,        latency: '34ms', lastChecked: '5 sec ago' },
     { name: 'OPRA Options', type: 'Options Data', status: false,       latency: '--',   lastChecked: '1 min ago' },
     { name: 'Bot Engine',   type: 'Execution',    status: bot.online,  latency: '8ms',  lastChecked: botUpdated },
   ]
@@ -186,11 +186,11 @@ const seedingData = [
 ]
 
 const tablesData = [
-  { name: 'bars_1m', rows: 45230, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
-  { name: 'bars_15m', rows: 3015, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
-  { name: 'signals', rows: 1247, columns: ['id', 'timestamp', 'symbol', 'direction', 'strength', 'strategy_id'] },
-  { name: 'portfolio_snapshots', rows: 890, columns: ['id', 'timestamp', 'equity', 'cash', 'positions_value'] },
-  { name: 'strategies', rows: 5, columns: ['id', 'name', 'parameters', 'active', 'created_at'] },
+  { name: '1-minute bars', rows: 45230, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
+  { name: '15-minute bars', rows: 3015, columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'] },
+  { name: 'Trading signals', rows: 1247, columns: ['id', 'timestamp', 'symbol', 'direction', 'strength', 'strategy_id'] },
+  { name: 'Portfolio snapshots', rows: 890, columns: ['id', 'timestamp', 'equity', 'cash', 'positions_value'] },
+  { name: 'Strategies', rows: 5, columns: ['id', 'name', 'parameters', 'active', 'created_at'] },
 ]
 
 const mockLogs = [
@@ -199,15 +199,15 @@ const mockLogs = [
   { time: '2026-04-02 09:30:03', level: 'INFO', message: 'Subscribed to IWM, SPY, QQQ bar data.' },
   { time: '2026-04-02 09:30:15', level: 'WARN', message: 'OPRA options feed connection timeout. Retrying...' },
   { time: '2026-04-02 09:30:18', level: 'ERROR', message: 'OPRA connection failed after 3 attempts.' },
-  { time: '2026-04-02 09:31:00', level: 'INFO', message: 'Inserted 60 bars into bars_1m table.' },
+  { time: '2026-04-02 09:31:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
   { time: '2026-04-02 09:31:01', level: 'INFO', message: 'Signal generated: IWM BUY strength=0.82' },
-  { time: '2026-04-02 09:32:00', level: 'INFO', message: 'Inserted 60 bars into bars_1m table.' },
-  { time: '2026-04-02 09:33:00', level: 'INFO', message: 'Inserted 60 bars into bars_1m table.' },
-  { time: '2026-04-02 09:33:05', level: 'WARN', message: 'Supabase response latency above threshold: 450ms' },
-  { time: '2026-04-02 09:34:00', level: 'INFO', message: 'Inserted 60 bars into bars_1m table.' },
-  { time: '2026-04-02 09:35:00', level: 'INFO', message: 'bars_15m aggregation complete for IWM, SPY, QQQ.' },
+  { time: '2026-04-02 09:32:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
+  { time: '2026-04-02 09:33:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
+  { time: '2026-04-02 09:33:05', level: 'WARN', message: 'Database response latency above threshold: 450ms' },
+  { time: '2026-04-02 09:34:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
+  { time: '2026-04-02 09:35:00', level: 'INFO', message: '15-minute bars aggregation complete for IWM, SPY, QQQ.' },
   { time: '2026-04-02 09:35:02', level: 'ERROR', message: 'Failed to write portfolio snapshot: constraint violation.' },
-  { time: '2026-04-02 09:36:00', level: 'INFO', message: 'Inserted 60 bars into bars_1m table.' },
+  { time: '2026-04-02 09:36:00', level: 'INFO', message: 'Inserted 60 bars into 1-minute bars table.' },
   { time: '2026-04-02 09:36:30', level: 'INFO', message: 'Daily P&L summary dispatched to Telegram.' },
 ]
 
@@ -288,7 +288,7 @@ export function DataView() {
         <div>
           <div style={styles.card}>
             <div style={{ fontWeight: 600, marginBottom: '12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Table size={16} /> Supabase Tables
+              <Table size={16} /> Data tables
             </div>
             {tablesData.map(t => (
               <div key={t.name}>
