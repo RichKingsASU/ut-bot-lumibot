@@ -324,11 +324,12 @@ export function SettingsView() {
 
     try {
       console.log(`[CONN_TEST] Attempting connection to ${baseUrl}...`)
+      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || ''
       const response = await fetch(API.alpacaAccount(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-api-key': 'test-admin-key' // In a real app, this would be a secure session key
+          'x-admin-api-key': adminKey
         },
         body: JSON.stringify({
           apiKey: alpacaKey,
