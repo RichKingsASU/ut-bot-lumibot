@@ -1,28 +1,35 @@
 import type { Handler } from '@netlify/functions'
 
 const handler: Handler = async (event) => {
-  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
-  const adminKey = process.env.ADMIN_API_KEY;
-  const requestKey = event.headers['x-admin-api-key'];
-  if (adminKey && requestKey !== adminKey) {
-    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
-  }
-
   let apiKey = process.env.ALPACA_API_KEY || ''
   let apiSecret = process.env.ALPACA_API_SECRET || ''
   let baseUrl = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets'
+  let bodyHasCredentials = false
 
-  // Allow overriding for testing
+  // Allow overriding for testing (Settings → Test Connection sends user-typed creds)
   if (event.httpMethod === 'POST' && event.body) {
     try {
       const body = JSON.parse(event.body);
-      if (body.apiKey) apiKey = body.apiKey;
-      if (body.apiSecret) apiSecret = body.apiSecret;
+      if (body.apiKey) { apiKey = body.apiKey; bodyHasCredentials = true; }
+      if (body.apiSecret) { apiSecret = body.apiSecret; bodyHasCredentials = true; }
       if (body.baseUrl) baseUrl = body.baseUrl;
     } catch (e) {
       return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
     }
   }
+
+  // Admin auth only gates env-credential reads. Requests that supply their
+  // own Alpaca credentials in the body are implicitly authorized by knowing
+  // them (the response only echoes data Alpaca returns for those keys).
+  const adminKey = process.env.ADMIN_API_KEY;
+  const requestKey = event.headers['x-admin-api-key'];
+  if (!bodyHasCredentials && adminKey && requestKey !== adminKey) {
+    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+
+  console.log('[alpaca-account] key present:', !!process.env.ALPACA_API_KEY)
+  console.log('[alpaca-account] secret present:', !!process.env.ALPACA_API_SECRET)
+  console.log('[alpaca-account] base url:', baseUrl)
 
   const startTime = Date.now();
   try {
