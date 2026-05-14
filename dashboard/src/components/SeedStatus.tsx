@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toUserMessage } from '../lib/apiError';
 
 interface BarInventory {
   symbol: string;
@@ -61,7 +62,7 @@ const SeedStatus: React.FC = () => {
       setData(json);
       setError(null);
     } catch (err: any) {
-      setError(err.message);
+      setError(toUserMessage(err));
     } finally {
       setLoading(false);
     }
@@ -86,7 +87,7 @@ const SeedStatus: React.FC = () => {
       alert(`Triggered ${timeframe} backfill for ${symbol}`);
       fetchStatus();
     } catch (err: any) {
-      alert(err.message);
+      alert(toUserMessage(err));
     } finally {
       setTriggering(null);
     }
@@ -104,7 +105,7 @@ const SeedStatus: React.FC = () => {
       alert(`Triggered options seed for ${underlying}`);
       fetchStatus();
     } catch (err: any) {
-      alert(err.message);
+      alert(toUserMessage(err));
     } finally {
       setTriggering(null);
     }

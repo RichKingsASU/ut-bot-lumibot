@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
+import { toUserMessage } from '../../../lib/apiError'
 import { PageHeader } from '../../ui/PageHeader'
 
 const colors = {
@@ -44,9 +45,9 @@ export default function EquitiesMonitorView() {
   const [error, setError] = useState<string | null>(null)
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
+  const fetchStats = useCallback(async () => {
+    setLoading(true)
+    try {
         // Pull aggregated bar inventory for the equity symbols. Using the
         // bar_inventory view sidesteps subtle timeframe key mismatches —
         // whatever timeframe values exist in ohlcv_bars surface here.
@@ -57,7 +58,7 @@ export default function EquitiesMonitorView() {
 
         if (invErr) {
           console.error('[EquitiesMonitor] bar_inventory query failed:', invErr)
-          setError(`bar_inventory query failed: ${invErr.message}`)
+          setError(toUserMessage(invErr))
           setLoading(false)
           return
         }
@@ -121,16 +122,17 @@ export default function EquitiesMonitorView() {
         setLastFetched(new Date())
       } catch (e: any) {
         console.error('[EquitiesMonitor] Unexpected error:', e)
-        setError(e?.message || 'Unknown error fetching bar inventory')
+        setError(toUserMessage(e))
       } finally {
         setLoading(false)
       }
-    }
+  }, [])
 
+  useEffect(() => {
     fetchStats()
     const interval = setInterval(fetchStats, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchStats])
 
   const visibleStats = tableStats.filter(
     (s) => s.timeframe === '1Min' || s.timeframe === '15Min'
@@ -170,8 +172,29 @@ export default function EquitiesMonitorView() {
           borderRadius: 8,
           color: colors.red,
           fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
         }}>
-          {error}
+          <span>{error}</span>
+          <button
+            onClick={() => { setError(null); fetchStats() }}
+            disabled={loading}
+            style={{
+              padding: '4px 10px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${colors.red}`,
+              borderRadius: 4,
+              color: colors.red,
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading ? 'Retrying…' : 'Retry'}
+          </button>
         </div>
       )}
 

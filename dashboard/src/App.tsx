@@ -24,6 +24,8 @@ import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import SystemHealthView from './components/dashboard/SystemHealth/SystemHealthView'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
+import { toUserMessage } from './lib/apiError'
+import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import type { Session } from '@supabase/supabase-js'
 import { TradingProvider } from './context/TradingContext'
 
@@ -40,11 +42,11 @@ export default function App() {
     }
 
     supabase.auth.getSession().then(({ data: { session: s }, error }) => {
-      if (error) setAuthError(`Auth error: ${error.message}`)
+      if (error) setAuthError(toUserMessage(error))
       setSession(s)
       setAuthLoading(false)
     }).catch((err) => {
-      setAuthError(`Connection failed: ${(err as Error).message}`)
+      setAuthError(toUserMessage(err))
       setAuthLoading(false)
     })
 
@@ -86,6 +88,7 @@ export default function App() {
   return (
     <TradingProvider>
       <BrowserRouter>
+        <ErrorBoundary>
         <Routes>
           <Route element={<MainLayout />}>
             <Route path="/" element={<OverviewView />} />
@@ -114,6 +117,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </ErrorBoundary>
       </BrowserRouter>
     </TradingProvider>
   )
