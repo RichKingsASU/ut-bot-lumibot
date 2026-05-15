@@ -105,24 +105,22 @@ export function Sidebar() {
     >
       {/* Brand Header */}
       <div className="p-6 border-b border-border-muted/50 flex items-center justify-between overflow-hidden">
-        <AnimatePresence mode="wait">
-          {!collapsed && (
-            <motion.div 
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              className="flex items-center gap-3"
-            >
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/40">
-                <Zap className="w-5 h-5 text-white fill-current" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-vibrant tracking-tighter">DISRUPTING</h1>
-                <p className="text-[10px] font-bold text-blue-400 tracking-[0.2em]">ALPHA</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="flex items-center gap-3 overflow-hidden">
+          <img src="/logo.png" alt="DA" className="w-8 h-8 object-contain flex-shrink-0" />
+          <AnimatePresence mode="wait">
+            {!collapsed && (
+              <motion.div 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="flex flex-col"
+              >
+                <h1 className="text-sm font-bold text-vibrant tracking-tighter leading-none">DISRUPTING</h1>
+                <p className="text-[10px] font-bold text-blue-400 tracking-[0.2em] leading-tight">ALPHA</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
         <button 
           onClick={() => setCollapsed(!collapsed)}
           className="p-2 hover:bg-surface-2 rounded-xl transition-smooth text-dim hover:text-vibrant"

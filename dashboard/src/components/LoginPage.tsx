@@ -45,6 +45,7 @@ export const LoginPage: React.FC = () => {
         textAlign: 'center'
       }}>
         <div style={{ marginBottom: '32px' }}>
+          <img src="/logo.png" alt="Disrupting Alpha" style={{ width: '64px', height: '64px', marginBottom: '20px', objectFit: 'contain' }} />
           <h1 style={{ 
             fontSize: '24px', 
             fontWeight: 700, 
