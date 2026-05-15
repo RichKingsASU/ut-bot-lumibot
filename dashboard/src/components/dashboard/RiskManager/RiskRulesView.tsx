@@ -47,6 +47,27 @@ const RiskRulesView: React.FC = () => {
   }))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchRules() {
+      try {
+        const { data, error } = await supabase.from('risk_config').select('*')
+        if (error) throw error
+        if (data) {
+          const paper = data.find(d => d.mode === 'paper')
+          const live = data.find(d => d.mode === 'live')
+          if (paper?.rules) setPaperRules(paper.rules)
+          if (live?.rules) setLiveRules(live.rules)
+        }
+      } catch (err) {
+        console.error('Failed to fetch risk config:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchRules()
+  }, [])
 
   const handleSave = async () => {
     setSaving(true)
@@ -70,6 +91,17 @@ const RiskRulesView: React.FC = () => {
     field: 'enabled' | 'value',
     val: boolean | string,
   ) => {
+    // Basic validation for numeric fields
+    if (field === 'value' && typeof val === 'string') {
+      const numericKeys = ['maxDailyLoss', 'maxDrawdown', 'positionLimit', 'cooldownPeriod', 'stopLossRequired', 'trailingStop']
+      if (numericKeys.includes(key)) {
+        // Allow empty string (for typing) or valid numbers/decimals
+        if (val !== '' && isNaN(Number(val))) {
+          return
+        }
+      }
+    }
+
     setter(prev => ({
       ...prev,
       [key]: { ...prev[key], [field]: val },
@@ -155,6 +187,14 @@ const RiskRulesView: React.FC = () => {
             )
           })}
         </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: 24, backgroundColor: 'var(--bg-primary, #0d1117)', minHeight: '100%', color: 'var(--text-muted, #8b949e)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        Loading Risk Configuration...
       </div>
     )
   }

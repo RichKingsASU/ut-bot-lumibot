@@ -79,6 +79,20 @@ The project now includes a comprehensive data collection layer for historical an
    - `ingest-bars`: Every 1 min during market hours.
    - `ingest-options-chain`: Every 5 mins during market hours.
 
+## 🚨 Emergency Procedures (OAT Hardened)
+
+### Manual Kill Switch
+If the system enters an unstable state or significant slippage occurs:
+1. **Primary Method**: Use the Alpaca Dashboard to "Cancel All Orders" and "Liquidate All Positions".
+2. **Bot Shutdown**: 
+   - Local: Press `CTRL+C` twice in the terminal running `main.py`.
+   - Docker: `docker-compose down`.
+   - PM2: `pm2 stop all`.
+
+### Recovery Protocols (SOP-002)
+- **Supabase Disconnect**: The bot will continue to trade using its last known trailing stop but will stop reporting to the dashboard. **Manual monitoring of Alpaca is required.**
+- **Broker API Error**: The bot will log a `CRITICAL` error and halt all entry signals. It will attempt to manage existing exits via local ATR calculation.
+
 ## Disclaimer
 This software is for educational purposes only. Do not use it for live trading without thorough testing. Algorithmic trading involves significant risk. **Past performance is not indicative of future results.**
 

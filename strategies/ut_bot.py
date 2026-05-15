@@ -60,14 +60,16 @@ class UTBotStrategy(Strategy):
         self.trades_today = get_daily_trade_count()
         bot_logger.info(f"Strategy Initialized. Symbol: {self.parameters['symbol']}, P&L: ${self.daily_realized_pnl:.2f}, Trades: {self.trades_today}/{config.MAX_TRADES_PER_DAY}", category=ErrorCategory.STRATEGY)
 
-    def on_trading_iteration(self):
-        # ── [RISK FIX] Check daily loss limit ─────────────────────────────
-        if self.daily_realized_pnl <= -config.MAX_DAILY_LOSS:
+        # ── [RISK FIX] Check daily loss limit with hard safeguard ─────────
+        # Use the most conservative (lowest) of: configured limit or absolute safeguard
+        effective_limit = min(config.MAX_DAILY_LOSS, config.ABSOLUTE_DAILY_LOSS_LIMIT)
+        
+        if self.daily_realized_pnl <= -effective_limit:
             if not has_open_position():
-                bot_logger.error(f"CRITICAL: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Trading suspended.", category=ErrorCategory.RISK)
+                bot_logger.error(f"CRITICAL: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Trading suspended (Limit: ${effective_limit})", category=ErrorCategory.RISK)
                 return
             else:
-                bot_logger.warning(f"WARNING: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Managing existing position only.", category=ErrorCategory.RISK)
+                bot_logger.warning(f"WARNING: DAILY LOSS LIMIT REACHED (${self.daily_realized_pnl:.2f}) — Managing existing position only (Limit: ${effective_limit})", category=ErrorCategory.RISK)
 
         symbol = self.parameters["symbol"]
         atr_period = self.parameters["atr_period"]

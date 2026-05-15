@@ -32,7 +32,8 @@ def _get(key: str, default: str) -> str:
     return os.getenv(key, default)
 
 
-# ── Risk Management ─────────────────────────────────────────────────────────
+# ── Risk Management (Safeguards) ─────────────────────────────────────────────
+ABSOLUTE_DAILY_LOSS_LIMIT = 5000.0  # Absolute floor safeguard (unreachable by UI)
 MAX_DAILY_LOSS = float(_get("MAX_DAILY_LOSS", "500.0"))
 MAX_POSITION_SIZE = int(_get("MAX_POSITION_SIZE", "5"))        # Max contracts per trade
 MAX_TRADES_PER_DAY = int(_get("MAX_TRADES_PER_DAY", "10"))   # Prevent runaway strategy

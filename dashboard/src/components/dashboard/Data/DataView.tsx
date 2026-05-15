@@ -3,6 +3,7 @@ import { Database, Cloud, Activity, RefreshCw, Table, ScrollText, Wifi } from 'l
 import { useTradingContext } from '../../../context/TradingContext'
 import { PageHeader } from '../../ui/PageHeader'
 import { supabase } from '../../../lib/supabaseClient'
+import SeedStatus from '../../SeedStatus'
 
 const styles = {
   container: {
@@ -199,7 +200,7 @@ export function DataView() {
       <PageHeader title="Data connections" subtitle="Live metrics & audits" />
 
       <div style={styles.tabs}>
-        {(['CONNECTION', 'TABLES', 'LOGS'] as Tab[]).map(tab => (
+        {(['CONNECTION', 'SEEDING', 'TABLES', 'LOGS'] as Tab[]).map(tab => (
           <button key={tab} style={styles.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
             {tab}
           </button>
@@ -232,6 +233,12 @@ export function DataView() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'SEEDING' && (
+        <div style={{ marginTop: '16px' }}>
+          <SeedStatus />
         </div>
       )}
 
