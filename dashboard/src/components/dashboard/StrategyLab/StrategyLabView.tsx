@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StrategyLibrary, LabStrategy } from './StrategyLibrary';
@@ -56,6 +56,109 @@ const StrategyLabView: React.FC = () => {
 
   const selected = strategies.find(s => s.id === selectedId) || strategies[0];
 
+  // Load any persisted strategies from Supabase so uploaded/saved code
+  // round-trips across page reloads. Raw code is stored in params.code.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('strategies')
+          .select('id, name, params, updated_at')
+          .order('updated_at', { ascending: false });
+        if (cancelled || error || !data) return;
+        const remote: LabStrategy[] = [];
+        for (const r of data as Array<Record<string, any>>) {
+          const params = (r.params ?? {}) as Record<string, any>;
+          const code = typeof params.code === 'string' ? params.code : '';
+          if (!code) continue;
+          remote.push({
+            id: String(r.id),
+            name: String(r.name ?? 'Untitled'),
+            filename: String(params.filename ?? `${String(r.name ?? 'untitled').toLowerCase().replace(/\s+/g, '_')}.py`),
+            language: 'Python',
+            status: (params.status as LabStrategy['status']) ?? 'draft',
+            code,
+            lastSaved: r.updated_at ? `Last saved ${new Date(r.updated_at).toLocaleString()}` : 'Saved',
+          });
+        }
+        if (remote.length === 0) return;
+        setStrategies(prev => {
+          const byId = new Map(prev.map(s => [s.id, s]));
+          for (const s of remote) byId.set(s.id, s);
+          return Array.from(byId.values());
+        });
+      } catch {
+        // Defaults remain in place if Supabase is unreachable.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleUpload = useCallback((rawCode: string, filename: string) => {
+    // rawCode is the raw file contents from FileReader.readAsText —
+    // whitespace and newlines are preserved. The string lives in React
+    // state; the syntax-highlighted spans are a derived view only.
+    const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseName = filename.replace(/\.[^.]+$/, '');
+    const newStrategy: LabStrategy = {
+      id,
+      name: baseName,
+      filename,
+      language: 'Python',
+      status: 'draft',
+      lastSaved: 'Unsaved',
+      code: rawCode,
+    };
+    setStrategies(prev => [newStrategy, ...prev]);
+    setSelectedId(id);
+    setLastSaved('Unsaved');
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!selected) return;
+    // Always save the raw code from React state — never read DOM/innerHTML.
+    const payload = {
+      name: selected.name,
+      params: {
+        code: selected.code,
+        filename: selected.filename,
+        status: selected.status,
+      },
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      // Use upsert by id when the strategy id is a UUID (already persisted);
+      // otherwise insert a fresh row and reconcile the new id into state.
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selected.id);
+      if (isUuid) {
+        const { error } = await supabase
+          .from('strategies')
+          .update(payload)
+          .eq('id', selected.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('strategies')
+          .insert([payload])
+          .select('id')
+          .single();
+        if (error) throw error;
+        if (data?.id) {
+          const newId = String(data.id);
+          setStrategies(prev => prev.map(s => (s.id === selected.id ? { ...s, id: newId } : s)));
+          setSelectedId(newId);
+        }
+      }
+      const stamp = `Last saved ${new Date().toLocaleTimeString()}`;
+      setLastSaved(stamp);
+      setTerminalLines(prev => [...prev, { type: 'ok', text: `[save] ${selected.filename} persisted (${selected.code.length} bytes).` }]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTerminalLines(prev => [...prev, { type: 'error', text: `[save] Failed: ${msg}` }]);
+    }
+  }, [selected]);
+
   const handleRunBacktest = useCallback((params: any) => {
     setTerminalStatus('running');
     setTerminalLines(prev => [...prev, { type: 'info', text: `[backtest] Initializing simulation for ${params.symbol}...` }]);
@@ -106,7 +209,7 @@ const StrategyLabView: React.FC = () => {
             strategies={strategies}
             selectedId={selectedId}
             onSelect={(s) => setSelectedId(s.id)}
-            onUpload={(code, filename) => {}}
+            onUpload={handleUpload}
           />
         </aside>
 
@@ -126,7 +229,7 @@ const StrategyLabView: React.FC = () => {
                     lastSaved={lastSaved}
                     onCompile={() => {}}
                     onBacktest={() => {}}
-                    onSave={() => {}}
+                    onSave={handleSave}
                 />
             </div>
           </div>
