@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useTradingContext } from '../../../context/TradingContext'
-import { formatSharpe } from '../../../lib/metrics'
 import { PageHeader } from '../../ui/PageHeader'
 import { useMetrics } from '../../../hooks/useMetrics'
 import { supabase } from '../../../lib/supabaseClient'
@@ -75,6 +74,61 @@ export default function EquitiesPerformanceView() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const statCards = useMemo(() => {
+    const fmtCurrency = (v: number | null | undefined) =>
+      v == null || !Number.isFinite(v) ? '—' : currency.format(v)
+    const fmtPct = (v: number | null | undefined) =>
+      v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(1)}%`
+    const pnlColor =
+      liveTotalPnl == null
+        ? colors.textPrimary
+        : liveTotalPnl >= 0
+          ? colors.green
+          : colors.red
+    const ddColor = liveMaxDrawdown == null ? colors.textPrimary : colors.red
+    return [
+      { label: 'Total P&L', value: fmtCurrency(liveTotalPnl), color: pnlColor },
+      { label: 'Win Rate', value: fmtPct(liveWinRate), color: colors.blue },
+      { label: 'Total Trades', value: liveTotalTrades ?? '—', color: colors.textPrimary },
+      { label: 'Max Drawdown', value: fmtCurrency(liveMaxDrawdown), color: ddColor },
+    ]
+  }, [liveTotalPnl, liveWinRate, liveTotalTrades, liveMaxDrawdown])
+
+  const handleExportCSV = useCallback(() => {
+    const rows = liveTrades ?? []
+    const headers = ['date', 'symbol', 'side', 'entry_price', 'exit_price', 'trade_pnl', 'return_pct']
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v)
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines = [headers.join(',')]
+    for (const t of rows) {
+      const entry = Number(t?.entry_price)
+      const exit = Number(t?.exit_price)
+      const ret = Number.isFinite(entry) && entry !== 0 && Number.isFinite(exit)
+        ? ((exit - entry) / entry) * 100
+        : 0
+      lines.push([
+        t?.created_at ?? '',
+        t?.symbol ?? '',
+        t?.side ?? '',
+        entry,
+        exit,
+        t?.trade_pnl ?? '',
+        ret.toFixed(4),
+      ].map(escape).join(','))
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `equities-performance-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [liveTrades])
 
   if (contextLoading || fetching) {
     return (
