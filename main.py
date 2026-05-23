@@ -1,6 +1,9 @@
+<<<<<<< Updated upstream
 from adapters.json_logger import setup_logging
 setup_logging()
 
+=======
+>>>>>>> Stashed changes
 import signal
 import sys
 from lumibot.traders import Trader
@@ -9,6 +12,7 @@ from strategies.ut_bot import UTBotStrategy
 from strategies import heartbeat
 from config import ALPACA_CONFIG
 import adapters.supabase_logger as db
+import adapters.telegram_alerts as tg
 
 
 def _shutdown_handler(signum, frame):
@@ -28,6 +32,7 @@ from logger import bot_logger, ErrorCategory
 
 def main():
     session_id = db.generate_session_id()
+<<<<<<< Updated upstream
     bot_logger.info(f"Bot Session Started: {session_id}", category=ErrorCategory.INFRASTRUCTURE)
     
     if not db.check_connectivity():
@@ -92,11 +97,40 @@ def main():
         
     except Exception as e:
         bot_logger.error(f"Fatal crash in trade loop: {e}", category=ErrorCategory.CRITICAL, exc_info=True)
+=======
+    print(f"Session ID: {session_id}")
+    db.check_connectivity()
+    tg.check_connectivity()
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+    broker = Alpaca(ALPACA_CONFIG)
+    strategy = UTBotStrategy(broker=broker)
+    symbol = strategy.parameters.get("symbol", "SPY")
+    db.log_session_start(symbol, metadata={
+        "broker": "alpaca_paper",
+        "strategy": "UTBotStrategy",
+        "parameters": {k: str(v) for k, v in strategy.parameters.items()},
+    })
+    tg.send_startup()
+    trader = Trader()
+    trader.add_strategy(strategy)
+    heartbeat.start()
+    print("Starting Lumibot Trader...")
+    try:
+        try:
+            trader.run_all()
+        except Exception as e:
+            tg.send_error(f"Bot crashed: {e}")
+            raise
+>>>>>>> Stashed changes
     finally:
         bot_logger.info("Initiating Graceful Shutdown...", category=ErrorCategory.INFRASTRUCTURE)
         heartbeat.stop()
         db.log_session_end()
+        tg.send_alert("🛑 Bot stopped — session ended")
 
 
 if __name__ == "__main__":
     main()
+
+
