@@ -40,6 +40,7 @@ class AdaptiveTrendMR(Strategy):
     }
 
     def initialize(self):
+        self.set_market("24/7")  # ETH/USD trades 24/7 — disable market-open wait
         self.sleeptime = self.parameters["timeframe"]
         self.symbol = self.parameters["symbol"]
         self.quote_symbol = self.parameters["quote_symbol"]
