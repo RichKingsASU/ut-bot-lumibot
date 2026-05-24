@@ -130,10 +130,21 @@ const defaultToggles: Record<string, boolean> = {
   dailyPnl: true, drawdown: true, botStatus: true, connLost: true,
 }
 
+interface SystemAlert {
+  id: number
+  ts: string
+  category: string
+  message: string
+  level: string
+  is_resolved: boolean
+}
+
 export function AlertsView() {
   const [alertsEnabled, setAlertsEnabled] = useState(false)
   const [toggles, setToggles] = useState(defaultToggles)
   const [filterType, setFilterType] = useState('All')
+  const [alerts, setAlerts] = useState<SystemAlert[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     supabase
@@ -144,7 +155,27 @@ export function AlertsView() {
       .then(({ data }) => {
         if (data) setAlertsEnabled(data.value === 'true' || data.value === true)
       })
+
+    fetchAlerts()
   }, [])
+
+  const fetchAlerts = async () => {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('system_alerts')
+        .select('id, ts, category, message, level, is_resolved')
+        .order('ts', { ascending: false })
+        .limit(100)
+
+      if (error) throw error
+      setAlerts(data || [])
+    } catch (err) {
+      console.error('Error fetching alerts:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleMasterToggle = async () => {
     const newVal = !alertsEnabled
@@ -158,8 +189,17 @@ export function AlertsView() {
     setToggles(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const filteredAlerts = filterType === 'All' ? mockAlerts : mockAlerts.filter(a => a.type === filterType)
-  const alertTypes = ['All', ...Array.from(new Set(mockAlerts.map(a => a.type)))]
+  const filteredAlerts = filterType === 'All' ? alerts : alerts.filter(a => a.category === filterType)
+  const alertTypes = ['All', ...Array.from(new Set(alerts.map(a => a.category)))]
+
+  const formatDate = (isoString: string) => {
+    try {
+      const d = new Date(isoString)
+      return d.toISOString().replace('T', ' ').substring(0, 19)
+    } catch (e) {
+      return isoString
+    }
+  }
 
   return (
     <div style={styles.container}>
@@ -325,34 +365,41 @@ export function AlertsView() {
             </select>
           </div>
         </div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Time</th>
-              <th style={styles.th}>Type</th>
-              <th style={styles.th}>Message</th>
-              <th style={{ ...styles.th, textAlign: 'center' as const }}>Delivered</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredAlerts.map((alert, i) => (
-              <tr key={i}>
-                <td style={{ ...styles.td, fontFamily: 'monospace', color: 'var(--text-muted, #8b949e)', whiteSpace: 'nowrap' as const }}>{alert.time}</td>
-                <td style={styles.td}>
-                  <span style={styles.typeBadge(alert.type)}>{alert.type}</span>
-                </td>
-                <td style={styles.td}>{alert.message}</td>
-                <td style={{ ...styles.td, textAlign: 'center' as const }}>
-                  {alert.delivered ? (
-                    <CheckCircle size={16} style={{ color: 'var(--green, #3fb950)' }} />
-                  ) : (
-                    <XCircle size={16} style={{ color: 'var(--red, #f85149)' }} />
-                  )}
-                </td>
+
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted, #8b949e)' }}>
+            Loading live alerts from database...
+          </div>
+        ) : filteredAlerts.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted, #8b949e)', border: '1px dashed var(--border, #30363d)', borderRadius: '6px' }}>
+            No alerts found.
+          </div>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Time</th>
+                <th style={styles.th}>Type</th>
+                <th style={styles.th}>Message</th>
+                <th style={{ ...styles.th, textAlign: 'center' as const }}>Delivered</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredAlerts.map((alert) => (
+                <tr key={alert.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', color: 'var(--text-muted, #8b949e)', whiteSpace: 'nowrap' as const }}>{formatDate(alert.ts)}</td>
+                  <td style={styles.td}>
+                    <span style={styles.typeBadge(alert.category)}>{alert.category}</span>
+                  </td>
+                  <td style={styles.td}>{alert.message}</td>
+                  <td style={{ ...styles.td, textAlign: 'center' as const }}>
+                    <CheckCircle size={16} style={{ color: 'var(--green, #3fb950)' }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
