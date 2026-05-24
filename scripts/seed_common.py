@@ -77,7 +77,7 @@ def send_telegram(message: str) -> bool:
 # --------------------------------------------------------------------------- #
 # Symbol universe & seed plan
 # --------------------------------------------------------------------------- #
-EQUITY_SYMBOLS = ["SPY", "IWM", "QQQ"]
+EQUITY_SYMBOLS = ["SPY", "IWM", "QQQ", "NVDA", "TSLA", "AAPL", "MSFT", "META", "GOOGL"]
 CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD", "SOL/USD"]
 
 # Requested start dates per the project spec. Alpaca will return less if it
