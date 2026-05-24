@@ -60,6 +60,7 @@ class AgentState(TypedDict):
     regime_summary: dict
     market_context: dict
     signal_recommendation: dict
+    debate_result: dict
     greeks_decision: dict
     kelly_sizing: dict
     risk_decision: dict
@@ -120,6 +121,72 @@ def signal_node(state: AgentState) -> AgentState:
     )
     logger.info(f"[Orchestrator] {asset} signal_recommendation: {signal_recommendation}")
     return {**state, "signal_recommendation": signal_recommendation}
+
+
+async def _debate_node_async(state: AgentState) -> AgentState:
+    """Bull/Bear/Judge debate intercept (async inner).
+
+    Runs between signal_node and greeks_intercept. If the judge says don't
+    proceed, the signal is overridden to HOLD/LOW so downstream nodes skip it.
+    """
+    from agents.bull_agent import BullAgent
+    from agents.bear_agent import BearAgent
+    from agents.judge_agent import JudgeAgent
+
+    signal = state.get('signal_recommendation', {}) or {}
+    market = state.get('market_context', {}) or {}
+    greeks = state.get('greeks_decision', {}) or {}
+    regime = state.get('regime_summary', {}) or {}
+    symbol = signal.get('symbol', 'SPY')
+    asset_class = state.get('asset_class', 'equities')
+
+    try:
+        bull = BullAgent(f'{asset_class}-bull')
+        bear = BearAgent(f'{asset_class}-bear')
+        judge = JudgeAgent(f'{asset_class}-judge')
+
+        bull_case = await bull.analyze(symbol, market, signal, greeks, regime)
+        bear_case = await bear.analyze(symbol, market, signal, greeks, regime)
+        verdict = await judge.analyze(symbol, bull_case, bear_case, signal)
+
+        state['debate_result'] = verdict
+
+        logger.info(
+            f"[Debate] {symbol}: "
+            f"Bull={bull_case['score']:.0f} "
+            f"Bear={bear_case['score']:.0f} "
+            f"Verdict={verdict['verdict']} "
+            f"({verdict['confidence_score']:.0f}%)"
+        )
+
+        # If judge says don't proceed, override signal to HOLD
+        if not verdict['proceed']:
+            signal.setdefault('reasoning', '')
+            signal['action'] = 'HOLD'
+            signal['confidence'] = 'LOW'
+            signal['reasoning'] += (
+                f" | Debate: {verdict['verdict']} "
+                f"({verdict['reasoning'][:100]})"
+            )
+            state['signal_recommendation'] = signal
+
+    except Exception as e:
+        logger.error(f"[Debate] Failed: {e}")
+        state['debate_result'] = {
+            'verdict': 'NEUTRAL',
+            'proceed': True,
+            'confidence_score': 50.0,
+            'bull_score': 50.0,
+            'bear_score': 50.0,
+        }
+
+    return state
+
+
+def debate_node(state: AgentState) -> AgentState:
+    """Bull/Bear/Judge debate node — wired between signal_node and greeks_intercept."""
+    logger.info(f"[Orchestrator] debate_node executing for {state['asset_class']}...")
+    return asyncio.run(_debate_node_async(dict(state)))
 
 
 async def _greeks_intercept_async(state: AgentState) -> AgentState:
@@ -308,6 +375,7 @@ def _build_graph() -> StateGraph:
     graph.add_node("regime_detection_node", regime_detection_node)
     graph.add_node("market_analysis_node", market_analysis_node)
     graph.add_node("signal_node", signal_node)
+    graph.add_node("debate_node", debate_node)
     graph.add_node("greeks_intercept", greeks_intercept)
     graph.add_node("kelly_sizing", kelly_sizing_node)
     graph.add_node("risk_node", risk_node)
@@ -318,7 +386,8 @@ def _build_graph() -> StateGraph:
     graph.add_edge(START, "regime_detection_node")
     graph.add_edge("regime_detection_node", "market_analysis_node")
     graph.add_edge("market_analysis_node", "signal_node")
-    graph.add_edge("signal_node", "greeks_intercept")
+    graph.add_edge("signal_node", "debate_node")
+    graph.add_edge("debate_node", "greeks_intercept")
     graph.add_edge("greeks_intercept", "kelly_sizing")
     graph.add_edge("kelly_sizing", "risk_node")
 
@@ -351,6 +420,7 @@ async def run_crypto_cycle() -> dict:
         "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
+        "debate_result": {},
         "greeks_decision": {},
         "kelly_sizing": {},
         "risk_decision": {},
@@ -370,6 +440,7 @@ async def run_equities_cycle() -> dict:
         "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
+        "debate_result": {},
         "greeks_decision": {},
         "kelly_sizing": {},
         "risk_decision": {},
@@ -397,6 +468,7 @@ async def run_cycle() -> dict:
     c_ks = crypto_result.get("kelly_sizing", {})
     c_rd = crypto_result.get("risk_decision", {})
     c_gd = crypto_result.get("greeks_decision", {})
+    c_db = crypto_result.get("debate_result", {})
 
     e_rs = equities_result.get("regime_summary", {})
     e_mc = equities_result.get("market_context", {})
@@ -404,6 +476,7 @@ async def run_cycle() -> dict:
     e_ks = equities_result.get("kelly_sizing", {})
     e_rd = equities_result.get("risk_decision", {})
     e_gd = equities_result.get("greeks_decision", {})
+    e_db = equities_result.get("debate_result", {})
 
     c_frac = c_ks.get("kelly_fraction", 0.0)
     c_wr = c_ks.get("win_rate", 0.50)
@@ -426,12 +499,24 @@ async def run_cycle() -> dict:
             f"| Gamma: {gd.get('gamma', 0.0):.4f}"
         )
 
+    # Debate lines
+    def _debate_line(db: dict) -> str:
+        if not db or db.get("verdict") in (None, "NEUTRAL"):
+            return "⚖️ Debate: n/a"
+        return (
+            f"⚖️ Debate: Bull {db.get('bull_score', 0.0):.0f} vs "
+            f"Bear {db.get('bear_score', 0.0):.0f}\n"
+            f"Verdict: {db.get('verdict', 'N/A')} "
+            f"({db.get('confidence_score', 0.0):.0f}%)"
+        )
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
         f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
+        f"{_debate_line(c_db)}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
         f"Win Rate: {c_wr:.1%} | Payout: {c_pay:.1f}x\n"
         f"{_greeks_line(c_gd)}\n"
@@ -440,6 +525,7 @@ async def run_cycle() -> dict:
         f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
+        f"{_debate_line(e_db)}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
         f"Win Rate: {e_wr:.1%} | Payout: {e_pay:.1f}x\n"
         f"{_greeks_line(e_gd)}\n"
