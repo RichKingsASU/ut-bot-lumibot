@@ -75,8 +75,7 @@ class AdaptiveTrendMR(Strategy):
             return
         lookback = self._min_bars + 10
         bars = self.get_historical_prices(
-            self.asset, lookback, "minute",
-            timeframe_multiplier=15, quote=self.quote_asset
+            self.asset, lookback, "15min", quote=self.quote_asset
         )
         if bars is None or bars.df is None or len(bars.df) < self._min_bars:
             return
