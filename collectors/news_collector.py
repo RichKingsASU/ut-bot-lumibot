@@ -254,3 +254,16 @@ class NewsCollector(BaseCollector):
         await self.http_client.aclose()
         await self.disconnect()
         logger.info("[NEWS] News Collector stopped.")
+
+
+async def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    collector = NewsCollector()
+    try:
+        await collector.run()
+    except KeyboardInterrupt:
+        await collector.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
