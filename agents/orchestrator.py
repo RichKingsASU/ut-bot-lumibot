@@ -70,14 +70,15 @@ class AgentState(TypedDict):
 
 # ── Node implementations ──────────────────────────────────────────────────────
 
-async def regime_detection_node(state: AgentState) -> AgentState:
+def regime_detection_node(state: AgentState) -> AgentState:
     from agents.regime_detector import RegimeDetector
     from datetime import datetime, timezone
+    import asyncio
     asset_class = state.get('asset_class', 'equities')
     
     try:
         detector = RegimeDetector('regime-detector', asset_class)
-        regime_summary = await detector.analyze()
+        regime_summary = asyncio.run(detector.analyze())
         state['regime_summary'] = regime_summary
         logger.info(
             f"[Regime] {asset_class} regime: "
