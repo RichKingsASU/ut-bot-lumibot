@@ -1,1 +1,1 @@
-# Risk Agent Placeholder
+# Risk Agent Stub

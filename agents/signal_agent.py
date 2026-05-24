@@ -1,1 +1,1 @@
-# Signal Agent Placeholder
+# Signal Agent Stub

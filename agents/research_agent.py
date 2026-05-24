@@ -1,1 +1,1 @@
-# Research Agent Placeholder
+# Research Agent Stub

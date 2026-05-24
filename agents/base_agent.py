@@ -46,15 +46,25 @@ class BaseAgent(abc.ABC):
         loop = asyncio.get_running_loop()
         embedding = await loop.run_in_executor(None, lambda: self._get_embed_model().encode(query_text).tolist())
         
-        results = await loop.run_in_executor(
-            None,
-            lambda: self.qdrant_client.search(
-                collection_name=collection,
-                query_vector=embedding,
-                limit=limit
-            )
-        )
-        return [res.payload for res in results]
+        def _search():
+            if hasattr(self.qdrant_client, "query_points"):
+                res = self.qdrant_client.query_points(
+                    collection_name=collection,
+                    query=embedding,
+                    limit=limit
+                )
+                return [p.payload for p in res.points]
+            elif hasattr(self.qdrant_client, "search"):
+                res = self.qdrant_client.search(
+                    collection_name=collection,
+                    query_vector=embedding,
+                    limit=limit
+                )
+                return [p.payload for p in res]
+            else:
+                raise AttributeError("QdrantClient has neither 'query_points' nor 'search' attribute!")
+                
+        return await loop.run_in_executor(None, _search)
 
     async def query_supabase(self, table, select="*", filters=None, limit=10):
         """httpx GET to SUPABASE_URL/rest/v1/{table} with apikey header, returning list of rows."""
