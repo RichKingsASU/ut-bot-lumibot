@@ -170,7 +170,8 @@ class KellySizer:
     symbol: str,
     asset_class: str = 'equities',
     regime: str = 'QUIET',
-    greeks_scalar: float = 1.0
+    greeks_scalar: float = 1.0,
+    ic_score: float = None
   ) -> dict:
     """Calculate adjusted data-driven position sizing in absolute dollar terms."""
     # 1. Get historical performance for symbol
@@ -199,10 +200,66 @@ class KellySizer:
         
     adjusted_kelly = kelly_fraction * regime_adjustment
     
-    # 5. Apply Greeks scalar from GreeksRiskEngine
-    # 6. Calculate final position value:
-    #    position_value = portfolio_value * adjusted_kelly * greeks_scalar
-    position_value = portfolio_value * adjusted_kelly * greeks_scalar
+    # 5. Fetch latest IC from database if not passed
+    if ic_score is None:
+        targets = []
+        if self.supabase_url and self.supabase_key:
+            targets.append((self.supabase_url, self.supabase_key, "CLOUD"))
+        local_url = os.getenv("SUPABASE_LOCAL_URL")
+        local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+        if local_url and local_key:
+            targets.append((local_url, local_key, "LOCAL"))
+            
+        for url, key, label in targets:
+            target_url = f"{url}/rest/v1/signal_performance"
+            headers = {
+                "apikey": key,
+                "Authorization": f"Bearer {key}"
+            }
+            params = {
+                "symbol": f"eq.{symbol}",
+                "select": "information_coefficient,status",
+                "order": "calculated_at.desc",
+                "limit": 1
+            }
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(target_url, headers=headers, params=params)
+                    if resp.status_code == 200 and resp.json():
+                        row = resp.json()[0]
+                        ic_val = row.get("information_coefficient")
+                        if ic_val is not None:
+                            ic_score = float(ic_val)
+                            logger.info(f"Retrieved latest IC score for {symbol} from {label} Supabase: {ic_score:.4f}")
+                            break
+            except Exception as e:
+                logger.error(f"Failed to query {label} Supabase for {symbol} IC score: {e}")
+
+    # 6. Apply IC adjustment:
+    #    IC >= 0.02: ic_scalar = 1.0
+    #    IC >= 0.005: ic_scalar = 0.75
+    #    IC >= 0.0: ic_scalar = 0.50
+    #    IC < 0.0: ic_scalar = 0.0
+    ic_scalar = 1.0
+    ic_adjustment = "No adjustment (healthy signal or no performance data)"
+    
+    if ic_score is not None:
+        if ic_score >= 0.02:
+            ic_scalar = 1.0
+            ic_adjustment = f"No adjustment (healthy signal: IC={ic_score:.4f})"
+        elif ic_score >= 0.005:
+            ic_scalar = 0.75
+            ic_adjustment = f"Reduce 25% (degrading signal: IC={ic_score:.4f})"
+        elif ic_score >= 0.0:
+            ic_scalar = 0.50
+            ic_adjustment = f"Reduce 50% (weak signal: IC={ic_score:.4f})"
+        else:
+            ic_scalar = 0.0
+            ic_adjustment = f"DISABLE trading (dead signal: IC={ic_score:.4f})"
+
+    # 7. Calculate final position value:
+    #    position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
+    position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
     
     return {
       "symbol": symbol,
@@ -216,7 +273,10 @@ class KellySizer:
       "win_rate": perf["win_rate"],
       "payout_ratio": perf["payout_ratio"],
       "data_sufficient": perf["data_sufficient"],
-      "using_defaults": not perf["data_sufficient"]
+      "using_defaults": not perf["data_sufficient"],
+      "ic_score": ic_score,
+      "ic_scalar": ic_scalar,
+      "ic_adjustment": ic_adjustment
     }
 
   async def record_trade_outcome(

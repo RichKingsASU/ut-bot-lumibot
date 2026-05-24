@@ -64,6 +64,7 @@ class AgentState(TypedDict):
     risk_decision: dict
     overnight_digest: dict
     cycle_timestamp: str
+    signal_decay_summary: dict
 
 
 # ── Node implementations ──────────────────────────────────────────────────────
