@@ -241,7 +241,7 @@ def risk_node(state: AgentState) -> AgentState:
     exposure_decision = asyncio.run(agent.analyze(state["signal_recommendation"]))
     
     # 2. Layer Greeks and Kelly sizing calculations
-    engine = GreeksRiskEngine(f"{asset}-greeks-risk", asset_class=asset)
+    engine = GreeksRiskEngine()
     final_risk_decision = engine.evaluate(
         signal=state["signal_recommendation"],
         greeks=state.get("greeks_decision", {}),
