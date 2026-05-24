@@ -74,4 +74,39 @@ services:
     command: >
       bash -c "pip install --no-cache-dir -r requirements.txt && python run_news_collector.py"
 
+  sentiment-scorer:
+    image: python:3.11-slim
+    container_name: sentiment-scorer
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bash -c "pip install transformers torch sentence-transformers qdrant-client -q && python run_sentiment_scorer.py"
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - nats
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  vector-store:
+    image: python:3.11-slim
+    container_name: vector-store
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bash -c "pip install sentence-transformers qdrant-client -q && python run_vector_store.py"
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - qdrant
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
 
