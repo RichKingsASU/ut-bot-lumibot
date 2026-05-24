@@ -7,6 +7,7 @@ import EquitiesTradeView from './components/dashboard/Equities/EquitiesTradeView
 import EquitiesMonitorView from './components/dashboard/Equities/EquitiesMonitorView'
 import EquitiesPerformanceView from './components/dashboard/Equities/EquitiesPerformanceView'
 import EquitiesStrategyView from './components/dashboard/Equities/EquitiesStrategyView'
+import GreeksHeatmap from './components/dashboard/Greeks/GreeksHeatmap'
 import CryptoTradeView from './components/dashboard/Crypto/CryptoTradeView'
 import CryptoMonitorView from './components/dashboard/Crypto/CryptoMonitorView'
 import CryptoPerformanceView from './components/dashboard/Crypto/CryptoPerformanceView'
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="/equities/monitor" element={<EquitiesMonitorView />} />
             <Route path="/equities/performance" element={<EquitiesPerformanceView />} />
             <Route path="/equities/strategy" element={<EquitiesStrategyView />} />
+            <Route path="/equities/greeks" element={<GreeksHeatmap />} />
             <Route path="/crypto/trade" element={<CryptoTradeView />} />
             <Route path="/crypto/monitor" element={<CryptoMonitorView />} />
             <Route path="/crypto/performance" element={<CryptoPerformanceView />} />

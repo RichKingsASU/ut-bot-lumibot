@@ -83,6 +83,161 @@ async def run_daily_signal_health() -> dict:
         return {}
 
 
+async def send_morning_briefing() -> None:
+    """Send Telegram message at 9:15 AM ET daily with Greeks and system status."""
+    logger.info("[RunAgents] Sending morning briefing...")
+    try:
+        from supabase import create_client
+        
+        # Connect to Supabase
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not supabase_key:
+            logger.warning("[RunAgents] Supabase credentials missing, cannot send briefing.")
+            return
+            
+        supabase = create_client(supabase_url, supabase_key)
+        
+        # Get latest regime
+        regime_data = supabase.table("regime_states").select("*").order("ts", desc=True).limit(1).execute()
+        overall_regime = "UNKNOWN"
+        if regime_data.data:
+            overall_regime = regime_data.data[0].get("regime", "UNKNOWN")
+            
+        strategy_recommendation = "HOLD" if overall_regime == "UNKNOWN" else "TREND_FOLLOWING" if overall_regime == "BULL_NORMAL" else "MEAN_REVERSION"
+            
+        # Get latest greeks for symbols
+        symbols = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL']
+        greeks_text = ""
+        for sym in symbols:
+            snap = supabase.table("greeks_snapshots").select("*").eq("symbol", sym).order("snapshot_at", desc=True).limit(1).execute()
+            if snap.data:
+                d = snap.data[0]
+                greeks_text += f"  {sym}: IV Rank {d.get('iv_rank', 0):.0f} ({d.get('trade_mode', 'NEUTRAL')})\n"
+                
+        # Get circuit breakers (gamma > 0.05 in last 24h)
+        now_utc = datetime.utcnow()
+        twenty_four_hours_ago = (now_utc.timestamp() - 86400) * 1000 # Just an approx ISO
+        
+        alerts_text = "NONE"
+        cb_data = supabase.table("greeks_snapshots").select("symbol, gamma").gt("gamma", 0.05).order("snapshot_at", desc=True).limit(5).execute()
+        if cb_data.data:
+            alerts_text = "\n".join([f"  {d['symbol']} Gamma: {d['gamma']:.3f}" for d in cb_data.data])
+            
+        # Get tick count from QuestDB
+        questdb_count = 0
+        try:
+            resp = requests.get("http://localhost:9000/exec?query=SELECT+count()+FROM+ticks", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "dataset" in data and len(data["dataset"]) > 0:
+                    questdb_count = data["dataset"][0][0]
+        except Exception as e:
+            logger.error(f"QuestDB error: {e}")
+            
+        # News and signals counts
+        today_iso = datetime.now(pytz.timezone('America/New_York')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
+        
+        news_count = 0
+        news_resp = supabase.table("news_articles").select("id", count="exact").gt("created_at", today_iso).execute()
+        if hasattr(news_resp, 'count') and news_resp.count is not None:
+            news_count = news_resp.count
+            
+        signals_count = 0
+        signals_resp = supabase.table("agent_signals").select("id", count="exact").gt("created_at", today_iso).execute()
+        if hasattr(signals_resp, 'count') and signals_resp.count is not None:
+            signals_count = signals_resp.count
+            
+        now_str = datetime.now(pytz.timezone('America/New_York')).strftime("%Y-%m-%d")
+        
+        msg = f"""📊 <b>Disrupting Alpha — Morning Greeks Briefing</b>
+{now_str} | Pre-market
+
+🎯 <b>Today's Regime:</b> {overall_regime}
+Strategy: {strategy_recommendation}
+
+📈 <b>Symbol Status:</b>
+{greeks_text}
+⚡ <b>Alerts:</b>
+{alerts_text}
+
+🔢 <b>Data:</b>
+Tick count: {questdb_count}
+News articles (24h): {news_count}
+Agent signals today: {signals_count}"""
+
+        await _send_telegram(msg)
+    except Exception as exc:
+        logger.error(f"[RunAgents] Error in morning briefing: {exc}", exc_info=True)
+
+async def send_afternoon_check() -> None:
+    """Send Telegram message at 2:00 PM ET daily."""
+    logger.info("[RunAgents] Sending afternoon check...")
+    try:
+        from supabase import create_client
+        import requests
+        
+        # Connect to Supabase
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not supabase_key:
+            return
+            
+        supabase = create_client(supabase_url, supabase_key)
+        
+        # Get regime states
+        today_iso = datetime.now(pytz.timezone('America/New_York')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
+        
+        regime_data = supabase.table("regime_states").select("*").gte("ts", today_iso).order("ts", desc=True).execute()
+        current_regime = "UNKNOWN"
+        morning_regime = "UNKNOWN"
+        
+        if regime_data.data:
+            current_regime = regime_data.data[0].get("regime", "UNKNOWN")
+            morning_regime = regime_data.data[-1].get("regime", "UNKNOWN")
+            
+        shift_detected = "YES" if current_regime != morning_regime else "NO"
+        
+        # Alpaca positions
+        import alpaca_trade_api as tradeapi
+        api_key = os.getenv("ALPACA_API_KEY")
+        api_secret = os.getenv("ALPACA_SECRET_KEY")
+        base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+        
+        positions_count = 0
+        unrealized_pl = 0.0
+        if api_key and api_secret:
+            try:
+                api = tradeapi.REST(api_key, api_secret, base_url, api_version='v2')
+                positions = api.list_positions()
+                positions_count = len(positions)
+                unrealized_pl = sum(float(p.unrealized_pl) for p in positions)
+            except Exception as e:
+                logger.error(f"Alpaca error: {e}")
+                
+        time_str = datetime.now(pytz.timezone('America/New_York')).strftime("%I:%M %p ET")
+        
+        rec = "Regime changed — review positions" if shift_detected == "YES" else "Regime stable — hold current strategy"
+        
+        msg = f"""🔄 <b>Afternoon Regime Check</b>
+{time_str}
+
+Morning regime: {morning_regime}
+Current regime: {current_regime}
+Shift detected: {shift_detected}
+
+📊 <b>P&L Update:</b>
+Open positions: {positions_count}
+Unrealized P&L: ${unrealized_pl:.2f}
+
+Recommendation:
+{rec}"""
+
+        await _send_telegram(msg)
+    except Exception as exc:
+        logger.error(f"[RunAgents] Error in afternoon check: {exc}", exc_info=True)
+
+
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
 async def main() -> None:
@@ -97,8 +252,27 @@ async def main() -> None:
     logger.info(startup_message)
 
     cycle_count = 0
+    morning_sent = False
+    afternoon_sent = False
+    
     while True:
         now_et = datetime.now(pytz.timezone('America/New_York'))
+        
+        # Reset daily flags at midnight
+        if now_et.hour == 0 and now_et.minute == 0:
+            morning_sent = False
+            afternoon_sent = False
+            
+        # Morning briefing at 9:15 AM ET
+        if now_et.hour == 9 and now_et.minute == 15 and not morning_sent:
+            await send_morning_briefing()
+            morning_sent = True
+            
+        # Afternoon check at 2:00 PM ET
+        if now_et.hour == 14 and now_et.minute == 0 and not afternoon_sent:
+            await send_afternoon_check()
+            afternoon_sent = True
+            
         cycle_count += 1
         logger.info(f"[RunAgents] ── Starting cycle #{cycle_count} (ET: {now_et.strftime('%H:%M:%S')}) ──")
         

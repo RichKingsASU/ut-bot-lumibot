@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Surveillance', path: '/equities/monitor' },
       { label: 'Execution', path: '/equities/trade' },
+      { label: 'Greeks', path: '/equities/greeks' },
     ],
   },
   {
