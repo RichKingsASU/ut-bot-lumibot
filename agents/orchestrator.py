@@ -69,7 +69,7 @@ class AgentState(TypedDict):
 def market_analysis_node(state: AgentState) -> AgentState:
     """Calls MarketAnalystAgent().analyze() and stores result in state."""
     logger.info("[Orchestrator] market_analysis_node executing...")
-    market_context = asyncio.get_event_loop().run_until_complete(
+    market_context = asyncio.run(
         MarketAnalystAgent().analyze()
     )
     logger.info(f"[Orchestrator] market_context received: {list(market_context.keys())}")
@@ -79,7 +79,7 @@ def market_analysis_node(state: AgentState) -> AgentState:
 def signal_node(state: AgentState) -> AgentState:
     """Calls SignalAgent().analyze(market_context) and stores result in state."""
     logger.info("[Orchestrator] signal_node executing...")
-    signal_recommendation = asyncio.get_event_loop().run_until_complete(
+    signal_recommendation = asyncio.run(
         SignalAgent().analyze(state["market_context"])
     )
     logger.info(f"[Orchestrator] signal_recommendation: {signal_recommendation}")
@@ -89,7 +89,7 @@ def signal_node(state: AgentState) -> AgentState:
 def risk_node(state: AgentState) -> AgentState:
     """Calls RiskAgent().analyze(signal_recommendation) and stores result in state."""
     logger.info("[Orchestrator] risk_node executing...")
-    risk_decision = asyncio.get_event_loop().run_until_complete(
+    risk_decision = asyncio.run(
         RiskAgent().analyze(state["signal_recommendation"])
     )
     logger.info(f"[Orchestrator] risk_decision: {risk_decision}")
@@ -101,7 +101,7 @@ def research_node(state: AgentState) -> AgentState:
     Triggered only when risk_decision == BLOCK.
     """
     logger.info("[Orchestrator] research_node executing (triggered by BLOCK decision)...")
-    overnight_digest = asyncio.get_event_loop().run_until_complete(
+    overnight_digest = asyncio.run(
         ResearchAgent().analyze()
     )
     logger.info(f"[Orchestrator] overnight_digest regime: {overnight_digest.get('regime')}")
@@ -144,7 +144,7 @@ def report_node(state: AgentState) -> AgentState:
         f"{digest_line}"
     )
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         _send_telegram(message, chat_id="8641189809")
     )
 
