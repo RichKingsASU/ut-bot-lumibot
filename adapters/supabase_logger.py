@@ -360,3 +360,72 @@ def log_audit(action: str, status: str, details: str, metadata: dict | None = No
         "metadata": metadata or {},
     }
     _fire("system_audit", row)
+
+
+def log_portfolio_snapshot():
+    """
+    Query Alpaca REST API for account info and positions, then write a snapshot row
+    to the cloud Supabase portfolio_snapshots table.
+    Runs in a fire-and-forget daemon thread.
+    """
+    def _task():
+        from datetime import timezone
+        from alpaca.trading.client import TradingClient
+        try:
+            api_key = os.getenv("ALPACA_API_KEY")
+            api_secret = os.getenv("ALPACA_API_SECRET")
+            is_paper = os.getenv("ALPACA_IS_PAPER", "true").lower() == "true"
+            
+            if not api_key or not api_secret:
+                logger.warning("[PORTFOLIO] Missing Alpaca credentials — skipping snapshot")
+                return
+                
+            client = TradingClient(api_key, api_secret, paper=is_paper)
+            
+            # Fetch Account Details
+            acct = client.get_account()
+            equity = float(acct.equity)
+            buying_power = float(acct.buying_power)
+            cash = float(acct.cash)
+            
+            last_equity = getattr(acct, "last_equity", None)
+            if last_equity is not None:
+                daily_pnl = float(equity) - float(last_equity)
+            else:
+                daily_pnl = 0.0
+                
+            # Fetch Positions
+            positions_data = []
+            try:
+                raw_positions = client.get_all_positions()
+                for pos in raw_positions:
+                    positions_data.append({
+                        "symbol": pos.symbol,
+                        "qty": float(pos.qty),
+                        "market_value": float(pos.market_value),
+                        "cost_basis": float(pos.cost_basis),
+                        "unrealized_pl": float(pos.unrealized_intraday_pl) if getattr(pos, "unrealized_intraday_pl", None) is not None else float(pos.unrealized_pl)
+                    })
+            except Exception as e:
+                logger.warning("[PORTFOLIO] Failed to fetch positions: %s", e)
+                
+            # Log snap
+            row = {
+                "equity": equity,
+                "buying_power": buying_power,
+                "cash": cash,
+                "positions": positions_data,
+                "daily_pnl": daily_pnl,
+                "snapshot_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Post to Supabase
+            _post("portfolio_snapshots", row)
+            logger.info("[SUPABASE] Portfolio snapshot logged successfully. Equity: $%.2f", equity)
+            
+        except Exception as e:
+            logger.error("[PORTFOLIO] Snapshot logger error: %s", e)
+
+    t = threading.Thread(target=_task, daemon=True)
+    t.start()
+

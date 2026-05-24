@@ -123,6 +123,7 @@ def _check_remote_commands() -> str:
 
 def _heartbeat_loop():
     """Background thread that sends heartbeats every HEARTBEAT_INTERVAL seconds."""
+    counter = 0
     while not _stop_event.is_set():
         # 1. Update online status
         _upsert_status("online")
@@ -142,7 +143,17 @@ def _heartbeat_loop():
             os.kill(os.getpid(), signal.SIGTERM)
             break
 
+        # 3. Log portfolio snapshot every 5 minutes (10 * 30 seconds = 300 seconds)
+        if counter % 10 == 0:
+            try:
+                from adapters.supabase_logger import log_portfolio_snapshot
+                log_portfolio_snapshot()
+            except Exception as e:
+                logger.warning("Failed to trigger portfolio snapshot: %s", e)
+
+        counter += 1
         _stop_event.wait(HEARTBEAT_INTERVAL)
+
 
 
 def start():
