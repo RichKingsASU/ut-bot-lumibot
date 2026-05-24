@@ -20,4 +20,7 @@ langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-anthropic>=0.1.0
 prefect>=3.0.0
+hmmlearn>=0.3.0
+scikit-learn>=1.4.0
+polars>=0.20.0
 

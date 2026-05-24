@@ -19,6 +19,7 @@ from agents.market_analyst import MarketAnalystAgent
 from agents.signal_agent import SignalAgent
 from agents.risk_agent import RiskAgent
 from agents.research_agent import ResearchAgent
+from agents.regime_detector import RegimeDetector
 
 load_dotenv()
 
@@ -53,6 +54,7 @@ async def _send_telegram(text: str, chat_id: str = _TELEGRAM_CHAT_ID) -> None:
 
 class AgentState(TypedDict):
     asset_class: str  # crypto or equities
+    regime_summary: dict
     market_context: dict
     signal_recommendation: dict
     risk_decision: dict
@@ -62,12 +64,23 @@ class AgentState(TypedDict):
 
 # ── Node implementations ──────────────────────────────────────────────────────
 
+def regime_detection_node(state: AgentState) -> AgentState:
+    """Calls Detector().analyze() and stores result in state."""
+    logger.info(f"[Orchestrator] regime_detection_node executing for {state['asset_class']}...")
+    asset = state.get("asset_class", "crypto")
+    detector = RegimeDetector(f"{asset}-regime-detector", asset_class=asset)
+    regime_summary = asyncio.run(detector.analyze())
+    logger.info(f"[Orchestrator] {asset} regime_summary received: {regime_summary.get('overall_regime')}")
+    return {**state, "regime_summary": regime_summary}
+
+
 def market_analysis_node(state: AgentState) -> AgentState:
     """Calls MarketAnalystAgent().analyze() and stores result in state."""
     logger.info(f"[Orchestrator] market_analysis_node executing for {state['asset_class']}...")
     asset = state.get("asset_class", "crypto")
     agent = MarketAnalystAgent(f"{asset}-analyst", asset_class=asset)
-    market_context = asyncio.run(agent.analyze())
+    regime_summary = state.get("regime_summary")
+    market_context = asyncio.run(agent.analyze(regime_summary))
     logger.info(f"[Orchestrator] {asset} market_context received: {list(market_context.keys())}")
     return {**state, "market_context": market_context}
 
@@ -130,6 +143,7 @@ def _build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
     # Register nodes
+    graph.add_node("regime_detection_node", regime_detection_node)
     graph.add_node("market_analysis_node", market_analysis_node)
     graph.add_node("signal_node", signal_node)
     graph.add_node("risk_node", risk_node)
@@ -137,7 +151,8 @@ def _build_graph() -> StateGraph:
     graph.add_node("report_node", report_node)
 
     # Static edges
-    graph.add_edge(START, "market_analysis_node")
+    graph.add_edge(START, "regime_detection_node")
+    graph.add_edge("regime_detection_node", "market_analysis_node")
     graph.add_edge("market_analysis_node", "signal_node")
     graph.add_edge("signal_node", "risk_node")
 
@@ -167,6 +182,7 @@ async def run_crypto_cycle() -> dict:
     """Run crypto agent pipeline and return cycle result dict."""
     initial_state: AgentState = {
         "asset_class": "crypto",
+        "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
         "risk_decision": {},
@@ -183,6 +199,7 @@ async def run_equities_cycle() -> dict:
     """Run equities agent pipeline and return cycle result dict."""
     initial_state: AgentState = {
         "asset_class": "equities",
+        "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
         "risk_decision": {},
@@ -204,10 +221,12 @@ async def run_cycle() -> dict:
         run_equities_cycle()
     )
     
+    c_rs = crypto_result.get("regime_summary", {})
     c_mc = crypto_result.get("market_context", {})
     c_sr = crypto_result.get("signal_recommendation", {})
     c_rd = crypto_result.get("risk_decision", {})
     
+    e_rs = equities_result.get("regime_summary", {})
     e_mc = equities_result.get("market_context", {})
     e_sr = equities_result.get("signal_recommendation", {})
     e_rd = equities_result.get("risk_decision", {})
@@ -215,10 +234,14 @@ async def run_cycle() -> dict:
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
+        f"🎯 Market Regime: {c_rs.get('overall_regime', 'QUIET')}\n"
+        f"Strategy: {c_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
+        f"🎯 Market Regime: {e_rs.get('overall_regime', 'QUIET')}\n"
+        f"Strategy: {e_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"Risk: {e_rd.get('decision', 'N/A')}"

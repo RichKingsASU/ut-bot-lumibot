@@ -21,7 +21,7 @@ class MarketAnalystAgent(BaseAgent):
         default_quest = "http://questdb:9000" if is_docker else "http://localhost:9000"
         self.questdb_url = os.getenv("QUESTDB_URL") or default_quest
 
-    async def analyze(self):
+    async def analyze(self, regime_summary: dict = None):
         """Perform comprehensive market analysis.
         Returns a market_context dictionary:
         {
@@ -94,6 +94,13 @@ class MarketAnalystAgent(BaseAgent):
             "tick_count": tick_count,
             "analysis_timestamp": analysis_timestamp
         }
+        
+        if regime_summary:
+            market_context['current_regime'] = regime_summary.get('overall_regime', 'QUIET')
+            market_context['strategy_recommendation'] = regime_summary.get('strategy_recommendation', '')
+        else:
+            market_context['current_regime'] = 'QUIET'
+            market_context['strategy_recommendation'] = ''
         
         # Step 6: Publish to NATS subject agents.market_context (JSON)
         try:
