@@ -45,8 +45,9 @@ async def _send_telegram(text: str, chat_id: str = _TELEGRAM_CHAT_ID) -> None:
 class ResearchAgent(BaseAgent):
     """Overnight research digest agent."""
 
-    def __init__(self, name: str = "ResearchAgent", qdrant_host: str = "localhost", qdrant_port: int = 6333):
+    def __init__(self, name: str = "ResearchAgent", asset_class: str = "crypto", qdrant_host: str = "localhost", qdrant_port: int = 6333):
         super().__init__(name, qdrant_host, qdrant_port)
+        self.asset_class = asset_class
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -70,6 +71,8 @@ class ResearchAgent(BaseAgent):
             "sentiment_score": "not.is.null",
             "order": "created_at.desc",
         }
+        if self.asset_class:
+            filters["asset_class"] = f"eq.{self.asset_class}"
 
         try:
             rows = await self.query_supabase(
@@ -134,6 +137,7 @@ class ResearchAgent(BaseAgent):
         # ── Step 5: Compose digest ─────────────────────────────────────────────
         digest_timestamp = datetime.now(timezone.utc).isoformat()
         overnight_digest = {
+            "asset_class": self.asset_class,
             "regime": regime,
             "avg_sentiment_24h": avg_sentiment_24h,
             "top_positive_headlines": top_positive_headlines,
@@ -144,10 +148,11 @@ class ResearchAgent(BaseAgent):
         }
 
         # ── Step 6: Send via Telegram ──────────────────────────────────────────
+        title = "📊 Crypto Market Digest" if self.asset_class == "crypto" else "📊 Equities Market Digest"
         pos_block = "\n".join(f"  • {h}" for h in top_positive_headlines) if top_positive_headlines else "  (none)"
         neg_block = "\n".join(f"  • {h}" for h in top_negative_headlines) if top_negative_headlines else "  (none)"
         tg_message = (
-            f"🌙 <b>Overnight Research Digest</b>\n"
+            f"🌙 <b>{title}</b>\n"
             f"📅 {digest_timestamp}\n\n"
             f"📊 Regime: <b>{regime}</b>\n"
             f"📈 Avg Sentiment (24h): <b>{avg_sentiment_24h:.4f}</b>\n"

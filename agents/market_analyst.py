@@ -8,8 +8,9 @@ from agents.base_agent import BaseAgent
 logger = logging.getLogger("MarketAnalystAgent")
 
 class MarketAnalystAgent(BaseAgent):
-    def __init__(self, name="MarketAnalyst", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
+    def __init__(self, name="MarketAnalyst", asset_class="crypto", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
         super().__init__(name, qdrant_host, qdrant_port)
+        self.asset_class = asset_class
         
         # Load environment variables or fallback to standard URLs based on Docker state
         import os
@@ -35,14 +36,19 @@ class MarketAnalystAgent(BaseAgent):
         logger.info("Starting market analysis execution...")
         
         # Step 1: get_recent_sentiment(24)
-        sentiment_data = await self.get_recent_sentiment(24)
+        sentiment_data = await self.get_recent_sentiment(24, self.asset_class)
         avg_sentiment = sentiment_data.get("avg_score", 0.0)
         sentiment_label = sentiment_data.get("label", "neutral")
         top_headlines = sentiment_data.get("top_headlines", [])
         
         # Step 2: query_supabase("signal_log", limit=10)
         try:
-            recent_signals = await self.query_supabase("signal_log", limit=10)
+            filters = {}
+            if self.asset_class == "crypto":
+                filters["symbol"] = "like.%USD%"
+            elif self.asset_class == "equities":
+                filters["symbol"] = "in.(SPY,IWM,QQQ)"
+            recent_signals = await self.query_supabase("signal_log", select="*", filters=filters, limit=10)
         except Exception as e:
             logger.error(f"Error querying signal_log from Supabase: {e}")
             recent_signals = []
@@ -80,6 +86,7 @@ class MarketAnalystAgent(BaseAgent):
         # Step 5: Compose market_context
         analysis_timestamp = datetime.now(timezone.utc).isoformat()
         market_context = {
+            "asset_class": self.asset_class,
             "avg_sentiment": avg_sentiment,
             "sentiment_label": sentiment_label,
             "top_headlines": top_headlines,

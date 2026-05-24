@@ -66,7 +66,13 @@ class BaseAgent(abc.ABC):
                 
         return await loop.run_in_executor(None, _search)
 
-    async def query_supabase(self, table, select="*", filters=None, limit=10):
+    async def query_supabase(
+        self,
+        table: str,
+        select: str = "*",
+        filters: dict = None,
+        limit: int = 10
+    ) -> list:
         """httpx GET to SUPABASE_URL/rest/v1/{table} with apikey header, returning list of rows."""
         if not self.supabase_url or not self.supabase_anon_key:
             logger.error("Supabase credentials missing!")
@@ -89,7 +95,11 @@ class BaseAgent(abc.ABC):
             resp.raise_for_status()
             return resp.json()
 
-    async def get_recent_sentiment(self, hours=24):
+    async def get_recent_sentiment(
+        self, 
+        hours: int = 24,
+        asset_class: str = None
+    ) -> dict:
         """Queries cloud Supabase news_articles via REST API where created_at > now()-interval and sentiment_score IS NOT NULL.
         Returns {avg_score, label, top_headlines}
         label: avg>0.2="bullish", avg<-0.2="bearish", else="neutral"
@@ -101,6 +111,8 @@ class BaseAgent(abc.ABC):
             "sentiment_score": "not.is.null",
             "order": "created_at.desc"
         }
+        if asset_class:
+            filters["asset_class"] = f"eq.{asset_class}"
         
         try:
             # Fetch up to 100 recent articles within the timeframe to evaluate overall sentiment

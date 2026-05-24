@@ -31,10 +31,27 @@ class NewsCollector(BaseCollector):
         self.rss_feeds = {
             "Cointelegraph": "https://cointelegraph.com/rss",
             "Decrypt": "https://decrypt.co/feed",
-            "BitcoinMagazine": "https://bitcoinmagazine.com/.rss/full/"
+            "BitcoinMagazine": "https://bitcoinmagazine.com/.rss/full/",
+            # Reuters' public RSS (feeds.reuters.com) was discontinued; CNBC Markets
+            # is a reliable, resolvable equities/business-news replacement.
+            "CNBC": "https://www.cnbc.com/id/20910258/device/rss/rss.html",
+            "MarketWatch": "https://feeds.marketwatch.com/marketwatch/topstories",
+            "SeekingAlpha": "https://seekingalpha.com/feed.xml",
+            "WSJ": "https://feeds.content.dowjones.io/public/rss/mw_topstories"
         }
-        
-        self.http_client = httpx.AsyncClient(timeout=15.0)
+
+        self.feed_asset_classes = {
+            "Cointelegraph": "crypto",
+            "Decrypt": "crypto",
+            "BitcoinMagazine": "crypto",
+            "CNBC": "equities",
+            "MarketWatch": "equities",
+            "SeekingAlpha": "equities",
+            "WSJ": "equities"
+        }
+
+        # follow_redirects so feeds that 301 (MarketWatch, BitcoinMagazine) resolve.
+        self.http_client = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
 
     def _get_url_hash(self, url: str) -> str:
         return hashlib.md5(url.strip().encode("utf-8")).hexdigest()
@@ -81,14 +98,15 @@ class NewsCollector(BaseCollector):
         }
         
         try:
-            # Table fields: id (auto), title, url, source, published_at, summary, sentiment_score, created_at (auto)
+            # Table fields: id (auto), title, url, source, published_at, summary, sentiment_score, created_at (auto), asset_class
             row = {
                 "title": article["title"],
                 "url": article["url"],
                 "source": article["source"],
                 "published_at": article["published_at"],
                 "summary": article["summary"],
-                "sentiment_score": None  # Placeholder for Phase 3 scoring
+                "sentiment_score": None,  # Placeholder for Phase 3 scoring
+                "asset_class": article.get("asset_class", "crypto")
             }
             
             resp = await self.http_client.post(
@@ -140,7 +158,8 @@ class NewsCollector(BaseCollector):
                         "url": url_str,
                         "source": source,
                         "published_at": published_at,
-                        "summary": summary
+                        "summary": summary,
+                        "asset_class": "crypto"
                     }
                     
                     # 1. Publish to NATS
@@ -197,16 +216,19 @@ class NewsCollector(BaseCollector):
                     except Exception:
                         published_at = datetime.now(timezone.utc).isoformat()
                         
+                    asset_class = self.feed_asset_classes.get(source, "crypto")
                     article = {
                         "title": title,
                         "url": url_str,
                         "source": source,
                         "published_at": published_at,
-                        "summary": summary
+                        "summary": summary,
+                        "asset_class": asset_class
                     }
                     
                     # 1. Publish to NATS
-                    await self.publish("news.crypto", article)
+                    nats_subject = "news.equities" if asset_class == "equities" else "news.crypto"
+                    await self.publish(nats_subject, article)
                     
                     # 2. Write to Supabase
                     await self._write_to_supabase(article)

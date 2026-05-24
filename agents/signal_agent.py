@@ -10,8 +10,9 @@ logger = logging.getLogger("SignalAgent")
 
 
 class SignalAgent(BaseAgent):
-    def __init__(self, name="SignalAgent", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
+    def __init__(self, name="SignalAgent", asset_class="crypto", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
         super().__init__(name, qdrant_host, qdrant_port)
+        self.asset_class = asset_class
 
         is_docker = os.path.exists("/.dockerenv")
         default_nats = "nats://nats:4222" if is_docker else "nats://localhost:4222"
@@ -39,9 +40,15 @@ class SignalAgent(BaseAgent):
 
         # ── Step 1: Get last 5 rows from signal_log via query_supabase ────────
         try:
+            filters = {}
+            if self.asset_class == "crypto":
+                filters["symbol"] = "like.%USD%"
+            elif self.asset_class == "equities":
+                filters["symbol"] = "in.(SPY,IWM,QQQ)"
             signal_rows = await self.query_supabase(
                 table="signal_log",
                 select="*",
+                filters=filters,
                 limit=5
             )
         except Exception as e:
@@ -106,6 +113,7 @@ class SignalAgent(BaseAgent):
             )
 
         signal_recommendation = {
+            "asset_class": self.asset_class,
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,

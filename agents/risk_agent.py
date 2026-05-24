@@ -10,8 +10,9 @@ logger = logging.getLogger("RiskAgent")
 
 
 class RiskAgent(BaseAgent):
-    def __init__(self, name="RiskAgent", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
+    def __init__(self, name="RiskAgent", asset_class="crypto", qdrant_host="localhost", qdrant_port=6333, nats_url=None):
         super().__init__(name, qdrant_host, qdrant_port)
+        self.asset_class = asset_class
 
         is_docker = os.path.exists("/.dockerenv")
         default_nats = "nats://nats:4222" if is_docker else "nats://localhost:4222"
@@ -74,10 +75,17 @@ class RiskAgent(BaseAgent):
                 positions = resp.json()
                 if isinstance(positions, list):
                     for pos in positions:
+                        symbol = pos.get("symbol", "")
+                        if self.asset_class == "crypto":
+                            if not symbol.endswith("USD"):
+                                continue
+                        elif self.asset_class == "equities":
+                            if symbol not in ("SPY", "IWM", "QQQ"):
+                                continue
                         mv = pos.get("market_value")
                         if mv is not None:
                             total_market_value += float(mv)
-            logger.info(f"Total market value across positions: {total_market_value:.2f}")
+            logger.info(f"Total market value across {self.asset_class} positions: {total_market_value:.2f}")
         except Exception as e:
             logger.error(f"Failed to fetch Alpaca positions: {e}")
 
@@ -113,6 +121,7 @@ class RiskAgent(BaseAgent):
             recommended_size_pct = 1.0
 
         risk_decision = {
+            "asset_class": self.asset_class,
             "decision": decision,
             "reason": reason,
             "exposure_pct": round(exposure_pct, 6),

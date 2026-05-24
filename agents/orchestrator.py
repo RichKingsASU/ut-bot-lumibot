@@ -1,12 +1,7 @@
 """
 Orchestrator — Disrupting Alpha v2 Phase 4
 LangGraph StateGraph pipeline wiring all agents together.
-
-Pipeline:
-    START → market_analysis_node → signal_node → risk_node
-                                                     ↓
-                              (BLOCK) → research_node → report_node → END
-                              (else)  → report_node → END
+Two parallel pipelines: Crypto and Equities.
 """
 
 import asyncio
@@ -57,6 +52,7 @@ async def _send_telegram(text: str, chat_id: str = _TELEGRAM_CHAT_ID) -> None:
 # ── AgentState ────────────────────────────────────────────────────────────────
 
 class AgentState(TypedDict):
+    asset_class: str  # crypto or equities
     market_context: dict
     signal_recommendation: dict
     risk_decision: dict
@@ -68,31 +64,31 @@ class AgentState(TypedDict):
 
 def market_analysis_node(state: AgentState) -> AgentState:
     """Calls MarketAnalystAgent().analyze() and stores result in state."""
-    logger.info("[Orchestrator] market_analysis_node executing...")
-    market_context = asyncio.run(
-        MarketAnalystAgent().analyze()
-    )
-    logger.info(f"[Orchestrator] market_context received: {list(market_context.keys())}")
+    logger.info(f"[Orchestrator] market_analysis_node executing for {state['asset_class']}...")
+    asset = state.get("asset_class", "crypto")
+    agent = MarketAnalystAgent(f"{asset}-analyst", asset_class=asset)
+    market_context = asyncio.run(agent.analyze())
+    logger.info(f"[Orchestrator] {asset} market_context received: {list(market_context.keys())}")
     return {**state, "market_context": market_context}
 
 
 def signal_node(state: AgentState) -> AgentState:
     """Calls SignalAgent().analyze(market_context) and stores result in state."""
-    logger.info("[Orchestrator] signal_node executing...")
-    signal_recommendation = asyncio.run(
-        SignalAgent().analyze(state["market_context"])
-    )
-    logger.info(f"[Orchestrator] signal_recommendation: {signal_recommendation}")
+    logger.info(f"[Orchestrator] signal_node executing for {state['asset_class']}...")
+    asset = state.get("asset_class", "crypto")
+    agent = SignalAgent(f"{asset}-signal", asset_class=asset)
+    signal_recommendation = asyncio.run(agent.analyze(state["market_context"]))
+    logger.info(f"[Orchestrator] {asset} signal_recommendation: {signal_recommendation}")
     return {**state, "signal_recommendation": signal_recommendation}
 
 
 def risk_node(state: AgentState) -> AgentState:
     """Calls RiskAgent().analyze(signal_recommendation) and stores result in state."""
-    logger.info("[Orchestrator] risk_node executing...")
-    risk_decision = asyncio.run(
-        RiskAgent().analyze(state["signal_recommendation"])
-    )
-    logger.info(f"[Orchestrator] risk_decision: {risk_decision}")
+    logger.info(f"[Orchestrator] risk_node executing for {state['asset_class']}...")
+    asset = state.get("asset_class", "crypto")
+    agent = RiskAgent(f"{asset}-risk", asset_class=asset)
+    risk_decision = asyncio.run(agent.analyze(state["signal_recommendation"]))
+    logger.info(f"[Orchestrator] {asset} risk_decision: {risk_decision}")
     return {**state, "risk_decision": risk_decision}
 
 
@@ -100,54 +96,19 @@ def research_node(state: AgentState) -> AgentState:
     """Calls ResearchAgent().analyze() and stores overnight_digest in state.
     Triggered only when risk_decision == BLOCK.
     """
-    logger.info("[Orchestrator] research_node executing (triggered by BLOCK decision)...")
-    overnight_digest = asyncio.run(
-        ResearchAgent().analyze()
-    )
-    logger.info(f"[Orchestrator] overnight_digest regime: {overnight_digest.get('regime')}")
+    logger.info(f"[Orchestrator] research_node executing for {state['asset_class']} (triggered by BLOCK decision)...")
+    asset = state.get("asset_class", "crypto")
+    agent = ResearchAgent(f"{asset}-research", asset_class=asset)
+    overnight_digest = asyncio.run(agent.analyze())
+    logger.info(f"[Orchestrator] {asset} overnight_digest regime: {overnight_digest.get('regime')}")
     return {**state, "overnight_digest": overnight_digest}
 
 
 def report_node(state: AgentState) -> AgentState:
-    """Sends a full-cycle Telegram summary and returns final state."""
-    logger.info("[Orchestrator] report_node executing...")
-
-    mc = state.get("market_context", {})
-    sr = state.get("signal_recommendation", {})
-    rd = state.get("risk_decision", {})
-    od = state.get("overnight_digest", {})
-    ts = state.get("cycle_timestamp", datetime.now(timezone.utc).isoformat())
-
-    # Build summary message
-    digest_line = ""
-    if od:
-        digest_line = (
-            f"\n\n🌙 <b>Overnight Digest</b>\n"
-            f"  Regime: {od.get('regime', 'N/A')} | "
-            f"Avg Sentiment: {od.get('avg_sentiment_24h', 'N/A')}"
-        )
-
-    message = (
-        f"📊 <b>Disrupting Alpha — Cycle Report</b>\n"
-        f"🕐 {ts}\n\n"
-        f"🏦 <b>Market Context</b>\n"
-        f"  Sentiment: {mc.get('avg_sentiment', 'N/A'):.4f} ({mc.get('sentiment_label', 'N/A')})\n"
-        f"  Tick Count: {mc.get('tick_count', 'N/A')}\n\n"
-        f"🎯 <b>Signal Recommendation</b>\n"
-        f"  Action: {sr.get('action', 'N/A')} | "
-        f"Confidence: {sr.get('confidence', 'N/A')}\n"
-        f"  Reasoning: {sr.get('reasoning', 'N/A')}\n\n"
-        f"🛡️ <b>Risk Decision</b>\n"
-        f"  Decision: {rd.get('decision', 'N/A')} | "
-        f"Exposure: {rd.get('exposure_pct', 0.0):.2%}\n"
-        f"  Reason: {rd.get('reason', 'N/A')}"
-        f"{digest_line}"
-    )
-
-    asyncio.run(
-        _send_telegram(message, chat_id="8641189809")
-    )
-
+    """Logs report node execution."""
+    logger.info(f"[Orchestrator] report_node executing for {state['asset_class']}...")
+    asset = state.get("asset_class", "crypto")
+    logger.info(f"[Orchestrator] {asset} pipeline cycle completed.")
     return state
 
 
@@ -196,21 +157,74 @@ def _build_graph() -> StateGraph:
     return graph
 
 
-_compiled_graph = _build_graph().compile()
+_crypto_compiled_graph = _build_graph().compile()
+_equities_compiled_graph = _build_graph().compile()
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def run_cycle() -> AgentState:
-    """Invoke the full agent pipeline and return the final AgentState."""
+async def run_crypto_cycle() -> dict:
+    """Run crypto agent pipeline and return cycle result dict."""
     initial_state: AgentState = {
+        "asset_class": "crypto",
         "market_context": {},
         "signal_recommendation": {},
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    logger.info(f"[Orchestrator] Starting cycle at {initial_state['cycle_timestamp']}")
-    result = await asyncio.to_thread(_compiled_graph.invoke, initial_state)
-    logger.info("[Orchestrator] Cycle complete.")
+    logger.info(f"[Orchestrator] Starting crypto cycle at {initial_state['cycle_timestamp']}")
+    result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
+    logger.info("[Orchestrator] Crypto cycle complete.")
     return result
+
+
+async def run_equities_cycle() -> dict:
+    """Run equities agent pipeline and return cycle result dict."""
+    initial_state: AgentState = {
+        "asset_class": "equities",
+        "market_context": {},
+        "signal_recommendation": {},
+        "risk_decision": {},
+        "overnight_digest": {},
+        "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
+    result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
+    logger.info("[Orchestrator] Equities cycle complete.")
+    return result
+
+
+async def run_cycle() -> dict:
+    """Invoke both crypto and equities pipelines in parallel, then send a combined report."""
+    logger.info("[Orchestrator] Starting dual-pipeline cycle...")
+    
+    crypto_result, equities_result = await asyncio.gather(
+        run_crypto_cycle(),
+        run_equities_cycle()
+    )
+    
+    c_mc = crypto_result.get("market_context", {})
+    c_sr = crypto_result.get("signal_recommendation", {})
+    c_rd = crypto_result.get("risk_decision", {})
+    
+    e_mc = equities_result.get("market_context", {})
+    e_sr = equities_result.get("signal_recommendation", {})
+    e_rd = equities_result.get("risk_decision", {})
+    
+    report_text = (
+        "🤖 Disrupting Alpha — Full Cycle Report\n\n"
+        "📊 CRYPTO\n"
+        f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
+        f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
+        f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
+        "📈 EQUITIES\n"
+        f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
+        f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
+        f"Risk: {e_rd.get('decision', 'N/A')}"
+    )
+    
+    await _send_telegram(report_text, chat_id="8641189809")
+    logger.info("[Orchestrator] Combined Telegram report sent and cycle complete.")
+    
+    return {"crypto": crypto_result, "equities": equities_result}
