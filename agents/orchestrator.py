@@ -1,7 +1,8 @@
 """
-Orchestrator — Disrupting Alpha v2 Phase 4
+Orchestrator — Disrupting Alpha v2 Phase 5 Run 4
 LangGraph StateGraph pipeline wiring all agents together.
 Two parallel pipelines: Crypto and Equities.
+Greeks intercept circuit breaker fully wired.
 """
 
 import asyncio
@@ -91,26 +92,105 @@ def market_analysis_node(state: AgentState) -> AgentState:
 
 
 def signal_node(state: AgentState) -> AgentState:
-    """Calls SignalAgent().analyze(market_context) and stores result in state."""
+    """Calls SignalAgent().analyze(market_context, greeks_context) and stores result in state."""
     logger.info(f"[Orchestrator] signal_node executing for {state['asset_class']}...")
     asset = state.get("asset_class", "crypto")
     agent = SignalAgent(f"{asset}-signal", asset_class=asset)
-    signal_recommendation = asyncio.run(agent.analyze(state["market_context"]))
+    greeks_context = state.get("greeks_decision") or None
+    signal_recommendation = asyncio.run(
+        agent.analyze(state["market_context"], greeks_context=greeks_context)
+    )
     logger.info(f"[Orchestrator] {asset} signal_recommendation: {signal_recommendation}")
     return {**state, "signal_recommendation": signal_recommendation}
 
 
+async def _greeks_intercept_async(state: AgentState) -> AgentState:
+    """Full Greeks circuit-breaker intercept node (async inner)."""
+    import pytz
+    from datetime import datetime
+    from collectors.option_data_worker import get_cached_greeks, is_market_hours
+    from agents.greeks_risk_engine import GreeksRiskEngine
+    import os, requests
+
+    signal = state.get('signal_recommendation', {})
+    asset_class = state.get('asset_class', 'equities')
+    symbol = signal.get('symbol', 'SPY')
+
+    # Only run Greeks for equities during market hours
+    if asset_class == 'crypto' or not is_market_hours():
+        state['greeks_decision'] = {
+            'action': 'APPROVE',
+            'reason': 'Crypto or outside market hours — Greeks skipped',
+            'trigger': 'SKIPPED',
+            'size_scalar': 1.0,
+            'position_value': 2500.0,
+            'trade_mode': 'NEUTRAL',
+            'iv_rank': 50.0,
+            'gamma': 0.0,
+            'delta': 0.0,
+            'rvol': 1.0,
+            'alerts': []
+        }
+        return state
+
+    # Get cached Greeks
+    greeks = get_cached_greeks(symbol)
+
+    if greeks is None:
+        logger.warning(f"[Greeks] No cached data for {symbol} — using safe defaults")
+        state['greeks_decision'] = {
+            'action': 'APPROVE',
+            'reason': 'No Greeks data — market may be closed or worker not running',
+            'trigger': 'NO_DATA',
+            'size_scalar': 0.75,
+            'position_value': 1875.0,
+            'trade_mode': 'NEUTRAL',
+            'iv_rank': 50.0,
+            'gamma': 0.0,
+            'delta': 0.0,
+            'rvol': 1.0,
+            'alerts': []
+        }
+        return state
+
+    # Run full circuit breaker
+    engine = GreeksRiskEngine()
+    kelly = state.get('kelly_sizing', {})
+    risk_decision = engine.evaluate(signal, greeks, kelly_sizing=kelly)
+
+    # Send Telegram alert if needed
+    if engine.should_alert_telegram(risk_decision):
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        msg = engine.format_telegram_alert(risk_decision, symbol)
+        try:
+            requests.post(
+                f'https://api.telegram.org/bot{token}/sendMessage',
+                json={'chat_id': '8641189809', 'text': msg},
+                timeout=5
+            )
+        except Exception as e:
+            logger.warning(f"[Greeks] Telegram alert failed: {e}")
+
+    # If BLOCK — override risk_decision downstream
+    if risk_decision['action'] == 'BLOCK':
+        state['risk_decision'] = {
+            'decision': 'BLOCK',
+            'reason': risk_decision['reason'],
+            'greeks_trigger': risk_decision['trigger'],
+            'exposure_pct': 0.0,
+            'buying_power': 0.0,
+            'recommended_size_pct': 0.0,
+            'asset_class': asset_class
+        }
+
+    state['greeks_decision'] = risk_decision
+    return state
+
+
 def greeks_intercept(state: AgentState) -> AgentState:
-    """Interceptors options Greeks risk factors and calculates scalars."""
+    """Full Greeks circuit-breaker intercept node — wired into the LangGraph pipeline."""
     logger.info(f"[Orchestrator] greeks_intercept executing for {state['asset_class']}...")
-    greeks_decision = {
-        "size_scalar": 1.0,
-        "delta": 0.0,
-        "gamma": 0.0,
-        "theta": 0.0,
-        "vega": 0.0
-    }
-    return {**state, "greeks_decision": greeks_decision}
+    return asyncio.run(_greeks_intercept_async(dict(state)))
 
 
 def kelly_sizing_node(state: AgentState) -> AgentState:
@@ -175,7 +255,17 @@ def report_node(state: AgentState) -> AgentState:
     """Logs report node execution."""
     logger.info(f"[Orchestrator] report_node executing for {state['asset_class']}...")
     asset = state.get("asset_class", "crypto")
-    logger.info(f"[Orchestrator] {asset} pipeline cycle completed.")
+    gd = state.get("greeks_decision", {})
+    trigger = gd.get("trigger", "SKIPPED")
+    if trigger in ("SKIPPED", "NO_DATA"):
+        greeks_line = f"Greeks: {'Market closed' if trigger == 'SKIPPED' else 'No data'}"
+    else:
+        greeks_line = (
+            f"Greeks: {gd.get('trade_mode', 'NEUTRAL')} "
+            f"| IV Rank: {gd.get('iv_rank', 0.0):.0f} "
+            f"| Gamma: {gd.get('gamma', 0.0):.4f}"
+        )
+    logger.info(f"[Orchestrator] {asset} pipeline cycle completed. {greeks_line}")
     return state
 
 
@@ -288,21 +378,36 @@ async def run_cycle() -> dict:
     c_sr = crypto_result.get("signal_recommendation", {})
     c_ks = crypto_result.get("kelly_sizing", {})
     c_rd = crypto_result.get("risk_decision", {})
-    
+    c_gd = crypto_result.get("greeks_decision", {})
+
     e_rs = equities_result.get("regime_summary", {})
     e_mc = equities_result.get("market_context", {})
     e_sr = equities_result.get("signal_recommendation", {})
     e_ks = equities_result.get("kelly_sizing", {})
     e_rd = equities_result.get("risk_decision", {})
-    
+    e_gd = equities_result.get("greeks_decision", {})
+
     c_frac = c_ks.get("kelly_fraction", 0.0)
     c_wr = c_ks.get("win_rate", 0.50)
     c_pay = c_ks.get("payout_ratio", 1.5)
-    
+
     e_frac = e_ks.get("kelly_fraction", 0.0)
     e_wr = e_ks.get("win_rate", 0.50)
     e_pay = e_ks.get("payout_ratio", 1.5)
-    
+
+    # Greeks lines
+    def _greeks_line(gd: dict) -> str:
+        trigger = gd.get("trigger", "SKIPPED")
+        if trigger == "SKIPPED":
+            return "⚡ Greeks: Market closed"
+        if trigger == "NO_DATA":
+            return "⚡ Greeks: No data"
+        return (
+            f"⚡ Greeks: {gd.get('trade_mode', 'NEUTRAL')} "
+            f"| IV Rank: {gd.get('iv_rank', 0.0):.0f} "
+            f"| Gamma: {gd.get('gamma', 0.0):.4f}"
+        )
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
@@ -312,6 +417,7 @@ async def run_cycle() -> dict:
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
         f"Win Rate: {c_wr:.1%} | Payout: {c_pay:.1f}x\n"
+        f"{_greeks_line(c_gd)}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Market Regime: {e_rs.get('overall_regime', 'QUIET')}\n"
@@ -320,10 +426,11 @@ async def run_cycle() -> dict:
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
         f"Win Rate: {e_wr:.1%} | Payout: {e_pay:.1f}x\n"
+        f"{_greeks_line(e_gd)}\n"
         f"Risk: {e_rd.get('decision', 'N/A')}"
     )
-    
+
     await _send_telegram(report_text, chat_id="8641189809")
     logger.info("[Orchestrator] Combined Telegram report sent and cycle complete.")
-    
+
     return {"crypto": crypto_result, "equities": equities_result}

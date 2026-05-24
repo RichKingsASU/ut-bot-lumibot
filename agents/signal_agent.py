@@ -18,7 +18,7 @@ class SignalAgent(BaseAgent):
         default_nats = "nats://nats:4222" if is_docker else "nats://localhost:4222"
         self.nats_url = nats_url or os.getenv("NATS_URL") or default_nats
 
-    async def analyze(self, market_context: dict) -> dict:
+    async def analyze(self, market_context: dict, greeks_context: dict = None) -> dict:
         """Analyze market context and return a signal_recommendation dict.
 
         Args:
@@ -26,6 +26,8 @@ class SignalAgent(BaseAgent):
                 - avg_sentiment: float
                 - recent_signals: list of signal_log rows
                 - ... other fields
+            greeks_context: optional dict from greeks_decision (greeks_intercept node).
+                When provided, modifies confidence based on IV Rank / trade mode alignment.
 
         Returns:
             {
@@ -120,6 +122,37 @@ class SignalAgent(BaseAgent):
             "technical_signal": latest_signal_type,
             "reasoning": reasoning,
         }
+
+        # ── Step 3b: Greeks modifier ───────────────────────────────────────────
+        if greeks_context and greeks_context.get('trade_mode'):
+            trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
+            iv_rank = greeks_context.get('iv_rank', 50.0)
+            gamma = greeks_context.get('gamma', 0.0)
+
+            # Boost confidence if Greeks align
+            if trade_mode == 'LONG_GAMMA' and action == 'BUY':
+                if confidence == 'MEDIUM':
+                    confidence = 'HIGH'
+                reasoning += f" | Greeks confirm: IV Rank {iv_rank:.0f} favors long gamma"
+
+            elif trade_mode == 'SHORT_PREMIUM' and action == 'SELL':
+                if confidence == 'MEDIUM':
+                    confidence = 'HIGH'
+                reasoning += f" | Greeks confirm: IV Rank {iv_rank:.0f} favors premium selling"
+
+            elif trade_mode != 'NEUTRAL':
+                if ((trade_mode == 'LONG_GAMMA' and action == 'SELL') or
+                        (trade_mode == 'SHORT_PREMIUM' and action == 'BUY')):
+                    if confidence == 'HIGH':
+                        confidence = 'MEDIUM'
+                    reasoning += f" | Greeks conflict: IV Rank {iv_rank:.0f} vs signal direction"
+
+            signal_recommendation['trade_mode'] = trade_mode
+            signal_recommendation['iv_rank'] = iv_rank
+            signal_recommendation['gamma'] = gamma
+            # Update confidence after possible modification
+            signal_recommendation['confidence'] = confidence
+            signal_recommendation['reasoning'] = reasoning
 
         logger.info(f"Signal recommendation → {signal_recommendation}")
 
