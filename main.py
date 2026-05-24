@@ -1,9 +1,6 @@
-<<<<<<< Updated upstream
 from adapters.json_logger import setup_logging
 setup_logging()
 
-=======
->>>>>>> Stashed changes
 import signal
 import sys
 from lumibot.traders import Trader
@@ -32,12 +29,12 @@ from logger import bot_logger, ErrorCategory
 
 def main():
     session_id = db.generate_session_id()
-<<<<<<< Updated upstream
     bot_logger.info(f"Bot Session Started: {session_id}", category=ErrorCategory.INFRASTRUCTURE)
-    
+
     if not db.check_connectivity():
         bot_logger.error("Supabase Connectivity Failed. Operational integrity at risk.", category=ErrorCategory.INFRASTRUCTURE)
-    
+    tg.check_connectivity()
+
     from config_validator import validate_production_env
     try:
         validate_production_env()
@@ -53,27 +50,28 @@ def main():
 
     # ── [RELIABILITY FIX] Sync state with broker before starting ─────────
     try:
-        sync_state_with_broker("SPY") 
+        sync_state_with_broker("SPY")
     except Exception as e:
         bot_logger.warning(f"Initial Broker Sync Failed: {e}. Retrying during strategy loop.")
-    
+
     set_ready(True)
 
     try:
         broker = Alpaca(ALPACA_CONFIG)
         strategy = UTBotStrategy(broker=broker)
         symbol = strategy.parameters.get("symbol", "SPY")
-        
+
         db.log_session_start(symbol, metadata={
             "broker": "alpaca_paper" if ALPACA_CONFIG.get("PAPER") else "alpaca_live",
             "strategy": "UTBotStrategy",
             "parameters": {k: str(v) for k, v in strategy.parameters.items()},
         })
-        
+        tg.send_startup()
+
         trader = Trader()
         trader.add_strategy(strategy)
         heartbeat.start()
-        
+
         # ── [LATENCY FIX] Start real-time WebSocket data ingestion ───────────
         import threading
         from adapters.alpaca_streamer import AlpacaStreamer
@@ -94,35 +92,10 @@ def main():
 
         bot_logger.info("Starting Lumibot Trader Loop...", category=ErrorCategory.INFRASTRUCTURE)
         trader.run_all()
-        
+
     except Exception as e:
         bot_logger.error(f"Fatal crash in trade loop: {e}", category=ErrorCategory.CRITICAL, exc_info=True)
-=======
-    print(f"Session ID: {session_id}")
-    db.check_connectivity()
-    tg.check_connectivity()
-    signal.signal(signal.SIGINT, _shutdown_handler)
-    signal.signal(signal.SIGTERM, _shutdown_handler)
-    broker = Alpaca(ALPACA_CONFIG)
-    strategy = UTBotStrategy(broker=broker)
-    symbol = strategy.parameters.get("symbol", "SPY")
-    db.log_session_start(symbol, metadata={
-        "broker": "alpaca_paper",
-        "strategy": "UTBotStrategy",
-        "parameters": {k: str(v) for k, v in strategy.parameters.items()},
-    })
-    tg.send_startup()
-    trader = Trader()
-    trader.add_strategy(strategy)
-    heartbeat.start()
-    print("Starting Lumibot Trader...")
-    try:
-        try:
-            trader.run_all()
-        except Exception as e:
-            tg.send_error(f"Bot crashed: {e}")
-            raise
->>>>>>> Stashed changes
+        tg.send_error(f"Bot crashed: {e}")
     finally:
         bot_logger.info("Initiating Graceful Shutdown...", category=ErrorCategory.INFRASTRUCTURE)
         heartbeat.stop()
@@ -132,5 +105,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
