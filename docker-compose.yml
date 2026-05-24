@@ -44,3 +44,19 @@ services:
     volumes:
       - /mnt/tick-storage/qdrant:/qdrant/storage
     restart: unless-stopped
+
+  tick-collector:
+    image: python:3.11-slim
+    container_name: tick-collector
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - questdb
+    volumes:
+      - .:/app
+    working_dir: /app
+    env_file:
+      - .env
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt && python run_tick_collector.py"
+
