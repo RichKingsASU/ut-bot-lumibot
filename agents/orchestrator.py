@@ -70,14 +70,31 @@ class AgentState(TypedDict):
 
 # ── Node implementations ──────────────────────────────────────────────────────
 
-def regime_detection_node(state: AgentState) -> AgentState:
-    """Calls Detector().analyze() and stores result in state."""
-    logger.info(f"[Orchestrator] regime_detection_node executing for {state['asset_class']}...")
-    asset = state.get("asset_class", "crypto")
-    detector = RegimeDetector(f"{asset}-regime-detector", asset_class=asset)
-    regime_summary = asyncio.run(detector.analyze())
-    logger.info(f"[Orchestrator] {asset} regime_summary received: {regime_summary.get('overall_regime')}")
-    return {**state, "regime_summary": regime_summary}
+async def regime_detection_node(state: AgentState) -> AgentState:
+    from agents.regime_detector import RegimeDetector
+    from datetime import datetime, timezone
+    asset_class = state.get('asset_class', 'equities')
+    
+    try:
+        detector = RegimeDetector('regime-detector', asset_class)
+        regime_summary = await detector.analyze()
+        state['regime_summary'] = regime_summary
+        logger.info(
+            f"[Regime] {asset_class} regime: "
+            f"{regime_summary.get('overall_regime')} "
+            f"({regime_summary.get('strategy_recommendation', '')[:50]})"
+        )
+    except Exception as e:
+        logger.error(f"[Regime] Detection failed: {e}")
+        state['regime_summary'] = {
+            'overall_regime': 'QUIET',
+            'strategy_recommendation': 'Default — regime detection unavailable',
+            'symbol_regimes': {},
+            'regime_distribution': {},
+            'detected_at': datetime.now(timezone.utc).isoformat()
+        }
+    
+    return state
 
 
 def market_analysis_node(state: AgentState) -> AgentState:
@@ -411,8 +428,7 @@ async def run_cycle() -> dict:
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
-        f"🎯 Market Regime: {c_rs.get('overall_regime', 'QUIET')}\n"
-        f"Strategy: {c_rs.get('strategy_recommendation', 'N/A')}\n"
+        f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
@@ -420,8 +436,7 @@ async def run_cycle() -> dict:
         f"{_greeks_line(c_gd)}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
-        f"🎯 Market Regime: {e_rs.get('overall_regime', 'QUIET')}\n"
-        f"Strategy: {e_rs.get('strategy_recommendation', 'N/A')}\n"
+        f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
