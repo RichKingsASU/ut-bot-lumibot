@@ -60,3 +60,18 @@ services:
     command: >
       bash -c "pip install --no-cache-dir -r requirements.txt && python run_tick_collector.py"
 
+  news-collector:
+    image: python:3.11-slim
+    container_name: news-collector
+    restart: unless-stopped
+    depends_on:
+      - nats
+    volumes:
+      - .:/app
+    working_dir: /app
+    env_file:
+      - .env
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt && python run_news_collector.py"
+
+
