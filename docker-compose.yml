@@ -26,6 +26,7 @@ services:
     ports:
       - "9000:9000"
       - "8812:8812"
+      - "9009:9009"   # ILP ingestion — publish to host so host-side tooling/tests can write
     volumes:
       - /mnt/tick-storage/questdb:/root/.questdb
     restart: unless-stopped

@@ -155,9 +155,13 @@ class RegimeDetector(BaseAgent):
     async def analyze(self) -> dict:
         results = {}
         
-        supabase_url = os.environ.get('SUPABASE_URL')
-        supabase_key = os.environ.get('SUPABASE_KEY')
-        
+        # NOTE: previously read os.environ['SUPABASE_KEY'] which is never set in
+        # this project (the env var is SUPABASE_SERVICE_ROLE_KEY), so every
+        # regime_states write was silently skipped. Reuse the credentials
+        # already resolved by BaseAgent (anon → service-role fallback).
+        supabase_url = self.supabase_url or os.environ.get('SUPABASE_URL')
+        supabase_key = self.supabase_anon_key or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+
         for symbol in self.symbols:
             try:
                 df = self._load_bars(symbol)
@@ -192,8 +196,15 @@ class RegimeDetector(BaseAgent):
                         "Content-Type": "application/json",
                         "Prefer": "return=minimal"
                     }
-                    with httpx.Client() as client:
-                        client.post(f"{supabase_url}/rest/v1/regime_states", json=row, headers=headers)
+                    try:
+                        with httpx.Client(timeout=10.0) as client:
+                            resp = client.post(f"{supabase_url}/rest/v1/regime_states", json=row, headers=headers)
+                            if resp.status_code not in (200, 201, 204):
+                                logger.error(f"[Regime] Supabase write for {symbol} failed: {resp.status_code} — {resp.text[:200]}")
+                    except Exception as write_exc:
+                        logger.error(f"[Regime] Supabase write for {symbol} errored: {write_exc}")
+                else:
+                    logger.warning("[Regime] Supabase credentials missing — regime_states write skipped")
                 
                 # Publish to NATS
                 if hasattr(self, 'nc') and self.nc and self.nc.is_connected:

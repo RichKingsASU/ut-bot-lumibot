@@ -99,7 +99,7 @@ async def send_morning_briefing() -> None:
         supabase = create_client(supabase_url, supabase_key)
         
         # Get latest regime
-        regime_data = supabase.table("regime_states").select("*").order("ts", desc=True).limit(1).execute()
+        regime_data = supabase.table("regime_states").select("*").order("detected_at", desc=True).limit(1).execute()
         overall_regime = "UNKNOWN"
         if regime_data.data:
             overall_regime = regime_data.data[0].get("regime", "UNKNOWN")
@@ -188,7 +188,7 @@ async def send_afternoon_check() -> None:
         # Get regime states
         today_iso = datetime.now(pytz.timezone('America/New_York')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
         
-        regime_data = supabase.table("regime_states").select("*").gte("ts", today_iso).order("ts", desc=True).execute()
+        regime_data = supabase.table("regime_states").select("*").gte("detected_at", today_iso).order("detected_at", desc=True).execute()
         current_regime = "UNKNOWN"
         morning_regime = "UNKNOWN"
         
@@ -201,7 +201,7 @@ async def send_afternoon_check() -> None:
         # Alpaca positions
         import alpaca_trade_api as tradeapi
         api_key = os.getenv("ALPACA_API_KEY")
-        api_secret = os.getenv("ALPACA_SECRET_KEY")
+        api_secret = os.getenv("ALPACA_API_SECRET")
         base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
         
         positions_count = 0
