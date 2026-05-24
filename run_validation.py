@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append(r'C:\Users\Richa\.gemini\antigravity\scratch\lumibot_ut_bot')
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config_validator import validate_production_env
 import logging
 

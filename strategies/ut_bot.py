@@ -28,6 +28,7 @@ from strategies.options_executor import (
     get_daily_realized_pnl,
     get_daily_trade_count,
 )
+from strategies.heartbeat import set_last_signal
 import adapters.supabase_logger as db
 import config
 
@@ -56,6 +57,8 @@ class UTBotStrategy(Strategy):
         self.sleeptime = "1M"  # 1-minute bars for intraday options
         self.last_signal = None
         self.last_direction = None
+
+    def on_trading_iteration(self):
         self.daily_realized_pnl = get_daily_realized_pnl()
         self.trades_today = get_daily_trade_count()
         bot_logger.info(f"Strategy Initialized. Symbol: {self.parameters['symbol']}, P&L: ${self.daily_realized_pnl:.2f}, Trades: {self.trades_today}/{config.MAX_TRADES_PER_DAY}", category=ErrorCategory.STRATEGY)

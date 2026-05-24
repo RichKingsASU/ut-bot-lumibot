@@ -5,7 +5,7 @@ import numpy as np
 import unittest
 
 # Add project root to path
-sys.path.append(r'C:\Users\Richa\.gemini\antigravity\scratch\lumibot_ut_bot')
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from strategies.ut_bot import UTBotStrategy
 

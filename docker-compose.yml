@@ -20,3 +20,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  questdb:
+    image: questdb/questdb:latest
+    ports:
+      - "9000:9000"
+      - "8812:8812"
+    volumes:
+      - /mnt/tick-storage/questdb:/root/.questdb
+    restart: unless-stopped
+
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - /mnt/tick-storage/qdrant:/qdrant/storage
+    restart: unless-stopped
