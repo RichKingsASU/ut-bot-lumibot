@@ -18,3 +18,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_signals_created
 
 -- Fix: add agent_name column missing from initial migration
 ALTER TABLE agent_signals ADD COLUMN IF NOT EXISTS agent_name text;
+
+-- Fix: add agent_name column missing from initial migration
+ALTER TABLE agent_signals ADD COLUMN IF NOT EXISTS agent_name text;
