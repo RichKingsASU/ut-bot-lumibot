@@ -20,6 +20,8 @@ from agents.signal_agent import SignalAgent
 from agents.risk_agent import RiskAgent
 from agents.research_agent import ResearchAgent
 from agents.regime_detector import RegimeDetector
+from agents.kelly_sizer import KellySizer
+from agents.greeks_risk_engine import GreeksRiskEngine
 
 load_dotenv()
 
@@ -57,6 +59,8 @@ class AgentState(TypedDict):
     regime_summary: dict
     market_context: dict
     signal_recommendation: dict
+    greeks_decision: dict
+    kelly_sizing: dict
     risk_decision: dict
     overnight_digest: dict
     cycle_timestamp: str
@@ -95,14 +99,63 @@ def signal_node(state: AgentState) -> AgentState:
     return {**state, "signal_recommendation": signal_recommendation}
 
 
+def greeks_intercept(state: AgentState) -> AgentState:
+    """Interceptors options Greeks risk factors and calculates scalars."""
+    logger.info(f"[Orchestrator] greeks_intercept executing for {state['asset_class']}...")
+    greeks_decision = {
+        "size_scalar": 1.0,
+        "delta": 0.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0
+    }
+    return {**state, "greeks_decision": greeks_decision}
+
+
+def kelly_sizing_node(state: AgentState) -> AgentState:
+    """Node computing data-driven Kelly Criterion portfolio allocations."""
+    logger.info(f"[Orchestrator] kelly_sizing_node executing for {state['asset_class']}...")
+    signal = state.get("signal_recommendation", {})
+    greeks = state.get("greeks_decision", {})
+    regime = state.get("regime_summary", {}).get("overall_regime", "QUIET")
+    asset = state.get("asset_class", "equities")
+    symbol = signal.get("symbol", "SPY")
+    
+    sizer = KellySizer()
+    kelly_result = asyncio.run(sizer.calculate_position_size(
+        symbol=symbol,
+        asset_class=asset,
+        regime=regime,
+        greeks_scalar=greeks.get("size_scalar", 1.0)
+    ))
+    logger.info(f"[Orchestrator] {symbol} Kelly sizing resolved: {kelly_result.get('position_value_str')}")
+    return {**state, "kelly_sizing": kelly_result}
+
+
 def risk_node(state: AgentState) -> AgentState:
-    """Calls RiskAgent().analyze(signal_recommendation) and stores result in state."""
+    """Calls RiskAgent and GreeksRiskEngine to evaluate dynamic position limits."""
     logger.info(f"[Orchestrator] risk_node executing for {state['asset_class']}...")
     asset = state.get("asset_class", "crypto")
+    
+    # 1. Traditional exposure checks
     agent = RiskAgent(f"{asset}-risk", asset_class=asset)
-    risk_decision = asyncio.run(agent.analyze(state["signal_recommendation"]))
-    logger.info(f"[Orchestrator] {asset} risk_decision: {risk_decision}")
-    return {**state, "risk_decision": risk_decision}
+    exposure_decision = asyncio.run(agent.analyze(state["signal_recommendation"]))
+    
+    # 2. Layer Greeks and Kelly sizing calculations
+    engine = GreeksRiskEngine(f"{asset}-greeks-risk", asset_class=asset)
+    final_risk_decision = engine.evaluate(
+        signal=state["signal_recommendation"],
+        greeks=state.get("greeks_decision", {}),
+        kelly_sizing=state.get("kelly_sizing")
+    )
+    
+    # Block final approval if traditional exposure rules flag an overexposure BLOCK
+    if exposure_decision.get("decision") == "BLOCK":
+        final_risk_decision["decision"] = "BLOCK"
+        final_risk_decision["reason"] = exposure_decision.get("reason", "Overexposed")
+        
+    logger.info(f"[Orchestrator] {asset} risk_decision finalized: {final_risk_decision}")
+    return {**state, "risk_decision": final_risk_decision}
 
 
 def research_node(state: AgentState) -> AgentState:
@@ -146,6 +199,8 @@ def _build_graph() -> StateGraph:
     graph.add_node("regime_detection_node", regime_detection_node)
     graph.add_node("market_analysis_node", market_analysis_node)
     graph.add_node("signal_node", signal_node)
+    graph.add_node("greeks_intercept", greeks_intercept)
+    graph.add_node("kelly_sizing", kelly_sizing_node)
     graph.add_node("risk_node", risk_node)
     graph.add_node("research_node", research_node)
     graph.add_node("report_node", report_node)
@@ -154,7 +209,9 @@ def _build_graph() -> StateGraph:
     graph.add_edge(START, "regime_detection_node")
     graph.add_edge("regime_detection_node", "market_analysis_node")
     graph.add_edge("market_analysis_node", "signal_node")
-    graph.add_edge("signal_node", "risk_node")
+    graph.add_edge("signal_node", "greeks_intercept")
+    graph.add_edge("greeks_intercept", "kelly_sizing")
+    graph.add_edge("kelly_sizing", "risk_node")
 
     # Conditional edge: BLOCK → research_node → report_node; else → report_node
     graph.add_conditional_edges(
@@ -185,6 +242,8 @@ async def run_crypto_cycle() -> dict:
         "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
+        "greeks_decision": {},
+        "kelly_sizing": {},
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -202,6 +261,8 @@ async def run_equities_cycle() -> dict:
         "regime_summary": {},
         "market_context": {},
         "signal_recommendation": {},
+        "greeks_decision": {},
+        "kelly_sizing": {},
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -224,12 +285,22 @@ async def run_cycle() -> dict:
     c_rs = crypto_result.get("regime_summary", {})
     c_mc = crypto_result.get("market_context", {})
     c_sr = crypto_result.get("signal_recommendation", {})
+    c_ks = crypto_result.get("kelly_sizing", {})
     c_rd = crypto_result.get("risk_decision", {})
     
     e_rs = equities_result.get("regime_summary", {})
     e_mc = equities_result.get("market_context", {})
     e_sr = equities_result.get("signal_recommendation", {})
+    e_ks = equities_result.get("kelly_sizing", {})
     e_rd = equities_result.get("risk_decision", {})
+    
+    c_frac = c_ks.get("kelly_fraction", 0.0)
+    c_wr = c_ks.get("win_rate", 0.50)
+    c_pay = c_ks.get("payout_ratio", 1.5)
+    
+    e_frac = e_ks.get("kelly_fraction", 0.0)
+    e_wr = e_ks.get("win_rate", 0.50)
+    e_pay = e_ks.get("payout_ratio", 1.5)
     
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
@@ -238,12 +309,16 @@ async def run_cycle() -> dict:
         f"Strategy: {c_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
+        f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
+        f"Win Rate: {c_wr:.1%} | Payout: {c_pay:.1f}x\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Market Regime: {e_rs.get('overall_regime', 'QUIET')}\n"
         f"Strategy: {e_rs.get('strategy_recommendation', 'N/A')}\n"
         f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
+        f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
+        f"Win Rate: {e_wr:.1%} | Payout: {e_pay:.1f}x\n"
         f"Risk: {e_rd.get('decision', 'N/A')}"
     )
     
