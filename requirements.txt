@@ -11,3 +11,13 @@ psutil>=5.9.0
 supabase>=2.3.0
 alpaca-py>=0.20.0
 nats-py>=2.14.0
+transformers>=4.40.0
+torch>=2.0.0
+sentence-transformers>=3.0.0
+qdrant-client>=1.9.0
+langgraph>=0.2.0
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-anthropic>=0.1.0
+prefect>=3.0.0
+
