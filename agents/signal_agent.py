@@ -229,16 +229,21 @@ class SignalAgent(BaseAgent):
 
         # ── Step 5: Write to cloud Supabase agent_signals table via REST API ──
         try:
-            if self.supabase_url and self.supabase_anon_key:
+            service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+            if self.supabase_url and service_role_key:
                 url = f"{self.supabase_url}/rest/v1/agent_signals"
                 headers = {
-                    "apikey": self.supabase_anon_key,
-                    "Authorization": f"Bearer {self.supabase_anon_key}",
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
                     "Content-Type": "application/json",
                     "Prefer": "return=representation",
                 }
                 payload = {
-                    **signal_recommendation,
+                    "asset_class": signal_recommendation.get("asset_class"),
+                    "symbol": signal_recommendation.get("symbol"),
+                    "action": signal_recommendation.get("action"),
+                    "confidence": signal_recommendation.get("confidence"),
+                    "reasoning": signal_recommendation.get("reasoning"),
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "agent_name": self.name,
                 }

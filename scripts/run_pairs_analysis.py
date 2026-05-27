@@ -10,7 +10,14 @@ from agents.pairs_trader import PairsTrader
 
 async def run():
     trader = PairsTrader()
-    result = await trader.analyze()
+    try:
+        result = await asyncio.wait_for(trader.analyze(), timeout=30)
+    except asyncio.TimeoutError:
+        print("Pairs trader timed out after 30s")
+        return
+    except Exception as e:
+        print(f"Pairs trader error: {e}")
+        return
     
     print(f"Pairs Analyzed: {result['pairs_analyzed']}")
     print(f"Active Signals: {result['active_signals']}")

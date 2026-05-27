@@ -144,7 +144,6 @@ class PairsTrader(BaseAgent):
                         "confidence": conf,
                         "reasoning": f"Z-score {sig['current_zscore']:.2f}, half-life {sig['half_life']:.0f}d, p-value {sig['pvalue']:.3f}",
                         "asset_class": "pairs",
-                        "signal_type": "STAT_ARB",
                         "created_at": datetime.now(timezone.utc).isoformat(),
                         "agent_name": self.name
                     }
