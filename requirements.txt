@@ -27,3 +27,5 @@ mibian>=0.1.3
 py_vollib>=1.0.7
 scipy>=1.10.0
 timesfm
+vectorbt
+pyfolio-reloaded
