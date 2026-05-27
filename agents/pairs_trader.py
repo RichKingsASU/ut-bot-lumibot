@@ -33,7 +33,7 @@ class PairsTrader(BaseAgent):
         df = pd.read_parquet(latest_file)
         df = df.sort_values('ts').reset_index(drop=True)
         series = df.set_index('ts')['close']
-        return series.last('252D')
+        return series.iloc[-252:]
 
     def calculate_spread(self, s1: pd.Series, s2: pd.Series) -> dict:
         try:
