@@ -114,14 +114,45 @@ class SignalAgent(BaseAgent):
                 f"signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}."
             )
 
+        symbol = latest.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY") if signal_rows else ("ETH/USD" if self.asset_class == "crypto" else "SPY")
+        
+        try:
+            from agents.timesfm_forecaster import TimesFMForecaster
+            forecaster = TimesFMForecaster()
+            forecast = forecaster.forecast(
+                symbol=symbol,
+                asset_class=self.asset_class
+            )
+            if forecast:
+                modifier = forecaster.get_signal_modifier(
+                    forecast, action
+                )
+                confidence_boost = modifier['confidence_boost']
+                if confidence_boost > 0 and confidence == 'MEDIUM':
+                    confidence = 'HIGH'
+                elif confidence_boost < 0 and confidence == 'HIGH':
+                    confidence = 'MEDIUM'
+                reasoning += f" | TimesFM: {forecast['forecast_direction']} ({forecast['forecast_pct_change']:+.1f}%)"
+                timesfm_forecast = forecast['forecast_direction']
+                timesfm_pct = forecast['forecast_pct_change']
+            else:
+                timesfm_forecast = "NONE"
+                timesfm_pct = 0.0
+        except Exception as e:
+            logger.warning(f'TimesFM integration skipped: {e}')
+            timesfm_forecast = "NONE"
+            timesfm_pct = 0.0
+
         signal_recommendation = {
             "asset_class": self.asset_class,
-            "symbol": latest_row.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY"),
+            "symbol": symbol,
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,
             "technical_signal": latest_signal_type,
             "reasoning": reasoning,
+            "timesfm_forecast": timesfm_forecast,
+            "timesfm_pct": timesfm_pct,
         }
 
         # ── Step 3b: Greeks modifier ───────────────────────────────────────────
