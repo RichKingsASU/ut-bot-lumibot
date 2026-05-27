@@ -116,6 +116,7 @@ class SignalAgent(BaseAgent):
 
         signal_recommendation = {
             "asset_class": self.asset_class,
+            "symbol": latest_row.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY"),
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,

@@ -137,8 +137,9 @@ async def _debate_node_async(state: AgentState) -> AgentState:
     market = state.get('market_context', {}) or {}
     greeks = state.get('greeks_decision', {}) or {}
     regime = state.get('regime_summary', {}) or {}
-    symbol = signal.get('symbol', 'SPY')
     asset_class = state.get('asset_class', 'equities')
+    default_symbol = 'ETH/USD' if asset_class == 'crypto' else 'SPY'
+    symbol = signal.get('symbol', default_symbol)
 
     try:
         bull = BullAgent(f'{asset_class}-bull')
