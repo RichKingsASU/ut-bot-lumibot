@@ -45,6 +45,7 @@ async def call_claude(
         import anthropic
 
         client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        logger.info("[LLM] Calling Claude claude-sonnet-4-20250514...")
         resp = await client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=max_tokens,
@@ -57,7 +58,8 @@ async def call_claude(
             for block in resp.content
             if getattr(block, "type", None) == "text"
         ).strip()
+        logger.info(f"[LLM] Response received: {text[:50]}...")
         return text or None
     except Exception as exc:  # noqa: BLE001 — fallback must never break the pipeline
-        logger.error(f"Claude call failed ({CLAUDE_MODEL}): {exc} — falling back to rule-based.")
+        logger.error(f"[LLM] API call failed: {exc}")
         return None

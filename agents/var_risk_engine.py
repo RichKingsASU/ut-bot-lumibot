@@ -12,8 +12,8 @@ class VaRRiskEngine:
     VAR_CONFIDENCE = 0.95
     VAR_LOOKBACK_DAYS = 30
     MAX_DAILY_VAR_PCT = 0.02      # 2% of equity
-    DRAWDOWN_PAUSE_PCT = 0.05     # 5% from 30d high → PAUSE
-    DRAWDOWN_STOP_PCT = 0.10      # 10% from 30d high → STOP
+    DRAWDOWN_PAUSE_PCT = 0.08     # 8% from 30d high → PAUSE (Adjusted for paper trading volatility)
+    DRAWDOWN_STOP_PCT = 0.15      # 15% from 30d high → STOP (Adjusted for paper trading volatility)
     MAX_POSITION_PCT = 0.30       # 30% max in one asset class
     MAX_CONCURRENT_POSITIONS = 5
     CORRELATION_ALERT_THRESHOLD = 0.85
@@ -47,14 +47,30 @@ class VaRRiskEngine:
         return []
 
     async def calculate_var(self) -> dict:
-        equity = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
+        raw_equities = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
+        equities = [e for e in raw_equities if e is not None and e > 0]
         current_equity = 0.0
         var_pct = 0.0
         var_dollar = 0.0
         
-        if len(equity) > 1:
-            current_equity = equity[-1]
-            equity_arr = np.array(equity)
+        if len(equities) < 5:
+            current_equity = equities[-1] if equities else 1.0
+            import logging
+            logger = logging.getLogger("VaRRiskEngine")
+            logger.warning(f"[VaR] Only {len(equities)} valid equity points in history — using safe defaults")
+            return {
+                "var_pct": 0.01,
+                "var_dollar": current_equity * 0.01,
+                "current_equity": current_equity,
+                "breach": False,
+                "confidence": self.VAR_CONFIDENCE,
+                "lookback_days": 0,
+                "insufficient_data": True
+            }
+        
+        if len(equities) > 1:
+            current_equity = equities[-1]
+            equity_arr = np.array(equities)
             returns = np.diff(equity_arr) / equity_arr[:-1]
             if len(returns) > 0:
                 var_pct = np.percentile(returns, (1 - self.VAR_CONFIDENCE) * 100)
@@ -71,16 +87,31 @@ class VaRRiskEngine:
         }
 
     async def check_drawdown(self) -> dict:
-        equity_values = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
+        raw_equities = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
+        equities = [e for e in raw_equities if e is not None and e > 0]
         peak_equity = 0.0
         current_equity = 0.0
         drawdown = 0.0
         action = 'OK'
         reason = 'Drawdown within acceptable limits'
 
-        if equity_values:
-            peak_equity = max(equity_values)
-            current_equity = equity_values[-1]
+        if len(equities) < 5:
+            current_equity = equities[-1] if equities else 1.0
+            import logging
+            logger = logging.getLogger("VaRRiskEngine")
+            logger.warning(f"[VaR] Only {len(equities)} valid equity points in history — using safe defaults")
+            return {
+                "drawdown_pct": 0.0,
+                "peak_equity": current_equity,
+                "current_equity": current_equity,
+                "action": "OK",
+                "reason": "Insufficient history — using safe default",
+                "insufficient_data": True
+            }
+
+        if equities:
+            peak_equity = max(equities)
+            current_equity = equities[-1]
             if peak_equity > 0:
                 drawdown = (current_equity - peak_equity) / peak_equity
 

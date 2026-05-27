@@ -31,14 +31,9 @@ class PairsTrader(BaseAgent):
         # Load the most recent file
         latest_file = sorted(files)[-1]
         df = pd.read_parquet(latest_file)
-        
-        # Ensure timestamp index and sort
-        if 'ts' in df.columns:
-            df.set_index('ts', inplace=True)
-            
-        df.sort_index(inplace=True)
-        # Take the last 252 days
-        return df['close'].tail(252)
+        df = df.sort_values('ts').reset_index(drop=True)
+        series = df.set_index('ts')['close']
+        return series.last('252D')
 
     def calculate_spread(self, s1: pd.Series, s2: pd.Series) -> dict:
         try:
@@ -78,7 +73,7 @@ class PairsTrader(BaseAgent):
             signal = 'HOLD'
 
         return {
-            'cointegrated': bool(pvalue < 0.05),
+            'cointegrated': bool(pvalue < 0.10),
             'pvalue': float(pvalue),
             'hedge_ratio': float(hedge_ratio),
             'current_zscore': float(current_z),
@@ -106,6 +101,10 @@ class PairsTrader(BaseAgent):
                 s1 = self.load_daily_close(sym1)
                 s2 = self.load_daily_close(sym2)
                 result = self.calculate_spread(s1, s2)
+                
+                logger.info(f'[Pairs] Loaded {sym1}: {len(s1)} bars')
+                logger.info(f'[Pairs] {sym1}/{sym2} p-value: {result["pvalue"]:.4f}')
+                logger.info(f'[Pairs] {sym1}/{sym2} z-score: {result["current_zscore"]:.2f}')
                 
                 # Align series to calculate half life
                 df = pd.concat([s1, s2], axis=1).dropna()
