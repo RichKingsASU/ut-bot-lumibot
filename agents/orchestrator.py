@@ -183,8 +183,7 @@ def signal_node(state: AgentState) -> AgentState:
 async def _debate_node_async(state: AgentState) -> AgentState:
     """Bull/Bear/Judge debate intercept (async inner).
 
-    Runs between signal_node and greeks_intercept. If the judge says don't
-    proceed, the signal is overridden to HOLD/LOW so downstream nodes skip it.
+    Runs between signal_node and greeks_intercept.
     """
     from agents.bull_agent import BullAgent
     from agents.bear_agent import BearAgent
@@ -197,6 +196,11 @@ async def _debate_node_async(state: AgentState) -> AgentState:
     asset_class = state.get('asset_class', 'equities')
     default_symbol = 'ETH/USD' if asset_class == 'crypto' else 'SPY'
     symbol = signal.get('symbol', default_symbol)
+
+    if 'sentiment_trend' not in market:
+        market['sentiment_trend'] = signal.get('sentiment_trend', 'STABLE')
+    if 'sentiment_velocity' not in market:
+        market['sentiment_velocity'] = signal.get('sentiment_velocity', 0.0)
 
     try:
         bull = BullAgent(f'{asset_class}-bull')
@@ -217,8 +221,7 @@ async def _debate_node_async(state: AgentState) -> AgentState:
             f"({verdict['confidence_score']:.0f}%)"
         )
 
-        # If judge says don't proceed, override signal to HOLD
-        if not verdict['proceed']:
+        if verdict['verdict'] in ['AVOID', 'STRONG_AVOID']:
             signal.setdefault('reasoning', '')
             signal['action'] = 'HOLD'
             signal['confidence'] = 'LOW'
@@ -227,6 +230,11 @@ async def _debate_node_async(state: AgentState) -> AgentState:
                 f"({verdict['reasoning'][:100]})"
             )
             state['signal_recommendation'] = signal
+        elif verdict['verdict'] == 'PROCEED_CAUTIOUSLY':
+            state.setdefault('kelly_sizing', {})
+            state['kelly_sizing']['position_value'] = (
+                state['kelly_sizing'].get('position_value', 0.0) * 0.5
+            )
 
     except Exception as e:
         logger.error(f"[Debate] Failed: {e}")
@@ -396,6 +404,12 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
             regime=regime,
             greeks_scalar=greeks.get("size_scalar", 1.0)
         ))
+        if state.get('debate_result', {}).get('verdict') == 'PROCEED_CAUTIOUSLY':
+            orig_val = kelly_result.get('position_value', 2500.0)
+            scaled_val = orig_val * 0.5
+            kelly_result['position_value'] = scaled_val
+            kelly_result['position_value_str'] = f"${scaled_val:.2f}"
+            logger.info(f"[Orchestrator] Scaled Kelly position size by 50% due to PROCEED_CAUTIOUSLY debate verdict: {orig_val} -> {scaled_val}")
         logger.info(f"[Orchestrator] {symbol} Kelly sizing resolved: {kelly_result.get('position_value_str')}")
         return {**state, "kelly_sizing": kelly_result}
     except Exception as e:
@@ -684,11 +698,11 @@ async def run_cycle() -> dict:
     def _debate_line(db: dict) -> str:
         if not db or db.get("verdict") in (None, "NEUTRAL"):
             return "⚖️ Debate: n/a"
+        reasoning = db.get("reasoning", "")
         return (
-            f"⚖️ Debate: Bull {db.get('bull_score', 0.0):.0f} vs "
-            f"Bear {db.get('bear_score', 0.0):.0f}\n"
-            f"Verdict: {db.get('verdict', 'N/A')} "
-            f"({db.get('confidence_score', 0.0):.0f}%)"
+            f"⚖️ Debate: Bull {db.get('bull_score', 0.0):.0f} vs Bear {db.get('bear_score', 0.0):.0f}\n"
+            f"Verdict: {db.get('verdict', 'N/A')} ({db.get('confidence_score', 0.0):.0f}%)\n"
+            f"{reasoning[:120]}"
         )
 
     report_text = (

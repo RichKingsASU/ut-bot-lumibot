@@ -52,77 +52,129 @@ class BullAgent(BaseAgent):
         regime_summary: dict = None,
     ) -> dict:
         market_context = market_context or {}
-        signal = signal_recommendation or {}
-        greeks = greeks_context or {}
+        signal_recommendation = signal_recommendation or {}
+        greeks_context = greeks_context or {}
         regime_summary = regime_summary or {}
 
-        # ── Extract inputs (resilient to missing fields) ──────────────────────
-        sentiment = float(
-            market_context.get("avg_sentiment", signal.get("sentiment_score", 0.0)) or 0.0
-        )
-        regime = str(
-            regime_summary.get("overall_regime")
-            or market_context.get("current_regime")
-            or "QUIET"
-        ).upper()
-        action = str(signal.get("action", "HOLD")).upper()
-        buy_sig = _truthy(signal.get("buy_sig", action == "BUY"))
-        signal_type = str(signal.get("technical_signal", action))
-        iv_rank = float(greeks.get("iv_rank", signal.get("iv_rank", 50.0)) or 50.0)
-        rvol = float(greeks.get("rvol", 1.0) or 1.0)
-        headlines = market_context.get("top_headlines", []) or []
+        score = 0.0
+        factors = []
 
-        # ── Rule-based bull score ─────────────────────────────────────────────
-        score = 0
-        key_factors: list[str] = []
-
-        if sentiment > 0.2:
-            score += 25
-            key_factors.append(f"Positive sentiment ({sentiment:.2f})")
-        if regime in _BULLISH_REGIMES:
-            score += 25
-            key_factors.append(f"Bullish regime ({regime})")
-        if buy_sig:
-            score += 25
-            key_factors.append("Active buy signal")
-        if iv_rank < 30:
-            score += 15
-            key_factors.append(f"Cheap options — low IV rank ({iv_rank:.0f})")
-        if rvol > 2.5:
+        # 1. SENTIMENT (0-30 points):
+        sentiment = market_context.get('avg_sentiment', 0.0)
+        if sentiment > 0.3:
+            score += 30
+            factors.append(f'Strong bullish sentiment {sentiment:.2f}')
+        elif sentiment > 0.1:
+            score += 20
+            factors.append(f'Mild bullish sentiment {sentiment:.2f}')
+        elif sentiment > -0.1:
             score += 10
-            key_factors.append(f"High RVOL {rvol:.1f}x — institutional interest")
+            factors.append(f'Neutral sentiment {sentiment:.2f}')
+        elif sentiment > -0.3:
+            score += 5
+            factors.append(f'Mild bearish sentiment {sentiment:.2f}')
+        else:
+            score += 0
+            factors.append(f'Strong bearish sentiment {sentiment:.2f}')
 
-        if not key_factors:
-            key_factors.append("No strong bullish factors present")
+        # 2. REGIME (0-30 points):
+        regime = (regime_summary or {}).get('overall_regime', '')
+        if regime == 'BULL':
+            score += 30
+            factors.append('BULL regime — strong tailwind')
+        elif regime == 'QUIET':
+            score += 20
+            factors.append('QUIET regime — mean reversion opportunity')
+        elif regime == 'VOLATILE':
+            score += 15
+            factors.append('VOLATILE — explosive move possible')
+        elif regime == 'BEAR':
+            score += 5
+            factors.append('BEAR regime — headwind')
+        else:
+            score += 10
+            factors.append('Unknown regime')
 
-        reasoning = (
-            f"Bull case: sentiment={sentiment:.2f}, regime={regime}, "
-            f"signal={signal_type}, IV rank={iv_rank:.0f}, RVOL={rvol:.1f}x."
-        )
+        # 3. TECHNICAL SIGNAL (0-20 points):
+        action = signal_recommendation.get('action', 'HOLD')
+        buy_sig = signal_recommendation.get('buy_sig', False)
+        sell_sig = signal_recommendation.get('sell_sig', False)
+        if buy_sig or action == 'BUY':
+            score += 20
+            factors.append('Active BUY signal')
+        elif action == 'HOLD' and not sell_sig:
+            score += 10
+            factors.append('Neutral signal — no active sell')
+        elif sell_sig or action == 'SELL':
+            score += 0
+            factors.append('Active SELL signal — bearish')
 
-        # ── LLM upgrade (optional) ────────────────────────────────────────────
+        # 4. SENTIMENT VELOCITY (0-10 points):
+        velocity = market_context.get('sentiment_velocity', 0.0)
+        trend = market_context.get('sentiment_trend', 'STABLE')
+        if trend == 'IMPROVING':
+            score += 10
+            factors.append('Sentiment improving')
+        elif trend == 'STABLE':
+            score += 5
+            factors.append('Sentiment stable')
+        else:
+            score += 0
+            factors.append('Sentiment deteriorating')
+
+        # 5. GREEKS MODE (0-10 points):
+        if greeks_context:
+            trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
+            iv_rank = greeks_context.get('iv_rank', 50.0)
+            if trade_mode == 'LONG_GAMMA':
+                score += 10
+                factors.append('LONG_GAMMA — IV cheap')
+            elif trade_mode == 'NEUTRAL':
+                score += 5
+                factors.append('Greeks neutral')
+            else:
+                score += 2
+                factors.append('SHORT_PREMIUM mode')
+
+        score = min(100.0, score)
+
+        from agents._llm import call_claude, llm_available
+        reasoning = ' | '.join(factors)
+
         if llm_available():
+            prompt = f'''
+Symbol: {symbol}
+Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"}
+Sentiment: {market_context.get("avg_sentiment", 0):.3f} ({market_context.get("sentiment_label", "neutral")})
+Velocity: {market_context.get("sentiment_trend", "STABLE")}
+Signal: {signal_recommendation.get("action", "HOLD")}
+Bull score: {score:.0f}/100
+
+In exactly 2 sentences, make the strongest
+case FOR entering a long position on {symbol}
+right now. Be specific about the data above.
+'''
             llm_text = await call_claude(
-                system=_SYSTEM_PROMPT,
-                user=self._format_context(
-                    symbol, sentiment, regime, signal_type, buy_sig,
-                    iv_rank, rvol, headlines,
-                ),
+                system='You are a bull-case trading analyst. Be concise, specific, data-driven.',
+                user=prompt,
+                max_tokens=150
             )
             if llm_text:
                 reasoning = llm_text
-                logger.info(f"[Bull] {symbol}: LLM reasoning generated.")
+                logger.info(f'[Bull] LLM reasoning: {llm_text[:60]}')
 
-        result = {
-            "agent": "bull",
-            "symbol": symbol,
-            "score": float(score),
-            "reasoning": reasoning,
-            "key_factors": key_factors,
-            "confidence": _confidence_from_score(score),
+        confidence = ('HIGH' if score >= 70
+                      else 'MEDIUM' if score >= 40
+                      else 'LOW')
+
+        return {
+            'agent': 'bull',
+            'symbol': symbol,
+            'score': round(score, 1),
+            'reasoning': reasoning,
+            'key_factors': factors,
+            'confidence': confidence
         }
-        logger.info(f"[Bull] {symbol}: score={score} confidence={result['confidence']}")
-        return result
 
     @staticmethod
     def _format_context(

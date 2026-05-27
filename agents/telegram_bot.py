@@ -97,8 +97,7 @@ async def handle_command(message: dict):
                 'Authorization': f'Bearer {SUPABASE_KEY}'
             }
             try:
-                # Assuming supabase table `regime_states` has fields `symbol`, `detected_at`, `regime_label`, `confidence`, `recommendation`
-                # Using a generic approach to get recent regimes
+                # Assuming supabase table `regime_states` has fields `symbol`, `detected_at`, `regime`, `regime_probability`
                 r = await client.get(f"{SUPABASE_URL}/rest/v1/regime_states?select=*&order=detected_at.desc&limit=50", headers=headers)
                 data = r.json()
                 if not data:
@@ -107,19 +106,17 @@ async def handle_command(message: dict):
                     seen_symbols = set()
                     lines = []
                     overall = "UNKNOWN"
-                    recommendation = "N/A"
                     for row in data:
                         symbol = row.get('symbol', 'UNKNOWN')
                         if symbol not in seen_symbols:
                             seen_symbols.add(symbol)
-                            label = row.get('regime_label', 'UNKNOWN')
-                            conf = row.get('confidence', 0) * 100
+                            label = row.get('regime', 'UNKNOWN')
+                            conf = row.get('regime_probability', 0.0) * 100
                             lines.append(f"{symbol}: {label} ({conf:.0f}%)")
                             if symbol == 'SPY': # Or some logic to determine overall
                                 overall = label
-                                recommendation = row.get('recommendation', 'N/A')
                     
-                    response_text = "🎯 Current Regimes:\n" + "\n".join(lines) + f"\n\nOverall: {overall}\nStrategy: {recommendation}"
+                    response_text = f"🎯 Current Regimes:\n" + "\n".join(lines) + f"\n\nOverall SPY Regime: {overall}"
             except Exception as e:
                 response_text = f"Error fetching regimes: {e}"
 
@@ -208,7 +205,7 @@ async def handle_command(message: dict):
                 'Prefer': 'return=minimal'
             }
             try:
-                payload = {"kill_switch": True}
+                payload = {"status": "kill", "target_status": "stopped"}
                 # Assuming table is bot_status and has a single row or we update all.
                 # If there's an id we should provide it, but let's just do a bulk update or match some id.
                 # Assuming update without where works if 1 row, or we add eq.id=1
@@ -225,7 +222,7 @@ async def handle_command(message: dict):
                 'Prefer': 'return=minimal'
             }
             try:
-                payload = {"kill_switch": False}
+                payload = {"status": "running", "target_status": "running"}
                 r = await client.patch(f"{SUPABASE_URL}/rest/v1/bot_status", headers=headers, json=payload)
                 response_text = "✅ Kill switch deactivated"
             except Exception as e:
@@ -296,7 +293,7 @@ async def handle_command(message: dict):
                     f"{SUPABASE_URL}/rest/v1/regime_states",
                     headers=sb_headers,
                     params={
-                        'select': 'symbol,regime_label',
+                        'select': 'symbol,regime',
                         'order': 'detected_at.desc',
                         'limit': '10'
                     })
@@ -307,7 +304,7 @@ async def handle_command(message: dict):
                     sym = row.get('symbol', '?')
                     if sym not in seen:
                         seen.add(sym)
-                        regime_lines.append(f"{sym}: {row.get('regime_label', '?')}")
+                        regime_lines.append(f"{sym}: {row.get('regime', '?')}")
 
                 now_str = datetime.now(timezone.utc).strftime('%H:%M UTC')
                 response_text = (
