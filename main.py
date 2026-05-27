@@ -58,7 +58,13 @@ def main():
 
     try:
         broker = Alpaca(ALPACA_CONFIG)
-        strategy = UTBotStrategy(broker=broker)
+        strategy = UTBotStrategy(
+            broker=broker,
+            parameters={
+                "atr_period": 14,
+                "sensitivity": 3.0,
+            }
+        )
         symbol = strategy.parameters.get("symbol", "SPY")
 
         db.log_session_start(symbol, metadata={
