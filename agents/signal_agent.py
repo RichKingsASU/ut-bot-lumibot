@@ -78,6 +78,10 @@ class SignalAgent(BaseAgent):
         # ── Step 3: Combine with market_context.avg_sentiment ─────────────────
         avg_sentiment: float = float(market_context.get("avg_sentiment", 0.0))
 
+        action = "HOLD"
+        confidence = "MEDIUM"
+        reasoning = ""
+
         if avg_sentiment > 0.3 and buy_sig:
             action = "BUY"
             confidence = "HIGH"
@@ -101,13 +105,6 @@ class SignalAgent(BaseAgent):
                 f"(buy_sig={buy_sig}, sell_sig={sell_sig}). Holding to avoid conflicting signals."
             )
         else:
-            # Medium confidence — follow the technical signal
-            if buy_sig:
-                action = "BUY"
-            elif sell_sig:
-                action = "SELL"
-            else:
-                action = "HOLD"
             confidence = "MEDIUM"
             reasoning = (
                 f"Neutral sentiment region ({avg_sentiment:.3f}). Following technical signal: "
@@ -115,6 +112,33 @@ class SignalAgent(BaseAgent):
             )
 
         symbol = latest.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY") if signal_rows else ("ETH/USD" if self.asset_class == "crypto" else "SPY")
+
+        try:
+            from agents.macro_filter import MacroFilter
+            mf = MacroFilter()
+            macro_check = mf.should_trade(symbol)
+            if not macro_check['approved']:
+                action = 'HOLD'
+                confidence = 'LOW'
+                reasoning += f' | Macro filter: {macro_check["reason"]}'
+        except Exception as e:
+            logger.error(f"Macro filter failed: {e}")
+
+        sentiment_velocity = 0.0
+        sentiment_trend = "STABLE"
+        try:
+            from agents.sentiment_velocity import SentimentVelocity
+            sv = SentimentVelocity()
+            vel_result = await sv.calculate(self.asset_class)
+            sentiment_velocity = vel_result['velocity']
+            sentiment_trend = vel_result['trend']
+            
+            if sentiment_trend == 'IMPROVING' and action == 'BUY':
+                if confidence == 'MEDIUM': confidence = 'HIGH'
+            elif sentiment_trend == 'DETERIORATING' and action == 'BUY':
+                if confidence == 'HIGH': confidence = 'MEDIUM'
+        except Exception as e:
+            logger.error(f"Sentiment velocity failed: {e}")
         
         try:
             from agents.timesfm_forecaster import TimesFMForecaster
@@ -140,7 +164,7 @@ class SignalAgent(BaseAgent):
                 timesfm_pct = 0.0
         except Exception as e:
             logger.warning(f'TimesFM integration skipped: {e}')
-            timesfm_forecast = "NONE"
+            timesfm_forecast = 0.0
             timesfm_pct = 0.0
 
         signal_recommendation = {
@@ -149,6 +173,8 @@ class SignalAgent(BaseAgent):
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,
+            "sentiment_velocity": sentiment_velocity,
+            "sentiment_trend": sentiment_trend,
             "technical_signal": latest_signal_type,
             "reasoning": reasoning,
             "timesfm_forecast": timesfm_forecast,

@@ -67,6 +67,9 @@ class AgentState(TypedDict):
     overnight_digest: dict
     cycle_timestamp: str
     signal_decay_summary: dict
+    var_result: dict
+    execution_approved: bool
+    execution_reason: str
 
 
 # ── Node implementations ──────────────────────────────────────────────────────
@@ -96,6 +99,40 @@ def regime_detection_node(state: AgentState) -> AgentState:
             'detected_at': datetime.now(timezone.utc).isoformat()
         }
     
+    return state
+
+
+def execution_filter_node(state: AgentState) -> AgentState:
+    from adapters.execution_filter import ExecutionFilter
+    asset_class = state.get('asset_class', 'equities')
+
+    if asset_class == 'crypto':
+        state['execution_approved'] = True
+        state['execution_reason'] = 'Crypto trades 24/7'
+        return state
+
+    try:
+        ef = ExecutionFilter()
+        result = ef.full_execution_check()
+        state['execution_approved'] = result['approved']
+        state['execution_reason'] = ', '.join(result['reasons']) if result['reasons'] else 'OK'
+
+        if not result['approved']:
+            logger.info(
+                f'[Execution] SKIP: {result["recommendation"]} — {result["reasons"]}'
+            )
+            state['signal_recommendation'] = {
+                'action': 'HOLD',
+                'confidence': 'LOW',
+                'reasoning': f'Execution filter: {result["reasons"]}',
+                'asset_class': asset_class,
+                'symbol': 'SPY'
+            }
+    except Exception as e:
+        logger.error(f'[Execution] Filter failed: {e}')
+        state['execution_approved'] = True
+        state['execution_reason'] = 'Filter error, defaulted to true'
+
     return state
 
 
@@ -302,10 +339,74 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
 def risk_node(state: AgentState) -> AgentState:
     """Calls RiskAgent and GreeksRiskEngine to evaluate dynamic position limits."""
     logger.info(f"[Orchestrator] risk_node executing for {state['asset_class']}...")
-    asset = state.get("asset_class", "crypto")
+    asset_class = state.get("asset_class", "crypto")
+    greeks = state.get("greeks_decision", {})
+    kelly = state.get("kelly_sizing", {})
     
+    try:
+        from agents.var_risk_engine import VaRRiskEngine
+        var_engine = VaRRiskEngine()
+        var_result = asyncio.run(var_engine.full_risk_check())
+
+        if var_result['overall_action'] == 'STOP':
+            try:
+                import os, requests
+                token = os.getenv('TELEGRAM_BOT_TOKEN')
+                if token:
+                    msg = var_engine.format_telegram_alert(var_result)
+                    requests.post(
+                        f'https://api.telegram.org/bot{token}/sendMessage',
+                        json={'chat_id': '8641189809', 'text': msg},
+                        timeout=5
+                    )
+            except Exception as e:
+                logger.warning(f"[VaR] Telegram alert failed: {e}")
+
+            state['risk_decision'] = {
+                'decision': 'BLOCK',
+                'reason': var_result['drawdown']['reason'],
+                'var_trigger': True,
+                'drawdown_pct': var_result['drawdown']['drawdown_pct'],
+                'exposure_pct': 0.0,
+                'recommended_size_pct': 0.0,
+                'asset_class': asset_class
+            }
+            state['var_result'] = var_result
+            return state
+
+        elif var_result['overall_action'] == 'PAUSE':
+            state['risk_decision'] = {
+                'decision': 'HOLD',
+                'reason': var_result['drawdown']['reason'],
+                'var_trigger': True,
+                'recommended_size_pct': 0.0,
+                'asset_class': asset_class
+            }
+            state['var_result'] = var_result
+            return state
+
+        elif var_result['overall_action'] == 'REDUCE':
+            try:
+                import os, requests
+                token = os.getenv('TELEGRAM_BOT_TOKEN')
+                if token:
+                    msg = var_engine.format_telegram_alert(var_result)
+                    requests.post(
+                        f'https://api.telegram.org/bot{token}/sendMessage',
+                        json={'chat_id': '8641189809', 'text': msg},
+                        timeout=5
+                    )
+            except Exception as e:
+                pass
+            kelly['position_value'] = kelly.get('position_value', 2500) * 0.5
+            state['kelly_sizing'] = kelly
+
+        state['var_result'] = var_result
+    except Exception as e:
+        logger.error(f'[VaR] Check failed: {e}')
+
     # 1. Traditional exposure checks
-    agent = RiskAgent(f"{asset}-risk", asset_class=asset)
+    agent = RiskAgent(f"{asset_class}-risk", asset_class=asset_class)
     exposure_decision = asyncio.run(agent.analyze(state["signal_recommendation"]))
     
     # 2. Layer Greeks and Kelly sizing calculations
@@ -321,7 +422,7 @@ def risk_node(state: AgentState) -> AgentState:
         final_risk_decision["decision"] = "BLOCK"
         final_risk_decision["reason"] = exposure_decision.get("reason", "Overexposed")
         
-    logger.info(f"[Orchestrator] {asset} risk_decision finalized: {final_risk_decision}")
+    logger.info(f"[Orchestrator] {asset_class} risk_decision finalized: {final_risk_decision}")
     return {**state, "risk_decision": final_risk_decision}
 
 
@@ -374,6 +475,7 @@ def _build_graph() -> StateGraph:
 
     # Register nodes
     graph.add_node("regime_detection_node", regime_detection_node)
+    graph.add_node("execution_filter_node", execution_filter_node)
     graph.add_node("market_analysis_node", market_analysis_node)
     graph.add_node("signal_node", signal_node)
     graph.add_node("debate_node", debate_node)
@@ -385,7 +487,8 @@ def _build_graph() -> StateGraph:
 
     # Static edges
     graph.add_edge(START, "regime_detection_node")
-    graph.add_edge("regime_detection_node", "market_analysis_node")
+    graph.add_edge("regime_detection_node", "execution_filter_node")
+    graph.add_edge("execution_filter_node", "market_analysis_node")
     graph.add_edge("market_analysis_node", "signal_node")
     graph.add_edge("signal_node", "debate_node")
     graph.add_edge("debate_node", "greeks_intercept")
@@ -515,21 +618,25 @@ async def run_cycle() -> dict:
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
         f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_mc.get('sentiment_label', 'N/A')})\n"
+        f"📰 Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} | Velocity: {c_sr.get('sentiment_trend', 'STABLE')}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
         f"Win Rate: {c_wr:.1%} | Payout: {c_pay:.1f}x\n"
         f"{_greeks_line(c_gd)}\n"
+        f"📉 VaR: {c_rd.get('var_pct', crypto_result.get('var_result', {}).get('var', {}).get('var_pct', 0.0)):.1%} daily | DD: {c_rd.get('drawdown_pct', crypto_result.get('var_result', {}).get('drawdown', {}).get('drawdown_pct', 0.0)):.1%}\n"
+        f"🕐 Execution: {'APPROVED' if crypto_result.get('execution_approved', True) else 'SKIP'} — {crypto_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_mc.get('sentiment_label', 'N/A')})\n"
+        f"📰 Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} | Velocity: {e_sr.get('sentiment_trend', 'STABLE')}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
         f"Win Rate: {e_wr:.1%} | Payout: {e_pay:.1f}x\n"
         f"{_greeks_line(e_gd)}\n"
+        f"📉 VaR: {e_rd.get('var_pct', equities_result.get('var_result', {}).get('var', {}).get('var_pct', 0.0)):.1%} daily | DD: {e_rd.get('drawdown_pct', equities_result.get('var_result', {}).get('drawdown', {}).get('drawdown_pct', 0.0)):.1%}\n"
+        f"🕐 Execution: {'APPROVED' if equities_result.get('execution_approved', True) else 'SKIP'} — {equities_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {e_rd.get('decision', 'N/A')}"
     )
 
