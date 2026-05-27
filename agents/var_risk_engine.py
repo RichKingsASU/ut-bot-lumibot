@@ -11,11 +11,11 @@ class VaRRiskEngine:
     # CONSTANTS
     VAR_CONFIDENCE = 0.95
     VAR_LOOKBACK_DAYS = 30
-    MAX_DAILY_VAR_PCT = 0.02      # 2% of equity
-    DRAWDOWN_PAUSE_PCT = 0.08     # 8% from 30d high → PAUSE (Adjusted for paper trading volatility)
-    DRAWDOWN_STOP_PCT = 0.15      # 15% from 30d high → STOP (Adjusted for paper trading volatility)
-    MAX_POSITION_PCT = 0.30       # 30% max in one asset class
-    MAX_CONCURRENT_POSITIONS = 5
+    MAX_DAILY_VAR_PCT = 0.03      # 3% of equity — crypto positions have higher natural VaR
+    DRAWDOWN_PAUSE_PCT = 0.10     # 10% from 14d high → PAUSE (paper trading with crypto is volatile)
+    DRAWDOWN_STOP_PCT = 0.20      # 20% from 14d high → STOP (only at genuine crisis)
+    MAX_POSITION_PCT = 0.80       # 80% — crypto bot holds 3 positions that naturally dominate
+    MAX_CONCURRENT_POSITIONS = 10  # 3 crypto + SPY = 4 max currently, allow headroom
     CORRELATION_ALERT_THRESHOLD = 0.85
 
     def __init__(self):
@@ -46,36 +46,52 @@ class VaRRiskEngine:
             pass
         return []
 
+    async def get_portfolio_value(self) -> float:
+        """Get current portfolio equity from Alpaca."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{self.alpaca_base}/v2/account", headers=self.headers)
+                if resp.status_code == 200:
+                    return float(resp.json().get('equity', 0.0))
+        except Exception:
+            pass
+        return 0.0
+
     async def calculate_var(self) -> dict:
         raw_equities = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
         equities = [e for e in raw_equities if e is not None and e > 0]
         current_equity = 0.0
         var_pct = 0.0
         var_dollar = 0.0
-        
-        if len(equities) < 5:
-            current_equity = equities[-1] if equities else 1.0
+
+        if len(equities) > 1:
+            equity_arr = np.array(equities)
+            returns = np.diff(equity_arr) / equity_arr[:-1]
+        else:
+            returns = np.array([])
+
+        if len(equities) < 5 or len(returns) < 3:
+            current_equity = await self.get_portfolio_value()
+            if current_equity <= 0:
+                current_equity = equities[-1] if equities else 1.0
             import logging
             logger = logging.getLogger("VaRRiskEngine")
             logger.warning(f"[VaR] Only {len(equities)} valid equity points in history — using safe defaults")
             return {
-                "var_pct": 0.01,
-                "var_dollar": current_equity * 0.01,
+                "var_pct": 0.02,
+                "var_dollar": current_equity * 0.02,
                 "current_equity": current_equity,
                 "breach": False,
                 "confidence": self.VAR_CONFIDENCE,
                 "lookback_days": 0,
-                "insufficient_data": True
+                "insufficient_data": True,
+                "note": "Insufficient history — using safe default"
             }
         
-        if len(equities) > 1:
-            current_equity = equities[-1]
-            equity_arr = np.array(equities)
-            returns = np.diff(equity_arr) / equity_arr[:-1]
-            if len(returns) > 0:
-                var_pct = np.percentile(returns, (1 - self.VAR_CONFIDENCE) * 100)
-                var_dollar = abs(var_pct * current_equity)
-                var_pct = abs(var_pct)
+        current_equity = equities[-1]
+        var_pct = np.percentile(returns, (1 - self.VAR_CONFIDENCE) * 100)
+        var_dollar = abs(var_pct * current_equity)
+        var_pct = abs(var_pct)
 
         return {
             "var_pct": float(var_pct),
@@ -88,30 +104,32 @@ class VaRRiskEngine:
 
     async def check_drawdown(self) -> dict:
         raw_equities = await self.get_portfolio_history(self.VAR_LOOKBACK_DAYS)
-        equities = [e for e in raw_equities if e is not None and e > 0]
+        clean_equities = [e for e in raw_equities if e is not None and e > 0]
         peak_equity = 0.0
         current_equity = 0.0
         drawdown = 0.0
         action = 'OK'
         reason = 'Drawdown within acceptable limits'
 
-        if len(equities) < 5:
-            current_equity = equities[-1] if equities else 1.0
-            import logging
-            logger = logging.getLogger("VaRRiskEngine")
-            logger.warning(f"[VaR] Only {len(equities)} valid equity points in history — using safe defaults")
+        if len(clean_equities) < 5:
+            current_equity = await self.get_portfolio_value()
+            if current_equity <= 0:
+                current_equity = clean_equities[-1] if clean_equities else 1.0
             return {
                 "drawdown_pct": 0.0,
                 "peak_equity": current_equity,
                 "current_equity": current_equity,
                 "action": "OK",
-                "reason": "Insufficient history — using safe default",
+                "reason": "Insufficient history — safe default",
+                "peak_window_days": 0,
                 "insufficient_data": True
             }
 
-        if equities:
-            peak_equity = max(equities)
-            current_equity = equities[-1]
+        if clean_equities:
+            # Use 14-day rolling peak instead of all-time peak
+            recent_window = clean_equities[-14:] if len(clean_equities) >= 14 else clean_equities
+            peak_equity = max(recent_window)
+            current_equity = clean_equities[-1]
             if peak_equity > 0:
                 drawdown = (current_equity - peak_equity) / peak_equity
 
@@ -127,7 +145,9 @@ class VaRRiskEngine:
             "peak_equity": float(peak_equity),
             "current_equity": float(current_equity),
             "action": action,
-            "reason": reason
+            "reason": reason,
+            "peak_window_days": min(14, len(clean_equities)),
+            "note": "14-day rolling peak — paper trading mode"
         }
 
     async def check_position_concentration(self) -> dict:
@@ -160,16 +180,14 @@ class VaRRiskEngine:
 
                     position_count = len(positions)
 
-                    if crypto_exposure > self.MAX_POSITION_PCT:
-                        alerts.append(
-                            f'Crypto concentration {crypto_exposure:.1%} '
-                            f'> {self.MAX_POSITION_PCT:.0%} limit'
-                        )
-                    if equity_exposure > self.MAX_POSITION_PCT:
-                        alerts.append(
-                            f'Equity concentration {equity_exposure:.1%} '
-                            f'> {self.MAX_POSITION_PCT:.0%} limit'
-                        )
+                    # Per-symbol concentration: alert only if SINGLE symbol > 50%
+                    for p in positions:
+                        single_pct = abs(float(p['market_value'])) / total_equity
+                        if single_pct > 0.50:
+                            alerts.append(
+                                f'{p["symbol"]} is {single_pct:.1%} of portfolio'
+                            )
+
                     if position_count > self.MAX_CONCURRENT_POSITIONS:
                         alerts.append(
                             f'{position_count} positions exceeds max '

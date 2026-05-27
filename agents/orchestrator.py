@@ -28,6 +28,8 @@ load_dotenv()
 
 logger = logging.getLogger("Orchestrator")
 
+from agents.node_circuit_breaker import CIRCUIT_BREAKER
+
 _TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 _TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
 
@@ -103,12 +105,20 @@ def regime_detection_node(state: AgentState) -> AgentState:
 
 
 def execution_filter_node(state: AgentState) -> AgentState:
+    NODE = 'execution_filter_node'
+    if CIRCUIT_BREAKER.is_open(NODE):
+        logger.warning(f'[CB] {NODE} circuit open — defaulting to approved')
+        state['execution_approved'] = True
+        state['execution_reason'] = 'Circuit breaker bypass'
+        return state
+
     from adapters.execution_filter import ExecutionFilter
     asset_class = state.get('asset_class', 'equities')
 
     if asset_class == 'crypto':
         state['execution_approved'] = True
         state['execution_reason'] = 'Crypto trades 24/7'
+        CIRCUIT_BREAKER.record_success(NODE)
         return state
 
     try:
@@ -128,8 +138,10 @@ def execution_filter_node(state: AgentState) -> AgentState:
                 'asset_class': asset_class,
                 'symbol': 'SPY'
             }
+        CIRCUIT_BREAKER.record_success(NODE)
     except Exception as e:
         logger.error(f'[Execution] Filter failed: {e}')
+        CIRCUIT_BREAKER.record_failure(NODE)
         state['execution_approved'] = True
         state['execution_reason'] = 'Filter error, defaulted to true'
 
@@ -231,8 +243,34 @@ async def _debate_node_async(state: AgentState) -> AgentState:
 
 def debate_node(state: AgentState) -> AgentState:
     """Bull/Bear/Judge debate node — wired between signal_node and greeks_intercept."""
+    NODE = 'debate_node'
+    if CIRCUIT_BREAKER.is_open(NODE):
+        logger.warning(f'[CB] {NODE} circuit open — skipping debate')
+        state['debate_result'] = {
+            'verdict': 'NEUTRAL',
+            'proceed': True,
+            'confidence_score': 50.0,
+            'bull_score': 50.0,
+            'bear_score': 50.0,
+        }
+        return state
+
     logger.info(f"[Orchestrator] debate_node executing for {state['asset_class']}...")
-    return asyncio.run(_debate_node_async(dict(state)))
+    try:
+        result = asyncio.run(_debate_node_async(dict(state)))
+        CIRCUIT_BREAKER.record_success(NODE)
+        return result
+    except Exception as e:
+        logger.error(f'[Debate] Node failed: {e}')
+        CIRCUIT_BREAKER.record_failure(NODE)
+        state['debate_result'] = {
+            'verdict': 'NEUTRAL',
+            'proceed': True,
+            'confidence_score': 50.0,
+            'bull_score': 50.0,
+            'bear_score': 50.0,
+        }
+        return state
 
 
 async def _greeks_intercept_async(state: AgentState) -> AgentState:

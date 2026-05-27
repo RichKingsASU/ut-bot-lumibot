@@ -15,7 +15,7 @@ async def run():
     conc_res = result['concentration']
 
     print(f"VaR (95%, 30d): {var_res['var_pct']:.2%} (${var_res['var_dollar']:,.0f})")
-    print(f"Drawdown (30d): {dd_res['drawdown_pct']:.2%}")
+    print(f"Drawdown (14d): {dd_res['drawdown_pct']:.2%}")
     print(f"Positions: {conc_res['position_count']} (Crypto: {conc_res['crypto_exposure_pct']:.1%}, Equity: {conc_res['equity_exposure_pct']:.1%})")
     print(f"Overall Action: {result['overall_action']}")
     
