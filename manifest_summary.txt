@@ -1,0 +1,35 @@
+======================================================================
+DISRUPTING ALPHA — REPO AUDIT MANIFEST SUMMARY
+Generated: 2026-05-27T16:51:25.165623
+Repo root: /home/user/ut-bot-lumibot
+======================================================================
+
+── FRONTEND ──────────────────────────────────────────────────────────
+Total files:        0
+Files by role:      {}
+Unique routes:      []
+Unique components:  []
+API calls:          []
+Supabase tables:    []
+Env vars:           []
+
+── BACKEND ───────────────────────────────────────────────────────────
+Total files:        91
+Files by role:      {'unknown': 31, 'telegram-bot': 13, 'qdrant-worker': 8, 'nats-worker': 15, 'greeks-engine': 2, 'position-sizing': 1, 'langgraph-agent': 2, 'sentiment': 3, 'questdb-writer': 3, 'regime-detection': 2, 'script': 9, 'lumibot-strategy': 2}
+Lumibot strategies: ['strategies/adaptive_trend_mr_eth.py', 'strategies/ut_bot.py']
+Protected files:    ['strategies/options_executor.py', 'strategies/ut_bot.py']
+Supabase tables:    ['agent_signals', 'greeks_snapshots', 'news_articles', 'ohlcv_bars', 'regime_states']
+NATS subjects:      ['is.null', 'main.tsx', 'news.crypto', 'news.equities', 'not.is.null', 'pandas.core.frame', 'sentiment.crypto', 'summary.json']
+QuestDB tables:     ['ticks']
+Qdrant collections: ['agent_memory', 'crypto_news']
+Env vars:           ['ADMIN_API_KEY', 'ALPACA_API_KEY', 'ALPACA_API_SECRET', 'ALPACA_BASE_URL', 'ALPACA_DATA_FEED', 'ALPACA_DATA_URL', 'ALPACA_FEED', 'ALPACA_IS_PAPER', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'APCA_API_KEY_ID', 'APCA_API_SECRET_KEY', 'DEBUG', 'FINNHUB_API_KEY', 'HUGGINGFACE_TOKEN', 'NATS_URL', 'NODE_ENV', 'QUESTDB_URL', 'SESSION_ID', 'SUPABASE_ANON_KEY', 'SUPABASE_LOCAL_ANON_KEY', 'SUPABASE_LOCAL_SERVICE_ROLE_KEY', 'SUPABASE_LOCAL_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TRADING_SYMBOL']
+
+── CROSS-REFERENCE ───────────────────────────────────────────────────
+Supabase tables — frontend only: []
+Supabase tables — backend only:  ['agent_signals', 'greeks_snapshots', 'news_articles', 'ohlcv_bars', 'regime_states']
+Supabase tables — shared:        []
+
+Env vars — frontend only:        []
+Env vars — backend only:         ['ADMIN_API_KEY', 'ALPACA_API_KEY', 'ALPACA_API_SECRET', 'ALPACA_BASE_URL', 'ALPACA_DATA_FEED', 'ALPACA_DATA_URL', 'ALPACA_FEED', 'ALPACA_IS_PAPER', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'APCA_API_KEY_ID', 'APCA_API_SECRET_KEY', 'DEBUG', 'FINNHUB_API_KEY', 'HUGGINGFACE_TOKEN', 'NATS_URL', 'NODE_ENV', 'QUESTDB_URL', 'SESSION_ID', 'SUPABASE_ANON_KEY', 'SUPABASE_LOCAL_ANON_KEY', 'SUPABASE_LOCAL_SERVICE_ROLE_KEY', 'SUPABASE_LOCAL_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TRADING_SYMBOL']
+Env vars — shared:               []
+======================================================================
