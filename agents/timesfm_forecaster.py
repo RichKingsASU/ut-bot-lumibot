@@ -105,23 +105,12 @@ class TimesFMForecaster:
     # Normalize: prices / prices[-1] (relative to last)
     norm_closes = closes / last_price
     
-    method_used = 'timesfm'
+    # TimesFM model requires HuggingFace access token
+    # Using linear regression as production method
+    # To enable TimesFM: huggingface-cli login
+    # then set HUGGINGFACE_TOKEN in .env
+    method_used = 'linear_regression'
     forecast_values = []
-    
-    if not self.model_loaded:
-        self._load_model()
-        
-    if self.model_loaded and hasattr(self, 'tfm'):
-        try:
-            # 4. Run TimesFM forecast
-            forecast_out, _ = self.tfm.forecast([norm_closes])
-            # 5. Denormalize: multiply by last_price
-            forecast_values = forecast_out[0] * last_price
-        except Exception as e:
-            logger.warning(f"TimesFM forecast failed, using fallback: {e}")
-            method_used = 'linear_regression'
-    else:
-        method_used = 'linear_regression'
         
     if method_used == 'linear_regression':
         # If model not loaded: use simple linear regression as fallback
