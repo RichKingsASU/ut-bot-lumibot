@@ -170,21 +170,36 @@ export default function BacktestView() {
     async function loadICData() {
       try {
         setIcLoading(true)
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('signal_performance')
-          .select('symbol, information_coefficient, calculated_at, recommendation')
-          .order('calculated_at', { ascending: true })
+          .select('strategy_name, ic_score, period_start, period_end')
+          .order('period_start', { ascending: false })
           .limit(30)
 
-        if (cancelled) return
-        if (error) throw error
+        if (error) {
+          // Fallback to table schema from migration
+          const fallback = await supabase
+            .from('signal_performance')
+            .select('symbol, information_coefficient, calculated_at, recommendation')
+            .order('calculated_at', { ascending: true })
+            .limit(30)
 
-        if (data) {
+          if (fallback.error) throw fallback.error
+
+          if (fallback.data) {
+            setIcData(fallback.data.map((r: any) => ({
+              symbol: r.symbol,
+              information_coefficient: Number(r.information_coefficient || 0),
+              calculated_at: r.calculated_at || '',
+              recommendation: r.recommendation || '',
+            })))
+          }
+        } else if (data) {
           setIcData(data.map((r: any) => ({
-            symbol: r.symbol,
-            information_coefficient: Number(r.information_coefficient || 0),
-            calculated_at: r.calculated_at || '',
-            recommendation: r.recommendation || '',
+            symbol: r.strategy_name || 'N/A',
+            information_coefficient: Number(r.ic_score || 0),
+            calculated_at: r.period_start || r.period_end || '',
+            recommendation: '',
           })))
         }
       } catch (err) {

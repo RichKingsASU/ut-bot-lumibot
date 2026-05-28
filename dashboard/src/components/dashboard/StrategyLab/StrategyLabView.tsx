@@ -51,7 +51,7 @@ const StrategyLabView: React.FC = () => {
   );
   const [cpuPct, setCpuPct] = useState(14);
   const [deployTarget, setDeployTarget] = useState<'equities' | 'crypto'>('equities');
-  const [deploySymbol, setDeploySymbol] = useState('IWM');
+  const [deploySymbol, setDeploySymbol] = useState('SPY');
   const [isTerminalCollapsed, setIsTerminalCollapsed] = useState(false);
 
   const selected = strategies.find(s => s.id === selectedId) || strategies[0];

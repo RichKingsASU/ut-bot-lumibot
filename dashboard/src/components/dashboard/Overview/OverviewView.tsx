@@ -221,7 +221,7 @@ export default function OverviewView() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             {/* Regime Badge */}
             <Link
-              to="/system-health"
+              to="/admin/pipeline"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -247,7 +247,7 @@ export default function OverviewView() {
           </div>
         }
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((card) => {
           const Icon = card.icon
           return (
@@ -283,6 +283,52 @@ export default function OverviewView() {
             </div>
           )
         })}
+
+        {/* HMM Regime Badge Card */}
+        <Link
+          to="/admin/pipeline"
+          style={{
+            backgroundColor: colors.bgSecondary,
+            border: `1px solid ${regimeColor}`,
+            borderRadius: 8,
+            padding: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            textDecoration: 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = `${regimeColor}0a`
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = colors.bgSecondary
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 8,
+              backgroundColor: `${regimeColor}18`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <TrendingUp size={22} color={regimeColor} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>Market Regime</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: regimeColor }}>
+              {regimeName}{regimeProb}
+            </div>
+            <div style={{ fontSize: 11, color: colors.textMuted }}>
+              {regimeAge}
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Equity Curve Chart */}

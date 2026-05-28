@@ -28,8 +28,13 @@ export function BacktestPanel({
   result, cpuPct, onRunBacktest,
   deployTarget, deploySymbol, onSetTarget, onSetSymbol, onDeploy
 }: Props) {
-  const [startDate, setStartDate] = useState('2025-01-01');
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
   const [capital, setCapital] = useState('100,000');
 
   const inputCls = "w-full bg-surface-0 border border-border-muted rounded-lg py-1.5 px-3 text-[11px] text-vibrant font-mono outline-none focus:border-blue-500/50 transition-smooth";
@@ -74,7 +79,7 @@ export function BacktestPanel({
 
           <div>
             <label className={labelCls}>Execution Instrument</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 mb-3">
               {(['equities', 'crypto'] as const).map(t => (
                 <button
                   key={t}
@@ -89,6 +94,20 @@ export function BacktestPanel({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Symbol Selector</label>
+            <select
+              className={inputCls}
+              value={deploySymbol}
+              onChange={e => onSetSymbol(e.target.value)}
+              style={{ color: '#58a6ff', backgroundColor: '#21262d', border: '1px solid #30363d' }}
+            >
+              {['SPY', 'IWM', 'QQQ', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'META', 'GOOGL'].map(sym => (
+                <option key={sym} value={sym}>{sym}</option>
+              ))}
+            </select>
           </div>
         </div>
 
