@@ -138,21 +138,70 @@ class BullAgent(BaseAgent):
 
         score = min(100.0, score)
 
+        # Fetch live data from Supabase
+        asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
+        asset_filter = "eq.crypto" if asset_class == "crypto" else "in.(equity,equities)"
+        
+        latest_signals = []
+        current_regime_row = None
+        recent_sentiment = []
+        
+        try:
+            latest_signals = await self.query_supabase(
+                table="agent_signals",
+                select="symbol,action,confidence,created_at",
+                filters={"asset_class": asset_filter, "order": "created_at.desc"},
+                limit=5
+            )
+        except Exception as e:
+            logger.error(f"Failed to query live agent_signals from Supabase: {e}")
+            
+        try:
+            regime_rows = await self.query_supabase(
+                table="regime_states",
+                select="regime,regime_probability,detected_at",
+                filters={"asset_class": asset_filter, "order": "detected_at.desc"},
+                limit=1
+            )
+            if regime_rows:
+                current_regime_row = regime_rows[0]
+        except Exception as e:
+            logger.error(f"Failed to query live regime_states from Supabase: {e}")
+            
+        try:
+            recent_sentiment = await self.query_supabase(
+                table="news_articles",
+                select="title,sentiment_score,created_at",
+                filters={"asset_class": f"eq.{asset_class}", "sentiment_score": "not.is.null", "order": "created_at.desc"},
+                limit=5
+            )
+        except Exception as e:
+            logger.error(f"Failed to query live news sentiment from Supabase: {e}")
+
+        signals_str = "\n".join([f"  - {s.get('symbol')}: {s.get('action')} ({s.get('confidence')})" for s in latest_signals]) if latest_signals else "  None"
+        regime_str = f"{current_regime_row.get('regime')} (Prob: {current_regime_row.get('regime_probability')})" if current_regime_row else "Unknown"
+        sentiment_str = "\n".join([f"  - {ns.get('title')} (score: {ns.get('sentiment_score')})" for ns in recent_sentiment]) if recent_sentiment else "  None"
+
         from agents._llm import call_claude, llm_available
         reasoning = ' | '.join(factors)
 
         if llm_available():
             prompt = f'''
 Symbol: {symbol}
-Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"}
+Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"} (Live Regime: {regime_str})
 Sentiment: {market_context.get("avg_sentiment", 0):.3f} ({market_context.get("sentiment_label", "neutral")})
 Velocity: {market_context.get("sentiment_trend", "STABLE")}
 Signal: {signal_recommendation.get("action", "HOLD")}
 Bull score: {score:.0f}/100
 
-In exactly 2 sentences, make the strongest
-case FOR entering a long position on {symbol}
-right now. Be specific about the data above.
+Live Signals (Supabase):
+{signals_str}
+
+Live News Sentiment (Supabase):
+{sentiment_str}
+
+In exactly 2 sentences, make the strongest case FOR entering a long position on {symbol} right now. Be specific about the data above.
+At the very end, output: "Score: <number>" where <number> is your final bull score between 0 and 100 based on the analysis.
 '''
             llm_text = await call_claude(
                 system='You are a bull-case trading analyst. Be concise, specific, data-driven.',
@@ -162,6 +211,11 @@ right now. Be specific about the data above.
             if llm_text:
                 reasoning = llm_text
                 logger.info(f'[Bull] LLM reasoning: {llm_text[:60]}')
+                import re
+                match = re.search(r"Score:\s*(\d+)", llm_text, re.IGNORECASE)
+                if match:
+                    score = float(match.group(1))
+                    logger.info(f'[Bull] Extracted score from LLM: {score}')
 
         confidence = ('HIGH' if score >= 70
                       else 'MEDIUM' if score >= 40

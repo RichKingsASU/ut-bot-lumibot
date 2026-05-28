@@ -291,7 +291,7 @@ async def _greeks_intercept_async(state: AgentState) -> AgentState:
 
     signal = state.get('signal_recommendation', {})
     asset_class = state.get('asset_class', 'equities')
-    symbol = signal.get('symbol', 'SPY')
+    symbol = signal.get('symbol', 'ETH/USD' if asset_class == 'crypto' else 'SPY')
 
     # Only run Greeks for equities during market hours
     if asset_class == 'crypto' or not is_market_hours():
@@ -395,7 +395,7 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
         greeks = state.get("greeks_decision", {})
         regime = state.get("regime_summary", {}).get("overall_regime", "QUIET")
         asset = state.get("asset_class", "equities")
-        symbol = signal.get("symbol", "SPY")
+        symbol = signal.get("symbol", "ETH/USD" if asset == "crypto" else "SPY")
         
         sizer = KellySizer()
         kelly_result = asyncio.run(sizer.calculate_position_size(
