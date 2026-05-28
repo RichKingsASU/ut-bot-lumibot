@@ -24,6 +24,8 @@ import RiskManagerView from './components/dashboard/RiskManager/RiskManagerView'
 import { DataView } from './components/dashboard/Data/DataView'
 import { AlertsView } from './components/dashboard/Alerts/AlertsView'
 import SystemHealthView from './components/dashboard/SystemHealth/SystemHealthView'
+import SystemHealthPage from './pages/SystemHealthPage'
+import AgentPipelinePage from './pages/AgentPipelinePage'
 import { SettingsView } from './components/dashboard/Settings/SettingsView'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
 import { toUserMessage } from './lib/apiError'
@@ -116,6 +118,8 @@ export default function App() {
             <Route path="/data" element={<DataView />} />
             <Route path="/alerts" element={<AlertsView />} />
             <Route path="/system-health" element={<SystemHealthView />} />
+            <Route path="/admin/health" element={<SystemHealthPage />} />
+            <Route path="/admin/pipeline" element={<AgentPipelinePage />} />
             <Route path="/settings" element={<SettingsView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
