@@ -530,7 +530,7 @@ def research_node(state: AgentState) -> AgentState:
 
 
 def report_node(state: AgentState) -> AgentState:
-    """Logs report node execution."""
+    """Logs report node execution and updates the Supabase agent_signals row with final pipeline outputs."""
     logger.info(f"[Orchestrator] report_node executing for {state['asset_class']}...")
     asset = state.get("asset_class", "crypto")
     gd = state.get("greeks_decision", {})
@@ -544,6 +544,59 @@ def report_node(state: AgentState) -> AgentState:
             f"| Gamma: {gd.get('gamma', 0.0):.4f}"
         )
     logger.info(f"[Orchestrator] {asset} pipeline cycle completed. {greeks_line}")
+
+    # Update cloud Supabase agent_signals table with the rich cycle metrics
+    try:
+        sig = state.get("signal_recommendation", {})
+        signal_id = sig.get("id")
+        if signal_id:
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and service_role_key:
+                url = f"{supabase_url}/rest/v1/agent_signals?id=eq.{signal_id}"
+                headers = {
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                }
+                
+                # Fetch components
+                regime_sum = state.get("regime_summary", {})
+                debate_res = state.get("debate_result", {})
+                kelly_sz = state.get("kelly_sizing", {})
+                risk_dec = state.get("risk_decision", {})
+                
+                update_payload = {
+                    "signal_type": sig.get("technical_signal"),
+                    "sentiment_trend": sig.get("sentiment_trend"),
+                    "timesfm_forecast": sig.get("timesfm_forecast"),
+                    "timesfm_pct": float(sig.get("timesfm_pct") or 0.0) if sig.get("timesfm_pct") is not None else None,
+                    "trade_mode": gd.get("trade_mode"),
+                    "iv_rank": float(gd.get("iv_rank") or 0.0) if gd.get("iv_rank") is not None else None,
+                    "gamma": float(gd.get("gamma") or 0.0) if gd.get("gamma") is not None else None,
+                    "sentiment_velocity": float(sig.get("sentiment_velocity") or 0.0) if sig.get("sentiment_velocity") is not None else None,
+                    "debate_bull_score": float(debate_res.get("bull_score") or 0.0) if debate_res.get("bull_score") is not None else None,
+                    "debate_bear_score": float(debate_res.get("bear_score") or 0.0) if debate_res.get("bear_score") is not None else None,
+                    "debate_verdict": debate_res.get("verdict"),
+                    "kelly_position_value": float(kelly_sz.get("position_value") or 0.0) if kelly_sz.get("position_value") is not None else None,
+                    "regime": regime_sum.get("overall_regime"),
+                    "execution_approved": bool(state.get("execution_approved", True)),
+                    "macro_approved": not (state.get("execution_reason", "") and "Macro" in state.get("execution_reason", "")),
+                    # Since we modified action/confidence in the debate node, update them too!
+                    "action": sig.get("action"),
+                    "confidence": sig.get("confidence"),
+                    "reasoning": sig.get("reasoning"),
+                }
+                
+                import requests
+                resp = requests.patch(url, headers=headers, json=update_payload, timeout=5)
+                if resp.status_code in (200, 204):
+                    logger.info(f"[SUPABASE] Successfully updated agent_signal ID {signal_id} with full pipeline metrics.")
+                else:
+                    logger.warning(f"[SUPABASE] Failed to update agent_signal ID {signal_id} ({resp.status_code}): {resp.text}")
+    except Exception as e:
+        logger.warning(f"[SUPABASE] Error updating agent_signal table in report_node: {e}")
+
     return state
 
 

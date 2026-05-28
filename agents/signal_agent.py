@@ -251,6 +251,12 @@ class SignalAgent(BaseAgent):
                     resp = await client.post(url, headers=headers, json=payload)
                     if resp.status_code in (200, 201):
                         logger.info("signal_recommendation written to Supabase agent_signals.")
+                        resp_data = resp.json()
+                        if resp_data and isinstance(resp_data, list):
+                            inserted_id = resp_data[0].get("id")
+                            if inserted_id:
+                                signal_recommendation["id"] = inserted_id
+                                logger.info(f"Stored agent_signal ID: {inserted_id} in recommendation.")
                     else:
                         logger.error(
                             f"Supabase insert failed: {resp.status_code} — {resp.text}"
