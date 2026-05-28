@@ -127,23 +127,26 @@ class BaseAgent(abc.ABC):
             return {
                 "avg_score": 0.0,
                 "label": "neutral",
-                "top_headlines": []
+                "top_headlines": [],
+                "article_count": 0
             }
-            
+
         if not rows:
             return {
                 "avg_score": 0.0,
                 "label": "neutral",
-                "top_headlines": []
+                "top_headlines": [],
+                "article_count": 0
             }
-            
+
         scores = [float(row["sentiment_score"]) for row in rows if row.get("sentiment_score") is not None]
-        
+
         if not scores:
             return {
                 "avg_score": 0.0,
                 "label": "neutral",
-                "top_headlines": []
+                "top_headlines": [],
+                "article_count": 0
             }
             
         avg_score = sum(scores) / len(scores)
@@ -160,7 +163,8 @@ class BaseAgent(abc.ABC):
         return {
             "avg_score": avg_score,
             "label": label,
-            "top_headlines": top_headlines
+            "top_headlines": top_headlines,
+            "article_count": len(scores)
         }
 
     @abc.abstractmethod

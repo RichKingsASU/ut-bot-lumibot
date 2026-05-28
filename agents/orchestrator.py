@@ -197,10 +197,8 @@ async def _debate_node_async(state: AgentState) -> AgentState:
     default_symbol = 'ETH/USD' if asset_class == 'crypto' else 'SPY'
     symbol = signal.get('symbol', default_symbol)
 
-    if 'sentiment_trend' not in market:
-        market['sentiment_trend'] = signal.get('sentiment_trend', 'STABLE')
-    if 'sentiment_velocity' not in market:
-        market['sentiment_velocity'] = signal.get('sentiment_velocity', 0.0)
+    market['sentiment_trend'] = signal.get('sentiment_trend', market.get('sentiment_trend', 'STABLE'))
+    market['sentiment_velocity'] = signal.get('sentiment_velocity', market.get('sentiment_velocity', 0.0))
 
     try:
         bull = BullAgent(f'{asset_class}-bull')
@@ -230,11 +228,6 @@ async def _debate_node_async(state: AgentState) -> AgentState:
                 f"({verdict['reasoning'][:100]})"
             )
             state['signal_recommendation'] = signal
-        elif verdict['verdict'] == 'PROCEED_CAUTIOUSLY':
-            state.setdefault('kelly_sizing', {})
-            state['kelly_sizing']['position_value'] = (
-                state['kelly_sizing'].get('position_value', 0.0) * 0.5
-            )
 
     except Exception as e:
         logger.error(f"[Debate] Failed: {e}")
@@ -726,13 +719,24 @@ async def run_cycle() -> dict:
     e_gd = equities_result.get("greeks_decision", {})
     e_db = equities_result.get("debate_result", {})
 
-    c_frac = c_ks.get("kelly_fraction", 0.0)
+    c_frac = c_ks.get("adjusted_kelly", c_ks.get("kelly_fraction", 0.0))
     c_wr = c_ks.get("win_rate", 0.50)
     c_pay = c_ks.get("payout_ratio", 1.5)
 
-    e_frac = e_ks.get("kelly_fraction", 0.0)
+    e_frac = e_ks.get("adjusted_kelly", e_ks.get("kelly_fraction", 0.0))
     e_wr = e_ks.get("win_rate", 0.50)
     e_pay = e_ks.get("payout_ratio", 1.5)
+
+    c_var = crypto_result.get('var_result', {})
+    c_var_pct = c_var.get('var', {}).get('var_pct', 0.0)
+    c_dd_pct = c_var.get('drawdown', {}).get('drawdown_pct', 0.0)
+
+    e_var = equities_result.get('var_result', {})
+    e_var_pct = e_var.get('var', {}).get('var_pct', 0.0)
+    e_dd_pct = e_var.get('drawdown', {}).get('drawdown_pct', 0.0)
+
+    c_art = c_mc.get('article_count', 0)
+    e_art = e_mc.get('article_count', 0)
 
     # Greeks lines
     def _greeks_line(gd: dict) -> str:
@@ -752,34 +756,35 @@ async def run_cycle() -> dict:
         if not db or db.get("verdict") in (None, "NEUTRAL"):
             return "⚖️ Debate: n/a"
         reasoning = db.get("reasoning", "")
+        reasoning_display = reasoning[:300] + ("..." if len(reasoning) > 300 else "")
         return (
             f"⚖️ Debate: Bull {db.get('bull_score', 0.0):.0f} vs Bear {db.get('bear_score', 0.0):.0f}\n"
             f"Verdict: {db.get('verdict', 'N/A')} ({db.get('confidence_score', 0.0):.0f}%)\n"
-            f"{reasoning[:120]}"
+            f"{reasoning_display}"
         )
 
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
         f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} | Velocity: {c_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"📰 Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_art} articles) | Velocity: {c_sr.get('sentiment_trend', 'STABLE')}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
-        f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} portfolio)\n"
+        f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} adj. portfolio)\n"
         f"Win Rate: {c_wr:.1%} | Payout: {c_pay:.1f}x\n"
         f"{_greeks_line(c_gd)}\n"
-        f"📉 VaR: {c_rd.get('var_pct', crypto_result.get('var_result', {}).get('var', {}).get('var_pct', 0.0)):.1%} daily | DD: {c_rd.get('drawdown_pct', crypto_result.get('var_result', {}).get('drawdown', {}).get('drawdown_pct', 0.0)):.1%}\n"
+        f"📉 VaR: {c_var_pct:.1%} daily | DD: {c_dd_pct:.1%}\n"
         f"🕐 Execution: {'APPROVED' if crypto_result.get('execution_approved', True) else 'SKIP'} — {crypto_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} | Velocity: {e_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"📰 Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_art} articles) | Velocity: {e_sr.get('sentiment_trend', 'STABLE')}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
-        f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} portfolio)\n"
+        f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} adj. portfolio)\n"
         f"Win Rate: {e_wr:.1%} | Payout: {e_pay:.1f}x\n"
         f"{_greeks_line(e_gd)}\n"
-        f"📉 VaR: {e_rd.get('var_pct', equities_result.get('var_result', {}).get('var', {}).get('var_pct', 0.0)):.1%} daily | DD: {e_rd.get('drawdown_pct', equities_result.get('var_result', {}).get('drawdown', {}).get('drawdown_pct', 0.0)):.1%}\n"
+        f"📉 VaR: {e_var_pct:.1%} daily | DD: {e_dd_pct:.1%}\n"
         f"🕐 Execution: {'APPROVED' if equities_result.get('execution_approved', True) else 'SKIP'} — {equities_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {e_rd.get('decision', 'N/A')}"
     )

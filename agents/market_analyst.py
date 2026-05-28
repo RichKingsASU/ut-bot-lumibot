@@ -40,6 +40,7 @@ class MarketAnalystAgent(BaseAgent):
         avg_sentiment = sentiment_data.get("avg_score", 0.0)
         sentiment_label = sentiment_data.get("label", "neutral")
         top_headlines = sentiment_data.get("top_headlines", [])
+        article_count = sentiment_data.get("article_count", 0)
         
         # Step 2: query_supabase("signal_log", limit=10)
         try:
@@ -89,6 +90,9 @@ class MarketAnalystAgent(BaseAgent):
             "asset_class": self.asset_class,
             "avg_sentiment": avg_sentiment,
             "sentiment_label": sentiment_label,
+            "article_count": article_count,
+            "sentiment_velocity": 0.0,
+            "sentiment_trend": "STABLE",
             "top_headlines": top_headlines,
             "recent_signals": recent_signals,
             "tick_count": tick_count,
