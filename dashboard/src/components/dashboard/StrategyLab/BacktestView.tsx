@@ -4,6 +4,15 @@ import { PageHeader } from '../../ui/PageHeader'
 import { PriceChart, type PriceChartBar } from '../../ui/PriceChart'
 import { supabase } from '../../../lib/supabaseClient'
 import { formatSharpe } from '../../../lib/metrics'
+import {
+  LineChart as RechartsLineChart,
+  Line as RechartsLine,
+  XAxis as RechartsXAxis,
+  YAxis as RechartsYAxis,
+  CartesianGrid as RechartsCartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer as RechartsResponsiveContainer
+} from 'recharts'
 
 interface StrategyOption {
   id: string
@@ -26,6 +35,13 @@ interface BacktestRun {
   runAt: string
 }
 
+interface SignalPerformance {
+  symbol: string
+  information_coefficient: number
+  calculated_at: string
+  recommendation?: string
+}
+
 const colors = {
   bgPrimary: '#0d1117',
   bgSecondary: '#161b22',
@@ -46,7 +62,8 @@ const DEFAULT_STRATEGIES: StrategyOption[] = [
   { id: 'rsi-reversion', name: 'RSI Mean Reversion', filename: 'rsi_mean_reversion.py' },
 ]
 
-const SYMBOLS = ['IWM', 'SPY', 'QQQ', 'BTC/USD', 'ETH/USD']
+// Extended symbol selector list
+const SYMBOLS = ['SPY', 'IWM', 'QQQ', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'META', 'GOOGL', 'BTC/USD', 'ETH/USD']
 
 function tabBtnStyle(active: boolean): React.CSSProperties {
   return {
@@ -67,13 +84,22 @@ export default function BacktestView() {
   const location = useLocation()
   const [strategies, setStrategies] = useState<StrategyOption[]>(DEFAULT_STRATEGIES)
   const [strategyId, setStrategyId] = useState<string>(DEFAULT_STRATEGIES[0].id)
-  const [symbol, setSymbol] = useState<string>('IWM')
-  const [startDate, setStartDate] = useState<string>('2025-01-01')
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [symbol, setSymbol] = useState<string>('SPY') // Default selected: SPY
+  
+  // Dynamic default dates (90 days ago to today)
+  const [startDate, setStartDate] = useState<string>(
+    new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  )
+  const [endDate, setEndDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  )
+  
   const [running, setRunning] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const [latest, setLatest] = useState<BacktestRun | null>(null)
   const [history, setHistory] = useState<BacktestRun[]>([])
+  const [icData, setIcData] = useState<SignalPerformance[]>([])
+  const [icLoading, setIcLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -133,6 +159,41 @@ export default function BacktestView() {
       }
     }
     void loadHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Fetch signal performance tracking data (IC Score trend)
+  useEffect(() => {
+    let cancelled = false
+    async function loadICData() {
+      try {
+        setIcLoading(true)
+        const { data, error } = await supabase
+          .from('signal_performance')
+          .select('symbol, information_coefficient, calculated_at, recommendation')
+          .order('calculated_at', { ascending: true })
+          .limit(30)
+
+        if (cancelled) return
+        if (error) throw error
+
+        if (data) {
+          setIcData(data.map((r: any) => ({
+            symbol: r.symbol,
+            information_coefficient: Number(r.information_coefficient || 0),
+            calculated_at: r.calculated_at || '',
+            recommendation: r.recommendation || '',
+          })))
+        }
+      } catch (err) {
+        console.error('Failed to load IC performance tracking:', err)
+      } finally {
+        if (!cancelled) setIcLoading(false)
+      }
+    }
+    void loadICData()
     return () => {
       cancelled = true
     }
@@ -318,6 +379,71 @@ export default function BacktestView() {
             </div>
           </div>
 
+          {/* IC Score Trend section */}
+          <div style={{ backgroundColor: colors.bgSecondary, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
+              Signal Quality — IC Score Trend
+            </div>
+            {icLoading ? (
+              <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textMuted, fontSize: 12 }}>
+                Loading signal performance...
+              </div>
+            ) : icData.length === 0 ? (
+              <div style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, border: `1px dashed ${colors.border}`, borderRadius: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: colors.textMuted }}>IC tracking data will appear after 5+ completed cycles</span>
+              </div>
+            ) : (
+              <div style={{ height: 200 }}>
+                <RechartsResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={icData}>
+                    <RechartsCartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <RechartsXAxis
+                      dataKey="calculated_at"
+                      tick={{ fill: colors.textMuted, fontSize: 10 }}
+                      stroke={colors.border}
+                      tickFormatter={(val) => {
+                        try {
+                          return new Date(val).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
+                        } catch {
+                          return val
+                        }
+                      }}
+                    />
+                    <RechartsYAxis
+                      tick={{ fill: colors.textMuted, fontSize: 10 }}
+                      stroke={colors.border}
+                      domain={[-1, 1]}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: colors.bgTertiary,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 6,
+                        color: colors.textPrimary,
+                        fontSize: 12,
+                      }}
+                      labelFormatter={(label) => {
+                        try {
+                          return new Date(label).toLocaleString()
+                        } catch {
+                          return label
+                        }
+                      }}
+                    />
+                    <RechartsLine
+                      type="monotone"
+                      dataKey="information_coefficient"
+                      name="IC Score"
+                      stroke={colors.blue}
+                      strokeWidth={2}
+                      dot={{ r: 3, stroke: colors.blue, strokeWidth: 1, fill: colors.bgSecondary }}
+                    />
+                  </RechartsLineChart>
+                </RechartsResponsiveContainer>
+              </div>
+            )}
+          </div>
+
           {/* Run history */}
           <div style={{ backgroundColor: colors.bgSecondary, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', fontSize: 13, fontWeight: 600, borderBottom: `1px solid ${colors.border}` }}>
@@ -371,3 +497,4 @@ export default function BacktestView() {
     </div>
   )
 }
+
