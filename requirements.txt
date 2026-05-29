@@ -29,3 +29,8 @@ scipy>=1.10.0
 timesfm
 vectorbt
 pyfolio-reloaded
+# ── Agent tool layer (added by unified tool layer PR) ────────────────────────
+aiohttp>=3.9.0
+pydantic>=2.5.0
+pyyaml>=6.0
+rich>=13.0.0

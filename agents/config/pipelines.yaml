@@ -1,0 +1,113 @@
+# pipelines.yaml — SLA thresholds for integration health checks
+# Used by agents/tools/pipeline_tools.py to derive green/yellow/red state
+#
+# sla_seconds: Maximum allowed age (seconds) of last event before state becomes red
+# timeout_seconds: HTTP/connection timeout per check (default 5)
+# market_hours_only: If true, SLA is only enforced during NYSE market hours (09:30-16:00 ET)
+
+pipelines:
+
+  nats:
+    description: "NATS JetStream message bus — core pub/sub backbone"
+    endpoint: "http://localhost:4222"
+    health_path: "/healthz"
+    last_message_sla: 30
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: http
+
+  questdb:
+    description: "QuestDB time-series store for tick/bar data"
+    endpoint: "http://localhost:9000"
+    health_path: "/status"
+    last_tick_sla: 60
+    timeout_seconds: 5
+    market_hours_only: true
+    check_type: http
+
+  qdrant:
+    description: "Qdrant vector store for embeddings"
+    endpoint: "http://localhost:6333"
+    health_path: "/healthz"
+    last_write_sla: 900
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: http
+
+  supabase_cloud:
+    description: "Supabase Cloud — trade log and signal persistence"
+    # endpoint sourced from SUPABASE_URL env var at runtime
+    endpoint: null
+    health_path: "/rest/v1/"
+    connection_sla: 5
+    last_write_sla: 3600
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: supabase_rest
+
+  supabase_local:
+    description: "Supabase Local Docker — dev/staging Postgres"
+    endpoint: "http://localhost:54321"
+    health_path: "/rest/v1/"
+    connection_sla: 5
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: http
+
+  alpaca_rest:
+    description: "Alpaca REST API — account, orders, positions"
+    # endpoint sourced from ALPACA_BASE_URL env var at runtime
+    endpoint: null
+    health_path: "/v2/account"
+    response_time_sla: 2
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: alpaca_rest
+
+  alpaca_ws_crypto:
+    description: "Alpaca WebSocket — crypto bar stream"
+    last_bar_sla: 30
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_alpaca_crypto.json"
+
+  alpaca_ws_equities:
+    description: "Alpaca WebSocket — equities bar stream"
+    last_bar_sla: 30
+    timeout_seconds: 5
+    market_hours_only: true
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_alpaca_equities.json"
+
+  tick_collector:
+    description: "Tick data collector — populates QuestDB"
+    heartbeat_sla: 60
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_tick_collector.json"
+
+  news_collector:
+    description: "News ingest pipeline — feeds FinBERT scorer"
+    last_article_sla: 600
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_news_collector.json"
+
+  finbert_scorer:
+    description: "FinBERT sentiment scoring pipeline"
+    last_scoring_sla: 900
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_finbert_scorer.json"
+
+  langgraph_cycle:
+    description: "LangGraph agent orchestration cycle"
+    last_completion_sla: 1200
+    timeout_seconds: 5
+    market_hours_only: false
+    check_type: heartbeat_file
+    heartbeat_file: "logs/heartbeat_langgraph_cycle.json"

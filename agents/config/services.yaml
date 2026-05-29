@@ -1,0 +1,107 @@
+# services.yaml — Disrupting Alpha service registry
+# Maps every service to its launch mechanism for agents/tools/ops_tools.py
+#
+# Fields:
+#   name:            Human-readable service name
+#   type:            tmux | docker | systemctl
+#   identifier:      tmux session name | docker container name | systemctl unit name
+#   restart_command: Shell command to restart (used by restart_service)
+#   log_command:     Shell command to tail logs (used by tail_logs)
+#   healthcheck:     Shell command whose exit-code 0 = healthy
+
+services:
+
+  # ── tmux sessions (8 expected) ──────────────────────────────────────────────
+
+  - name: ut_bot
+    type: tmux
+    identifier: ut_bot
+    restart_command: "tmux kill-session -t ut_bot 2>/dev/null; tmux new-session -d -s ut_bot 'cd ~/disrupting-alpha && python main.py'"
+    log_command: "tmux capture-pane -pt ut_bot -S -500"
+    healthcheck: "tmux has-session -t ut_bot"
+
+  - name: ut_bot_crypto
+    type: tmux
+    identifier: ut_bot_crypto
+    restart_command: "tmux kill-session -t ut_bot_crypto 2>/dev/null; tmux new-session -d -s ut_bot_crypto 'cd ~/disrupting-alpha && python main_crypto.py'"
+    log_command: "tmux capture-pane -pt ut_bot_crypto -S -500"
+    healthcheck: "tmux has-session -t ut_bot_crypto"
+
+  - name: tick_collector
+    type: tmux
+    identifier: tick_collector
+    restart_command: "tmux kill-session -t tick_collector 2>/dev/null; tmux new-session -d -s tick_collector 'cd ~/disrupting-alpha && python -m collectors.tick_collector'"
+    log_command: "tmux capture-pane -pt tick_collector -S -500"
+    healthcheck: "tmux has-session -t tick_collector"
+
+  - name: news_collector
+    type: tmux
+    identifier: news_collector
+    restart_command: "tmux kill-session -t news_collector 2>/dev/null; tmux new-session -d -s news_collector 'cd ~/disrupting-alpha && python -m collectors.news_collector'"
+    log_command: "tmux capture-pane -pt news_collector -S -500"
+    healthcheck: "tmux has-session -t news_collector"
+
+  - name: finbert_scorer
+    type: tmux
+    identifier: finbert_scorer
+    restart_command: "tmux kill-session -t finbert_scorer 2>/dev/null; tmux new-session -d -s finbert_scorer 'cd ~/disrupting-alpha && python -m ml.finbert_scorer'"
+    log_command: "tmux capture-pane -pt finbert_scorer -S -500"
+    healthcheck: "tmux has-session -t finbert_scorer"
+
+  - name: langgraph_cycle
+    type: tmux
+    identifier: langgraph_cycle
+    restart_command: "tmux kill-session -t langgraph_cycle 2>/dev/null; tmux new-session -d -s langgraph_cycle 'cd ~/disrupting-alpha && python -m agents.langgraph_runner'"
+    log_command: "tmux capture-pane -pt langgraph_cycle -S -500"
+    healthcheck: "tmux has-session -t langgraph_cycle"
+
+  - name: health_server
+    type: tmux
+    identifier: health_server
+    restart_command: "tmux kill-session -t health_server 2>/dev/null; tmux new-session -d -s health_server 'cd ~/disrupting-alpha && python -m strategies.health_server'"
+    log_command: "tmux capture-pane -pt health_server -S -500"
+    healthcheck: "tmux has-session -t health_server"
+
+  - name: dashboard
+    type: tmux
+    identifier: dashboard
+    restart_command: "tmux kill-session -t dashboard 2>/dev/null; tmux new-session -d -s dashboard 'cd ~/disrupting-alpha/dashboard && npm run dev'"
+    log_command: "tmux capture-pane -pt dashboard -S -500"
+    healthcheck: "tmux has-session -t dashboard"
+
+  # ── docker containers (5 expected) ─────────────────────────────────────────
+
+  - name: nats
+    type: docker
+    identifier: nats
+    restart_command: "docker restart nats"
+    log_command: "docker logs --tail 200 nats"
+    healthcheck: "docker inspect --format='{{.State.Running}}' nats | grep -q true"
+
+  - name: questdb
+    type: docker
+    identifier: questdb
+    restart_command: "docker restart questdb"
+    log_command: "docker logs --tail 200 questdb"
+    healthcheck: "docker inspect --format='{{.State.Running}}' questdb | grep -q true"
+
+  - name: qdrant
+    type: docker
+    identifier: qdrant
+    restart_command: "docker restart qdrant"
+    log_command: "docker logs --tail 200 qdrant"
+    healthcheck: "docker inspect --format='{{.State.Running}}' qdrant | grep -q true"
+
+  - name: supabase_local
+    type: docker
+    identifier: supabase_db
+    restart_command: "docker restart supabase_db"
+    log_command: "docker logs --tail 200 supabase_db"
+    healthcheck: "docker inspect --format='{{.State.Running}}' supabase_db | grep -q true"
+
+  - name: redis
+    type: docker
+    identifier: redis
+    restart_command: "docker restart redis"
+    log_command: "docker logs --tail 200 redis"
+    healthcheck: "docker inspect --format='{{.State.Running}}' redis | grep -q true"
