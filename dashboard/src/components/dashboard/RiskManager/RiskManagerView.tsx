@@ -45,6 +45,9 @@ export default function RiskManagerView() {
                         max_position_pct: data.max_position_pct ?? 10,
                         account_equity: data.account_equity ?? 100000
                     });
+                } else {
+                    // Initialize with defaults if row 1 doesn't exist
+                    console.log('No risk settings found, using defaults.');
                 }
             } catch (e) {
                 console.error(e);
@@ -276,11 +279,10 @@ export default function RiskManagerView() {
                                     </tr>
                                 </thead>
                                 <tbody className="text-[11px]">
-                                    <tr className="border-b border-border-muted/30">
-                                        <td className="px-6 py-4 text-secondary font-mono">2026-05-13 22:42:11</td>
-                                        <td className="px-6 py-4 text-vibrant font-bold">Admin</td>
-                                        <td className="px-6 py-4 text-secondary">Updated Max Daily Loss: $500 → $800</td>
-                                        <td className="px-6 py-4"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">SUCCESS</span></td>
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-dim italic">
+                                            No recent risk interventions recorded in audit trail.
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>

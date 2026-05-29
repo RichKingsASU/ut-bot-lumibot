@@ -12,8 +12,6 @@
 from lumibot.strategies import Strategy
 from lumibot.entities import Asset
 import pandas as pd
-from adapters.supabase_logger import log_signal, log_trade
-from adapters.supabase_logger import log_signal, log_trade
 import numpy as np
 
 
@@ -42,7 +40,8 @@ class AdaptiveTrendMR(Strategy):
     }
 
     def initialize(self):
-        self.set_market("24/7")  # ETH/USD trades 24/7 — disable market-open wait
+        self.force_start_immediately = True
+        self.wait_for_market_open = False
         self.sleeptime = self.parameters["timeframe"]
         self.symbol = self.parameters["symbol"]
         self.quote_symbol = self.parameters["quote_symbol"]
@@ -77,7 +76,8 @@ class AdaptiveTrendMR(Strategy):
             return
         lookback = self._min_bars + 10
         bars = self.get_historical_prices(
-            self.asset, lookback, "15min", quote=self.quote_asset
+            self.asset, lookback, "minute",
+            timeframe_multiplier=15, quote=self.quote_asset
         )
         if bars is None or bars.df is None or len(bars.df) < self._min_bars:
             return
@@ -240,17 +240,6 @@ class AdaptiveTrendMR(Strategy):
             f"[{tag}] {side.upper()} {qty:.4f} ETH @ ~{price:.2f} "
             f"| SL={sl:.2f} TP={tp:.2f}"
         )
-        log_signal(
-            symbol=f"{self.asset}/{self.quote_asset}",
-            bar_time=self.get_datetime().isoformat(),
-            timeframe="15m",
-            signal_type=tag,
-            close_price=price,
-            trail_stop=sl,
-            atr=0.0,
-            buy_sig=(side == "buy"),
-            sell_sig=(side == "sell"),
-        )
 
     def _reset_state(self):
         self._trail_stop = None
@@ -261,13 +250,6 @@ class AdaptiveTrendMR(Strategy):
     def on_filled_order(self, position, order, price, quantity, multiplier):
         self.log_message(
             f"Order filled: {order.side} {quantity:.4f} ETH @ {price:.2f}")
-        log_trade(
-            symbol=f"{self.asset}/{self.quote_asset}",
-            side="ENTRY" if order.side == "buy" else "EXIT",
-            direction="long" if order.side == "buy" else "short",
-            qty=int(quantity),
-            entry_price=float(price),
-        )
 
     def on_canceled_order(self, order):
         self.log_message(f"Order canceled: {order}")

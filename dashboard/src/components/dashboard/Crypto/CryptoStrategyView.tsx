@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
-import { Settings, Zap, Activity, ToggleLeft, ToggleRight } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Settings, Zap, Activity, ToggleLeft, ToggleRight, Save } from 'lucide-react'
 import { PageHeader } from '../../ui/PageHeader'
+import { supabase } from '../../../lib/supabaseClient'
 
 interface AssetToggle {
   symbol: string
@@ -22,6 +23,35 @@ const CryptoStrategyView: React.FC = () => {
     volumeFilter: 1000000,
     rebalanceInterval: 4,
   })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('strategy_config').select('*').eq('id', 'crypto-momentum').single()
+      if (data?.params) setParams(data.params)
+      if (data?.assets) setAssets(data.assets)
+    }
+    load()
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await supabase.from('strategy_config').upsert({
+        id: 'crypto-momentum',
+        params,
+        assets,
+        updated_at: new Date().toISOString()
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const toggleAsset = (symbol: string) => {
     setAssets(prev => prev.map(a => (a.symbol === symbol ? { ...a, enabled: !a.enabled } : a)))
@@ -52,23 +82,46 @@ const CryptoStrategyView: React.FC = () => {
         title="Crypto strategy"
         subtitle="Momentum scanner"
         actions={
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: 700,
-              background: 'rgba(63,185,80,0.15)',
-              color: 'var(--green, #3fb950)',
-              border: '1px solid rgba(63,185,80,0.3)',
-            }}
-          >
-            <Zap size={12} />
-            24/7 ACTIVE
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 700,
+                background: 'rgba(63,185,80,0.15)',
+                color: 'var(--green, #3fb950)',
+                border: '1px solid rgba(63,185,80,0.3)',
+              }}
+            >
+              <Zap size={12} />
+              24/7 ACTIVE
+            </span>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                background: saved ? 'var(--green, #3fb950)' : 'var(--blue, #58a6ff)',
+                color: '#fff',
+                border: 'none',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <Save size={14} />
+              {saving ? 'Saving...' : saved ? 'Saved!' : 'Save strategy'}
+            </button>
+          </div>
         }
       />
 

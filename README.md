@@ -45,9 +45,8 @@ project/
    cp .env.example .env
    ```
 5. **Run the bot**:
-   ```bash
-   python main.py
-   ```
+   - **Equities (UT Bot)**: `python main.py`
+   - **Crypto (ETH Adaptive)**: `python main_crypto.py`
 
 ## Configuration
 The bot uses the following environment variables in `.env`:

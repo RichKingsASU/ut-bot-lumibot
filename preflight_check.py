@@ -16,7 +16,7 @@ def check_supabase():
         "Authorization": f"Bearer {key}"
     }
     
-    tables = ["bot_status", "sessions", "system_alerts", "system_audit"]
+    tables = ["bot_status", "sessions", "system_alerts", "system_audit", "risk_config"]
     results = {}
     for table in tables:
         try:

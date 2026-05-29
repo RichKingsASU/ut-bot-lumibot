@@ -229,7 +229,6 @@ export function TopBar() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
-
       {/* Market session badge */}
       <span
         style={{
@@ -246,9 +245,9 @@ export function TopBar() {
         {marketSession.label}
       </span>
 
-      {/* Bot status badge */}
-      <span
-        style={{
+      {/* Consolidated Status & Mode */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
           fontSize: 10,
           fontWeight: 700,
           padding: '3px 8px',
@@ -257,14 +256,11 @@ export function TopBar() {
           color: botRunning ? '#3fb950' : '#f85149',
           border: `1px solid ${botRunning ? '#3fb95044' : '#f8514944'}`,
           letterSpacing: 0.5,
-        }}
-      >
-        {botRunning ? 'RUNNING' : 'STOPPED'}
-      </span>
+        }}>
+          {botRunning ? 'BOT ACTIVE' : 'BOT OFFLINE'}
+        </div>
 
-      {/* Trading mode badge */}
-      <span
-        style={{
+        <div style={{
           fontSize: 10,
           fontWeight: 700,
           padding: '3px 8px',
@@ -273,10 +269,10 @@ export function TopBar() {
           color: modeBadge.color,
           border: modeBadge.border,
           letterSpacing: 0.5,
-        }}
-      >
-        {modeBadge.label}
-      </span>
+        }}>
+          {modeBadge.label}
+        </div>
+      </div>
 
       {/* Online dot */}
       <div

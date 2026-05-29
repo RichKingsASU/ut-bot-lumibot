@@ -1,255 +1,369 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { Bell, ToggleLeft, ToggleRight, Filter, CheckCircle2, AlertCircle, RefreshCw, Cpu, Activity } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Bell, ToggleLeft, ToggleRight, Filter, CheckCircle, XCircle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { PageHeader } from '../../ui/PageHeader'
 
-interface AlertItem {
-  id: string | number
-  timestamp: Date
-  timeRaw: string
-  symbol?: string
-  action?: string
-  confidence?: number
-  asset_class?: string
-  message: string
-  category: string
-  verdict?: string
-  delivered: boolean
+const styles = {
+  container: {
+    padding: '24px',
+    backgroundColor: 'var(--bg-primary, #0d1117)',
+    color: 'var(--text-primary, #e6edf3)',
+    minHeight: '100vh',
+  },
+  header: {
+    fontSize: '24px',
+    fontWeight: 700,
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: '10px',
+    marginBottom: '24px',
+  },
+  section: {
+    backgroundColor: 'var(--bg-secondary, #161b22)',
+    border: '1px solid var(--border, #30363d)',
+    borderRadius: '8px',
+    padding: '20px',
+    marginBottom: '20px',
+  },
+  sectionTitle: {
+    fontSize: '16px',
+    fontWeight: 600,
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: '8px',
+  },
+  toggleRow: {
+    display: 'flex' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: '12px 0',
+    borderBottom: '1px solid var(--border, #30363d)',
+  },
+  toggleLabel: {
+    fontWeight: 500,
+    fontSize: '14px',
+  },
+  toggleDesc: {
+    fontSize: '12px',
+    color: 'var(--text-muted, #8b949e)',
+    marginTop: '2px',
+  },
+  toggleGrid: {
+    display: 'grid' as const,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+    gap: '0 24px',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    fontSize: '13px',
+  },
+  th: {
+    textAlign: 'left' as const,
+    padding: '10px 12px',
+    borderBottom: '1px solid var(--border, #30363d)',
+    color: 'var(--text-muted, #8b949e)',
+    fontWeight: 600,
+    fontSize: '12px',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+  },
+  td: {
+    padding: '10px 12px',
+    borderBottom: '1px solid var(--border, #30363d)',
+  },
+  typeBadge: (type: string) => ({
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: 600,
+    backgroundColor: type === 'Buy Signal' ? 'rgba(63,185,80,0.15)' :
+      type === 'Sell Signal' ? 'rgba(248,81,73,0.15)' :
+      type === 'Drawdown' ? 'rgba(227,179,65,0.15)' :
+      'rgba(88,166,255,0.12)',
+    color: type === 'Buy Signal' ? 'var(--green, #3fb950)' :
+      type === 'Sell Signal' ? 'var(--red, #f85149)' :
+      type === 'Drawdown' ? 'var(--amber, #e3b341)' :
+      'var(--blue, #58a6ff)',
+  }),
+  muted: {
+    color: 'var(--text-muted, #8b949e)',
+    fontSize: '13px',
+  },
+  select: {
+    padding: '6px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--border, #30363d)',
+    backgroundColor: 'var(--bg-tertiary, #21262d)',
+    color: 'var(--text-primary, #e6edf3)',
+    fontSize: '13px',
+    outline: 'none',
+  },
+}
+
+const alertToggles = [
+  { key: 'buy', label: 'Buy Signals', desc: 'Alert when a buy signal is generated' },
+  { key: 'sell', label: 'Sell Signals', desc: 'Alert when a sell signal is generated' },
+  { key: 'posOpen', label: 'Position Opened', desc: 'Alert when a new position is opened' },
+  { key: 'posClose', label: 'Position Closed', desc: 'Alert when a position is closed' },
+  { key: 'dailyPnl', label: 'Daily P&L Summary', desc: 'End-of-day profit and loss summary' },
+  { key: 'drawdown', label: 'Drawdown Warning', desc: 'Alert when drawdown exceeds threshold' },
+  { key: 'botStatus', label: 'Bot Status Change', desc: 'Alert when bot starts, stops, or errors' },
+  { key: 'connLost', label: 'Connection Lost', desc: 'Alert on data feed or broker disconnection' },
+]
+
+const mockAlerts = [
+  { time: '2026-04-02 09:36:30', type: 'Daily P&L', message: 'Daily P&L: +$342.18 (+1.12%)', delivered: true },
+  { time: '2026-04-02 09:35:02', type: 'Buy Signal', message: 'BUY IWM @ 204.35 | Strength: 0.82', delivered: true },
+  { time: '2026-04-02 09:33:05', type: 'Drawdown', message: 'Drawdown warning: -2.4% from peak', delivered: true },
+  { time: '2026-04-02 09:31:01', type: 'Buy Signal', message: 'BUY SPY @ 512.80 | Strength: 0.76', delivered: true },
+  { time: '2026-04-02 09:30:18', type: 'Connection', message: 'OPRA options feed connection lost', delivered: false },
+  { time: '2026-04-02 09:30:02', type: 'Bot Status', message: 'Bot Engine started successfully', delivered: true },
+  { time: '2026-04-01 16:00:01', type: 'Daily P&L', message: 'Daily P&L: -$127.54 (-0.42%)', delivered: true },
+  { time: '2026-04-01 15:45:00', type: 'Sell Signal', message: 'SELL QQQ @ 438.20 | Strength: 0.71', delivered: true },
+  { time: '2026-04-01 14:22:10', type: 'Sell Signal', message: 'SELL IWM @ 203.10 | Strength: 0.68', delivered: true },
+  { time: '2026-04-01 10:15:30', type: 'Buy Signal', message: 'BUY IWM @ 202.50 | Strength: 0.88', delivered: true },
+]
+
+const defaultToggles: Record<string, boolean> = {
+  buy: true, sell: true, posOpen: true, posClose: false,
+  dailyPnl: true, drawdown: true, botStatus: true, connLost: true,
 }
 
 export function AlertsView() {
-  const [alertsEnabled, setAlertsEnabled] = useState(true)
-  const [filterType, setFilterType] = useState('ALL') // ALL | CRYPTO | EQUITIES | BUY | SELL
-  const [alerts, setAlerts] = useState<AlertItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-
-  const fetchAlerts = useCallback(async () => {
-    try {
-      setLoading(true)
-      
-      // 1. Fetch Agent Signals
-      const { data: signalsData } = await supabase
-        .from('agent_signals')
-        .select('id, symbol, action, confidence, asset_class, created_at, reasoning')
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      // 2. Fetch System/Watchdog Alerts (if table exists)
-      let systemAlerts: any[] = []
-      try {
-        const { data } = await supabase
-          .from('system_alerts')
-          .select('id, ts, category, message, level, is_resolved')
-          .order('ts', { ascending: false })
-          .limit(20)
-        systemAlerts = data || []
-      } catch (e) {
-        console.warn('system_alerts table query skipped or failed:', e)
-      }
-
-      // 3. Map & Merge into a single feed
-      const mappedSignals: AlertItem[] = (signalsData || []).map(s => {
-        let verdict = ''
-        if (s.reasoning) {
-          try {
-            const parsed = typeof s.reasoning === 'string' ? JSON.parse(s.reasoning) : s.reasoning
-            verdict = parsed.verdict || parsed.reasoning || ''
-          } catch {
-            verdict = String(s.reasoning)
-          }
-        }
-        const actionStr = (s.action || 'HOLD').toUpperCase()
-        const assetClassStr = (s.asset_class || 'EQUITY').toUpperCase()
-        return {
-          id: `sig-${s.id}`,
-          timestamp: new Date(s.created_at),
-          timeRaw: s.created_at,
-          symbol: s.symbol,
-          action: actionStr,
-          confidence: s.confidence != null ? parseFloat(s.confidence) : 0.5,
-          asset_class: assetClassStr === 'EQUITIES' ? 'EQUITY' : assetClassStr,
-          message: `${actionStr} ${s.symbol} | Confidence: ${Math.round((s.confidence || 0.5) * 100)}%`,
-          category: 'SIGNAL',
-          verdict: verdict,
-          delivered: true
-        }
-      })
-
-      const mappedSystem: AlertItem[] = systemAlerts.map(a => ({
-        id: `sys-${a.id}`,
-        timestamp: new Date(a.ts),
-        timeRaw: a.ts,
-        message: a.message,
-        category: (a.category || 'SYSTEM').toUpperCase(),
-        delivered: true
-      }))
-
-      const combined = [...mappedSignals, ...mappedSystem].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-      
-      setAlerts(combined)
-      setLastUpdated(new Date())
-    } catch (err) {
-      console.error('Error fetching alerts:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const [alertsEnabled, setAlertsEnabled] = useState(false)
+  const [toggles, setToggles] = useState(defaultToggles)
+  const [filterType, setFilterType] = useState('All')
 
   useEffect(() => {
-    fetchAlerts()
-    const interval = setInterval(fetchAlerts, 20000)
-    return () => clearInterval(interval)
-  }, [fetchAlerts])
+    supabase
+      .from('user_settings')
+      .select('value')
+      .eq('key', 'alerts_enabled')
+      .single()
+      .then(({ data }) => {
+        if (data) setAlertsEnabled(data.value === 'true' || data.value === true)
+      })
+  }, [])
 
-  const getRelativeTime = (date: Date) => {
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000)
-    if (seconds < 60) return 'just now'
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes}m ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
-    const days = Math.floor(hours / 24)
-    return `${days}d ago`
+  const handleMasterToggle = async () => {
+    const newVal = !alertsEnabled
+    setAlertsEnabled(newVal)
+    await supabase
+      .from('user_settings')
+      .upsert({ key: 'alerts_enabled', value: String(newVal) })
   }
 
-  // Filter client-side
-  const filteredAlerts = alerts.filter(alert => {
-    if (filterType === 'ALL') return true
-    if (filterType === 'CRYPTO') return alert.asset_class === 'CRYPTO'
-    if (filterType === 'EQUITIES') return alert.asset_class === 'EQUITY'
-    if (filterType === 'BUY') return alert.action === 'BUY'
-    if (filterType === 'SELL') return alert.action === 'SELL'
-    return true
-  })
+  const handleToggle = (key: string) => {
+    setToggles(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const filteredAlerts = filterType === 'All' ? mockAlerts : mockAlerts.filter(a => a.type === filterType)
+  const alertTypes = ['All', ...Array.from(new Set(mockAlerts.map(a => a.type)))]
 
   return (
-    <div style={containerStyle}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <PageHeader title="Surveillance Alerts" subtitle="Unified intelligence & anomaly logs" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button 
-            onClick={fetchAlerts} 
-            disabled={loading}
-            style={{ padding: '8px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+    <div style={styles.container}>
+      <PageHeader title="Alerts" subtitle="Notifications & history" />
+
+      {/* Prominent banner when the master toggle is off, so the user can see
+          alerts are silenced and enable them in one click. */}
+      {!alertsEnabled && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '12px 16px',
+            marginBottom: 16,
+            background: 'rgba(245, 158, 11, 0.10)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Bell size={16} style={{ color: '#f59e0b' }} />
+            <span style={{ fontSize: 13, color: '#f59e0b' }}>
+              Alerts are disabled — you will not receive any notifications.
+            </span>
+          </div>
+          <button
+            onClick={handleMasterToggle}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: '1px solid rgba(245, 158, 11, 0.6)',
+              background: 'rgba(245, 158, 11, 0.18)',
+              color: '#f59e0b',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Sync Feed
+            Enable Alerts
           </button>
+        </div>
+      )}
+
+      {/* Alert Toggles */}
+      <div style={styles.section}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={styles.sectionTitle}>
+            <Bell size={18} /> Alert Toggles
+          </div>
+          {/* Master toggle */}
+          <button
+            onClick={handleMasterToggle}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: alertsEnabled ? '#58a6ff' : '#8b949e',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'color 0.15s',
+            }}
+          >
+            <div style={{
+              position: 'relative' as const,
+              width: '36px',
+              height: '20px',
+              borderRadius: '10px',
+              backgroundColor: alertsEnabled ? '#1f6feb' : '#30363d',
+              border: alertsEnabled ? 'none' : '1px solid #484f58',
+              transition: 'background-color 0.2s',
+            }}>
+              <div style={{
+                position: 'absolute' as const,
+                top: '2px',
+                left: alertsEnabled ? '16px' : '2px',
+                width: '16px',
+                height: '16px',
+                backgroundColor: '#fff',
+                borderRadius: '50%',
+                transition: 'left 0.2s',
+              }} />
+            </div>
+            {alertsEnabled ? 'Alerts enabled' : 'Alerts disabled'}
+          </button>
+        </div>
+
+        {!alertsEnabled && (
+          <div
+            role="status"
+            style={{
+              padding: '10px 12px',
+              marginBottom: '12px',
+              borderRadius: 6,
+              border: '1px solid var(--border, #30363d)',
+              background: 'rgba(139,148,158,0.08)',
+              fontSize: '12px',
+              color: 'var(--text-muted, #8b949e)',
+            }}
+          >
+            Individual alerts are disabled. Enable alerts above to configure channels.
+          </div>
+        )}
+
+        <div
+          aria-disabled={!alertsEnabled}
+          style={{
+            opacity: alertsEnabled ? 1 : 0.4,
+            pointerEvents: alertsEnabled ? 'auto' as const : 'none' as const,
+            filter: alertsEnabled ? 'none' : 'grayscale(1)',
+            transition: 'opacity 150ms ease, filter 150ms ease',
+            userSelect: alertsEnabled ? 'auto' as const : 'none' as const,
+          }}
+        >
+          <div style={styles.toggleGrid}>
+            {alertToggles.map(toggle => (
+              <div key={toggle.key} style={styles.toggleRow}>
+                <div>
+                  <div style={styles.toggleLabel}>{toggle.label}</div>
+                  <div style={styles.toggleDesc}>{toggle.desc}</div>
+                </div>
+                <div
+                  role="switch"
+                  aria-checked={!!toggles[toggle.key]}
+                  aria-label={toggle.label}
+                  style={{ cursor: alertsEnabled ? 'pointer' : 'not-allowed' }}
+                  onClick={() => handleToggle(toggle.key)}
+                >
+                  {toggles[toggle.key] ? (
+                    <ToggleRight size={26} style={{ color: 'var(--green, #3fb950)' }} />
+                  ) : (
+                    <ToggleLeft size={26} style={{ color: 'var(--text-muted, #8b949e)' }} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div style={filterBarStyle}>
-        {['ALL', 'CRYPTO', 'EQUITIES', 'BUY', 'SELL'].map(type => (
-          <button
-            key={type}
-            onClick={() => setFilterType(type)}
-            style={{
-              padding: '6px 16px',
-              borderRadius: '20px',
-              border: 'none',
-              background: filterType === type ? 'var(--blue)' : 'var(--bg-tertiary)',
-              color: filterType === type ? '#0d1117' : 'var(--text-primary)',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            {type}
-          </button>
-        ))}
-      </div>
-
-      {/* Feed Container */}
-      <div style={feedContainerStyle}>
-        {loading && alerts.length === 0 ? (
-          <div style={emptyStateStyle}>
-            <RefreshCw size={24} className="animate-spin" style={{ marginBottom: '12px', color: 'var(--blue)' }} />
-            Loading live alert matrix...
+      {/* Alert History */}
+      <div style={styles.section}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={styles.sectionTitle}>
+            <Filter size={18} /> Alert History
           </div>
-        ) : filteredAlerts.length === 0 ? (
-          <div style={emptyStateStyle}>
-            <Bell size={24} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
-            No active alerts matching the current filter.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={styles.muted}>Filter by type:</span>
+            <select style={styles.select} value={filterType} onChange={e => setFilterType(e.target.value)}>
+              {alertTypes.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {filteredAlerts.map((alert) => {
-              const isSignal = alert.category === 'SIGNAL'
-              const isBuy = alert.action === 'BUY'
-              const isSell = alert.action === 'SELL'
-              const color = isSignal ? (isBuy ? 'var(--green)' : isSell ? 'var(--red)' : 'var(--text-muted)') : 'var(--blue)'
-
-              return (
-                <div key={alert.id} style={{ ...alertCardStyle, borderLeft: `4px solid ${color}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        backgroundColor: isSignal ? 'rgba(88,166,255,0.1)' : 'rgba(245,158,11,0.1)',
-                        color: isSignal ? 'var(--blue)' : '#f59e0b'
-                      }}>
-                        {alert.category}
-                      </span>
-                      {alert.symbol && <span style={{ fontWeight: 700, fontSize: '14px' }}>{alert.symbol}</span>}
-                      {alert.action && (
-                        <span style={{
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          backgroundColor: isBuy ? 'rgba(63,185,80,0.15)' : isSell ? 'rgba(248,81,73,0.15)' : 'rgba(139,148,158,0.15)',
-                          color: color
-                        }}>
-                          {alert.action}
-                        </span>
-                      )}
-                      {alert.asset_class && (
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          • {alert.asset_class}
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {getRelativeTime(alert.timestamp)}
-                    </span>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Time</th>
+              <th style={styles.th}>Type</th>
+              <th style={styles.th}>Message</th>
+              <th style={{ ...styles.th, textAlign: 'center' as const }}>Delivered</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredAlerts.map((alert, i) => (
+              <tr key={i}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', color: 'var(--text-muted, #8b949e)', whiteSpace: 'nowrap' as const }}>{alert.time}</td>
+                <td style={styles.td}>
+                  <span style={styles.typeBadge(alert.type)}>{alert.type}</span>
+                </td>
+                <td style={styles.td}>{alert.message}</td>
+                <td style={{ ...styles.td, textAlign: 'center' as const }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    {alert.delivered === true ? (
+                      <>
+                        <CheckCircle size={14} style={{ color: 'var(--green, #3fb950)' }} />
+                        <span style={{ fontSize: '10px', color: 'var(--green, #3fb950)', fontWeight: 600 }}>YES</span>
+                      </>
+                    ) : alert.delivered === false ? (
+                      <>
+                        <XCircle size={14} style={{ color: 'var(--red, #f85149)' }} />
+                        <span style={{ fontSize: '10px', color: 'var(--red, #f85149)', fontWeight: 600 }}>NO</span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted, #8b949e)' }}>—</span>
+                    )}
                   </div>
-
-                  <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                    {alert.message}
-                  </div>
-
-                  {alert.verdict && (
-                    <div style={{ marginTop: '10px', padding: '10px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-muted)', borderLeft: '2px solid var(--border)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                        <Cpu size={12} /> Decision Reasoning Verdict
-                      </div>
-                      {alert.verdict}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', borderTop: '1px solid rgba(48,54,61,0.3)', paddingTop: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--green)' }}>
-                      <CheckCircle2 size={12} /> Delivered
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
-
-const containerStyle = { padding: '24px', flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary, #0d1117)', color: 'var(--text-primary)' }
-const filterBarStyle = { display: 'flex', gap: '8px', marginBottom: '24px' }
-const feedContainerStyle = { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }
-const alertCardStyle = { padding: '16px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px' }
-const emptyStateStyle = { padding: '48px 0', textAlign: 'center' as const, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center' }

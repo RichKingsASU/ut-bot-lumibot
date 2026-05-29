@@ -17,15 +17,14 @@ import {
   Activity,
   Zap,
   Lock,
-  PieChart,
-  Cpu
+  PieChart
 } from 'lucide-react';
 
 interface NavItem {
   label: string;
   icon: React.ElementType;
   path?: string;
-  section?: 'operations' | 'research' | 'safety' | 'infra' | 'admin';
+  section?: 'operations' | 'research' | 'safety' | 'infra';
   children?: { label: string; path: string }[];
 }
 
@@ -38,7 +37,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Surveillance', path: '/equities/monitor' },
       { label: 'Execution', path: '/equities/trade' },
-      { label: 'Greeks', path: '/equities/greeks' },
+      { label: 'Configuration', path: '/equities/strategy' },
     ],
   },
   {
@@ -48,6 +47,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Surveillance', path: '/crypto/monitor' },
       { label: 'Execution', path: '/crypto/trade' },
+      { label: 'Configuration', path: '/crypto/strategy' },
     ],
   },
   {
@@ -76,18 +76,6 @@ const navItems: NavItem[] = [
       { label: 'Core Health', path: '/system-health' },
       { label: 'Settings', path: '/settings' },
     ],
-  },
-  {
-    label: 'System Health',
-    icon: Shield,
-    path: '/admin/health',
-    section: 'admin'
-  },
-  {
-    label: 'Agent Pipeline',
-    icon: Cpu,
-    path: '/admin/pipeline',
-    section: 'admin'
   },
 ];
 
@@ -145,7 +133,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-8 custom-scrollbar">
-        {['operations', 'research', 'safety', 'infra', 'admin'].map(sectionKey => {
+        {['operations', 'research', 'safety', 'infra'].map(sectionKey => {
             const items = navItems.filter(i => i.section === sectionKey);
             if (items.length === 0) return null;
 

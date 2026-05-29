@@ -62,7 +62,7 @@ export default function CryptoMonitorView() {
                             <span className="text-[10px] font-bold text-dim uppercase tracking-widest">Network Status</span>
                             <div className="flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
-                                <span className="text-xs font-mono font-bold text-purple-400">MAINNET LIVE</span>
+                                <span className="text-xs font-mono font-bold text-amber-400">ALPACA DATA STREAM</span>
                             </div>
                         </div>
                         <button 
@@ -127,12 +127,12 @@ export default function CryptoMonitorView() {
                                 <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent" />
                                 <div className="p-4 space-y-2 relative">
                                     {[1, 2, 3, 4, 5, 6].map(i => (
-                                        <div key={i} className="flex items-center justify-between">
-                                            <span className="text-[10px] font-mono text-emerald-400 font-bold">{(60000 - i * 10).toLocaleString()}</span>
+                                        <div key={i} className="flex items-center justify-between opacity-50">
+                                            <span className="text-[10px] font-mono text-dim font-bold">—</span>
                                             <div className="flex-1 mx-4 h-2 bg-surface-1 rounded-full overflow-hidden">
-                                                <div className="h-full bg-emerald-500/40 rounded-full" style={{ width: `${100 - i * 15}%` }} />
+                                                <div className="h-full bg-surface-2 rounded-full" style={{ width: `0%` }} />
                                             </div>
-                                            <span className="text-[10px] font-mono text-secondary">{ (Math.random() * 2).toFixed(3) } BTC</span>
+                                            <span className="text-[10px] font-mono text-dim">0.000 BTC</span>
                                         </div>
                                     ))}
                                 </div>
@@ -148,12 +148,12 @@ export default function CryptoMonitorView() {
                                 <div className="absolute inset-0 bg-gradient-to-t from-rose-500/5 to-transparent" />
                                 <div className="p-4 space-y-2 relative">
                                     {[1, 2, 3, 4, 5, 6].map(i => (
-                                        <div key={i} className="flex items-center justify-between">
-                                            <span className="text-[10px] font-mono text-rose-400 font-bold">{(60100 + i * 10).toLocaleString()}</span>
+                                        <div key={i} className="flex items-center justify-between opacity-50">
+                                            <span className="text-[10px] font-mono text-dim font-bold">—</span>
                                             <div className="flex-1 mx-4 h-2 bg-surface-1 rounded-full overflow-hidden">
-                                                <div className="h-full bg-rose-500/40 rounded-full" style={{ width: `${30 + i * 10}%` }} />
+                                                <div className="h-full bg-surface-2 rounded-full" style={{ width: `0%` }} />
                                             </div>
-                                            <span className="text-[10px] font-mono text-secondary">{ (Math.random() * 2).toFixed(3) } BTC</span>
+                                            <span className="text-[10px] font-mono text-dim">0.000 BTC</span>
                                         </div>
                                     ))}
                                 </div>
@@ -173,10 +173,10 @@ export default function CryptoMonitorView() {
                                 <div key={i} className="p-3 bg-surface-2/50 rounded-xl border border-border-muted">
                                     <div className="flex justify-between items-center mb-1">
                                         <span className="text-[9px] font-bold text-dim uppercase tracking-wider">{l}</span>
-                                        <span className="text-[10px] font-mono text-vibrant font-bold">{(Math.random() * 100).toFixed(1)}</span>
+                                        <span className="text-[10px] font-mono text-dim font-bold">—</span>
                                     </div>
                                     <div className="h-1 bg-surface-0 rounded-full overflow-hidden">
-                                        <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.random() * 100}%` }} />
+                                        <div className="h-full bg-surface-2 rounded-full" style={{ width: `0%` }} />
                                     </div>
                                 </div>
                             ))}
