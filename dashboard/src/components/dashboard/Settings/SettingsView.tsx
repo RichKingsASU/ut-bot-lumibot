@@ -303,18 +303,6 @@ export function SettingsView() {
   const handleTestDb = async () => {
     setTestingDb(true)
     try {
-      const { data, error } = await supabase.from('user_settings').select('count', { count: 'exact', head: true })
-      setDbConnected(!error)
-    } catch {
-      setDbConnected(false)
-    } finally {
-      setTestingDb(false)
-    }
-  }
-
-  const handleTestDb = async () => {
-    setTestingDb(true)
-    try {
       const { error } = await supabase.from('user_settings').select('id').limit(1)
       setDbConnected(!error)
     } catch (e) {
