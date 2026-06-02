@@ -81,7 +81,7 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-    command: bash -c "pip install transformers torch sentence-transformers qdrant-client -q && python run_sentiment_scorer.py"
+    command: bash -c "pip install transformers torch sentence-transformers qdrant-client requests python-dotenv nats-py httpx -q && python run_sentiment_scorer.py"
     env_file:
       - .env
     restart: unless-stopped
