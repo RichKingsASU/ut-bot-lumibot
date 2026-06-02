@@ -756,23 +756,24 @@ async def run_cycle() -> dict:
             f"| Gamma: {gd.get('gamma', 0.0):.4f}"
         )
 
-    # Sentiment line (status-aware, None-safe).
+    # Sentiment line (status-aware, None-safe). When status != OK the avg is None,
+    # so the STATUS leads the line — a missing/failed read can never render as a
+    # phantom 0.0000.
     def _sentiment_line(mc: dict, sr: dict, art: int) -> str:
-        status = mc.get("sentiment_status", "OK")
+        from agents import sentiment_status as ss
+        status = mc.get("sentiment_status", ss.OK)
         avg = mc.get("avg_sentiment")
         trend = sr.get("sentiment_trend", "STABLE")
-        if status == "OK" and avg is not None:
-            return (
-                f"📰 Sentiment: {avg:.4f} ({art} articles) "
-                f"[OK] | Velocity: {trend}"
-            )
-        # Not OK: avg is None. Show the status (and reason) instead of a fake 0.0.
-        reason = mc.get("sentiment_status_reason", "")
-        reason_str = f" — {reason}" if reason else ""
-        return (
-            f"📰 Sentiment: n/a ({art} articles) "
-            f"[{status}]{reason_str} | Velocity: {trend}"
-        )
+        if status == ss.OK and avg is not None:
+            return f"📰 Sentiment: {avg:.4f} ({art} articles) | Velocity: {trend}"
+        # Not OK: avg is None. Render the status, never a number.
+        if status == ss.STALE:
+            detail = f"last article >{ss.STALENESS_MIN}m old"
+        elif status == ss.ERROR:
+            detail = "sentiment fetch failed"
+        else:  # NO_DATA (and any unexpected non-OK status)
+            detail = f"{art} scored articles"
+        return f"📰 Sentiment: {status} ({detail})"
 
     # Debate lines
     def _debate_line(db: dict) -> str:
