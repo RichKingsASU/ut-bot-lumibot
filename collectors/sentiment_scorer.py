@@ -66,7 +66,7 @@ class SentimentScorer(BaseCollector):
             return False
 
     async def process_message(self, msg):
-        """Callback for NATS subscription to news.crypto."""
+        """Callback for NATS subscription to news.crypto and news.equities."""
         # Use semaphore to limit to max 4 concurrent tasks
         async with self.semaphore:
             try:
@@ -79,6 +79,7 @@ class SentimentScorer(BaseCollector):
                 title = data.get("title", "").strip()
                 summary = data.get("summary", "").strip()
                 url = data.get("url", "").strip()
+                asset_class = (data.get("asset_class") or "crypto").strip()
                 
                 if not url:
                     logger.warning("[SCORER] Article has no URL. Skipping.")
@@ -121,8 +122,8 @@ class SentimentScorer(BaseCollector):
                     "sentiment_confidence": confidence
                 })
                 
-                # Publish enriched article to sentiment.crypto
-                await self.publish("sentiment.crypto", enriched_article)
+                # Publish enriched article to sentiment.<asset_class> (sentiment.crypto / sentiment.equities)
+                await self.publish(f"sentiment.{asset_class}", enriched_article)
                 
                 # Log scored article: title, score, label, confidence
                 logger.info(
@@ -139,15 +140,16 @@ class SentimentScorer(BaseCollector):
         # Connect NATS
         await self.connect()
         
-        # Subscribe to news.crypto NATS subject
-        logger.info("Subscribing to news.crypto NATS subject...")
-        
+        # Subscribe to news.crypto and news.equities NATS subjects
+        logger.info("Subscribing to news.crypto and news.equities NATS subjects...")
+
         async def message_handler(msg):
             # Create a task to process message concurrently (using semaphore internally)
             asyncio.create_task(self.process_message(msg))
-            
+
         await self.nc.subscribe("news.crypto", cb=message_handler)
-        logger.info("Subscribed to news.crypto. Listening for messages...")
+        await self.nc.subscribe("news.equities", cb=message_handler)
+        logger.info("Subscribed to news.crypto and news.equities. Listening for messages...")
         
         # Keep running
         while self._running:
