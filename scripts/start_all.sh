@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(dirname "$0")/check_mount.sh"
 # Start all Disrupting Alpha services
 cd /home/k2/ut-bot-lumibot
 source venv/bin/activate
