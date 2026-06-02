@@ -12,7 +12,7 @@ url = os.getenv('SUPABASE_URL')
 key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 h = {'apikey': key, 'Authorization': f'Bearer {key}'}
 bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-now = datetime.datetime.utcnow()
+now = datetime.datetime.now(datetime.timezone.utc)
 
 def q(table, params):
     try:
@@ -25,17 +25,26 @@ def q(table, params):
 bot_status = q('bot_status', {'limit': '1'})
 hb_status = '❌ unknown'
 if bot_status:
-    hb = bot_status[0].get('heartbeat_at', '')
+    hb = bot_status[0].get('last_heartbeat', '')
     if hb:
-        age = (now - datetime.datetime.fromisoformat(hb.replace('Z',''))).total_seconds()
-        hb_status = f'✅ {int(age)}s ago' if age < 120 else f'⚠️ STALE {int(age/60)}m ago'
+        try:
+            hb_dt = datetime.datetime.fromisoformat(hb.replace('Z', '+00:00'))
+            age = (now - hb_dt).total_seconds()
+            hb_status = f'✅ {int(age)}s ago' if age < 120 else f'⚠️ STALE {int(age/60)}m ago'
+        except Exception as e:
+            hb_status = f'⚠️ parse error: {e}'
 
 # Check last signal
 signals = q('agent_signals', {'order': 'created_at.desc', 'limit': '1'})
 sig_status = '❌ none'
 if signals:
-    age = (now - datetime.datetime.fromisoformat(signals[0].get('created_at','').replace('Z',''))).total_seconds()
-    sig_status = f'✅ {int(age/60)}m ago — {signals[0].get(\"symbol\",\"?\")} {signals[0].get(\"action\",\"?\")}'
+    try:
+        sig_ts = signals[0].get('created_at', '')
+        sig_dt = datetime.datetime.fromisoformat(sig_ts.replace('Z', '+00:00'))
+        age = (now - sig_dt).total_seconds()
+        sig_status = f'✅ {int(age/60)}m ago — {signals[0].get(\"symbol\",\"?\")} {signals[0].get(\"action\",\"?\")}'
+    except Exception as e:
+        sig_status = f'⚠️ parse error: {e}'
 
 # Check Alpaca
 alpaca_equity = '?'
@@ -71,7 +80,10 @@ msg = f'''🌅 PRE-MARKET CHECK — {now.strftime(\"%H:%M\")} UTC
 {overall}
 disruptingalpha.com/admin/health'''
 
-httpx.post(f'https://api.telegram.org/bot{bot_token}/sendMessage',
-    data={'chat_id': '8641189809', 'text': msg}, timeout=10)
+try:
+    httpx.post(f'https://api.telegram.org/bot{bot_token}/sendMessage',
+        data={'chat_id': '8641189809', 'text': msg}, timeout=10)
+except Exception as e:
+    print(f'WARNING: Telegram send failed: {e}')
 print(msg)
 " >> /home/k2/logs/pre_market.log 2>&1
