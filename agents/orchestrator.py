@@ -756,6 +756,24 @@ async def run_cycle() -> dict:
             f"| Gamma: {gd.get('gamma', 0.0):.4f}"
         )
 
+    # Sentiment line (status-aware, None-safe).
+    def _sentiment_line(mc: dict, sr: dict, art: int) -> str:
+        status = mc.get("sentiment_status", "OK")
+        avg = mc.get("avg_sentiment")
+        trend = sr.get("sentiment_trend", "STABLE")
+        if status == "OK" and avg is not None:
+            return (
+                f"📰 Sentiment: {avg:.4f} ({art} articles) "
+                f"[OK] | Velocity: {trend}"
+            )
+        # Not OK: avg is None. Show the status (and reason) instead of a fake 0.0.
+        reason = mc.get("sentiment_status_reason", "")
+        reason_str = f" — {reason}" if reason else ""
+        return (
+            f"📰 Sentiment: n/a ({art} articles) "
+            f"[{status}]{reason_str} | Velocity: {trend}"
+        )
+
     # Debate lines
     def _debate_line(db: dict) -> str:
         if not db or db.get("verdict") in (None, "NEUTRAL"):
@@ -772,7 +790,7 @@ async def run_cycle() -> dict:
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
         f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_art} articles) | Velocity: {c_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"{_sentiment_line(c_mc, c_sr, c_art)}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} adj. portfolio)\n"
@@ -783,7 +801,7 @@ async def run_cycle() -> dict:
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_art} articles) | Velocity: {e_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"{_sentiment_line(e_mc, e_sr, e_art)}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} adj. portfolio)\n"

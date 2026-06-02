@@ -60,7 +60,12 @@ class BullAgent(BaseAgent):
         factors = []
 
         # 1. SENTIMENT (0-30 points):
+        # avg_sentiment is None unless status == OK; treat missing/stale sentiment
+        # as neutral for this advisory debate score (the hard block/degrade decision
+        # is made upstream in SignalAgent).
         sentiment = market_context.get('avg_sentiment', 0.0)
+        if sentiment is None:
+            sentiment = 0.0
         if sentiment > 0.3:
             score += 30
             factors.append(f'Strong bullish sentiment {sentiment:.2f}')
@@ -189,7 +194,7 @@ class BullAgent(BaseAgent):
             prompt = f'''
 Symbol: {symbol}
 Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"} (Live Regime: {regime_str})
-Sentiment: {market_context.get("avg_sentiment", 0):.3f} ({market_context.get("sentiment_label", "neutral")})
+Sentiment: {sentiment:.3f} ({market_context.get("sentiment_label", "neutral")}) [status: {market_context.get("sentiment_status", "OK")}]
 Velocity: {market_context.get("sentiment_trend", "STABLE")}
 Signal: {signal_recommendation.get("action", "HOLD")}
 Bull score: {score:.0f}/100

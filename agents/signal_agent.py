@@ -75,40 +75,87 @@ class SignalAgent(BaseAgent):
             f"Latest signal → type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}"
         )
 
-        # ── Step 3: Combine with market_context.avg_sentiment ─────────────────
-        avg_sentiment: float = float(market_context.get("avg_sentiment", 0.0))
+        # ── Step 3: Combine with market_context sentiment (status-aware) ──────
+        # avg_sentiment is only trustworthy when sentiment_status == OK. For every
+        # other state it is None, so a 0.0 can no longer masquerade as a real
+        # neutral read. Policy:
+        #   NO_DATA / ERROR -> HOLD/BLOCK  (do not trade on missing/failed sentiment)
+        #                      unless this asset class is in degrade-only mode.
+        #   STALE           -> DEGRADE     (follow technicals at reduced conviction).
+        #   OK              -> normal sentiment-confirmed logic.
+        from agents import sentiment_status as ss
+
+        sentiment_status = str(market_context.get("sentiment_status", ss.OK))
+        status_reason = str(
+            market_context.get("status_reason")
+            or market_context.get("sentiment_status_reason")
+            or ""
+        )
+        raw_avg = market_context.get("avg_sentiment", None)
+        avg_sentiment: float = (
+            float(raw_avg) if (sentiment_status == ss.OK and raw_avg is not None) else 0.0
+        )
 
         action = "HOLD"
         confidence = "MEDIUM"
         reasoning = ""
+        sentiment_blocked = False  # True when we hard-blocked on missing/failed sentiment
 
-        if avg_sentiment > 0.3 and buy_sig:
-            action = "BUY"
-            confidence = "HIGH"
-            reasoning = (
-                f"Bullish sentiment ({avg_sentiment:.3f} > 0.3) confirmed by buy signal "
-                f"from signal_log (signal_type={latest_signal_type})."
-            )
-        elif avg_sentiment < -0.3 and sell_sig:
-            action = "SELL"
-            confidence = "HIGH"
-            reasoning = (
-                f"Bearish sentiment ({avg_sentiment:.3f} < -0.3) confirmed by sell signal "
-                f"from signal_log (signal_type={latest_signal_type})."
-            )
-        elif (avg_sentiment > 0.3 and sell_sig) or (avg_sentiment < -0.3 and buy_sig):
-            # Sentiment conflicts with technical signal
+        if sentiment_status in ss.MISSING_STATES and ss.enforces_block(self.asset_class):
+            # HOLD/BLOCK: refuse to trade on missing/failed sentiment.
+            sentiment_blocked = True
             action = "HOLD"
             confidence = "LOW"
             reasoning = (
-                f"Sentiment ({avg_sentiment:.3f}) conflicts with technical signal "
-                f"(buy_sig={buy_sig}, sell_sig={sell_sig}). Holding to avoid conflicting signals."
+                f"BLOCK: sentiment {sentiment_status} ({status_reason}). "
+                f"Refusing to trade on missing/failed sentiment data."
             )
+        elif sentiment_status == ss.OK:
+            # Normal sentiment-confirmed logic.
+            if avg_sentiment > 0.3 and buy_sig:
+                action = "BUY"
+                confidence = "HIGH"
+                reasoning = (
+                    f"Bullish sentiment ({avg_sentiment:.3f} > 0.3) confirmed by buy signal "
+                    f"from signal_log (signal_type={latest_signal_type})."
+                )
+            elif avg_sentiment < -0.3 and sell_sig:
+                action = "SELL"
+                confidence = "HIGH"
+                reasoning = (
+                    f"Bearish sentiment ({avg_sentiment:.3f} < -0.3) confirmed by sell signal "
+                    f"from signal_log (signal_type={latest_signal_type})."
+                )
+            elif (avg_sentiment > 0.3 and sell_sig) or (avg_sentiment < -0.3 and buy_sig):
+                # Sentiment conflicts with technical signal
+                action = "HOLD"
+                confidence = "LOW"
+                reasoning = (
+                    f"Sentiment ({avg_sentiment:.3f}) conflicts with technical signal "
+                    f"(buy_sig={buy_sig}, sell_sig={sell_sig}). Holding to avoid conflicting signals."
+                )
+            else:
+                confidence = "MEDIUM"
+                reasoning = (
+                    f"Neutral sentiment region ({avg_sentiment:.3f}). Following technical signal: "
+                    f"signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}."
+                )
         else:
-            confidence = "MEDIUM"
+            # DEGRADE: STALE (any asset), or NO_DATA/ERROR where blocking is not
+            # enforced (e.g. equities until the scorer scores equities). Do NOT use
+            # the (missing/stale) sentiment value; follow the technical signal at
+            # reduced conviction and flag it.
+            if buy_sig and not sell_sig:
+                action = "BUY"
+            elif sell_sig and not buy_sig:
+                action = "SELL"
+            else:
+                action = "HOLD"
+            confidence = "LOW"
             reasoning = (
-                f"Neutral sentiment region ({avg_sentiment:.3f}). Following technical signal: "
-                f"signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}."
+                f"DEGRADE: sentiment {sentiment_status} ({status_reason}). "
+                f"Proceeding on technical signal only at reduced conviction "
+                f"(signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig})."
             )
 
         symbol = latest.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY") if signal_rows else ("ETH/USD" if self.asset_class == "crypto" else "SPY")
@@ -173,6 +220,9 @@ class SignalAgent(BaseAgent):
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,
+            "sentiment_status": sentiment_status,
+            "sentiment_status_reason": status_reason,
+            "sentiment_blocked": sentiment_blocked,
             "sentiment_velocity": sentiment_velocity,
             "sentiment_trend": sentiment_trend,
             "technical_signal": latest_signal_type,
