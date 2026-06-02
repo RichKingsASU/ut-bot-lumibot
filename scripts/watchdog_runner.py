@@ -144,6 +144,78 @@ def run_check6():
             alerts.append("ALERT: run_agents has no successful cycle recorded")
     return alerts
 
+def run_check7():
+    """Sentiment data-status visibility.
+
+    Mirrors agents/base_agent.get_recent_sentiment classification at the DB level so
+    operators can see when the pipeline will BLOCK on missing sentiment. Additive:
+      - Enforced classes (crypto) with zero scored articles in the freshness window
+        -> ALERT (the pipeline hard-blocks).
+      - Any class with zero RAW articles in the window -> ALERT (collector down).
+      - Degrade-only classes (equities) with raw>0 but scored==0 are the KNOWN
+        scorer gap (degrade, not block): reported as a note, never an alert, to
+        avoid a permanent false alarm.
+    Returns (alerts, notes)."""
+    # Import enforcement policy / windows from the shared module.
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        from agents import sentiment_status as ss
+        freshness_hours, staleness_min = ss.FRESHNESS_HOURS, ss.STALENESS_MIN
+        enforces = ss.enforces_block
+    except Exception:
+        freshness_hours, staleness_min = 24, 15
+        enforces = lambda ac: ac == "crypto"
+
+    load_dotenv('/home/k2/ut-bot-lumibot/.env')
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    if not url or not key:
+        return (["ALERT: Supabase credentials missing"], [])
+
+    h = {'apikey': key, 'Authorization': f'Bearer {key}'}
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=freshness_hours)).isoformat()
+    alerts, notes = [], []
+
+    for ac in ("crypto", "equities"):
+        try:
+            base = {'asset_class': f'eq.{ac}', 'created_at': f'gt.{cutoff}'}
+            rh = httpx.get(f'{url}/rest/v1/news_articles', headers=h,
+                params={**base, 'select': 'created_at',
+                        'order': 'created_at.desc', 'limit': '1'}, timeout=10)
+            raw_rows = rh.json()
+            sh = httpx.get(f'{url}/rest/v1/news_articles', headers=h,
+                params={**base, 'sentiment_score': 'not.is.null',
+                        'select': 'created_at', 'order': 'created_at.desc',
+                        'limit': '1'}, timeout=10)
+            scored_rows = sh.json()
+        except Exception as e:
+            alerts.append(f"ALERT: sentiment status check failed ({ac}): {e}")
+            continue
+
+        raw_count = len(raw_rows)
+        scored_count = len(scored_rows)
+
+        if scored_count == 0:
+            if raw_count == 0:
+                alerts.append(f"ALERT: sentiment NO_DATA ({ac}) — zero articles in {freshness_hours}h (collector down)")
+            elif enforces(ac):
+                alerts.append(f"ALERT: sentiment NO_DATA ({ac}) — articles present but none scored; pipeline will BLOCK {ac}")
+            else:
+                notes.append(f"NOTE: sentiment NO_DATA ({ac}) — not scored (degrade mode, known scorer gap)")
+            continue
+
+        # Have scored data: check staleness (degrade, not a hard failure).
+        try:
+            newest = str(scored_rows[0]['created_at']).replace('Z', '+00:00')
+            age_min = (now - datetime.fromisoformat(newest)).total_seconds() / 60.0
+            if age_min > staleness_min:
+                notes.append(f"NOTE: sentiment STALE ({ac}) — newest {age_min:.0f}m old (degrade)")
+        except Exception:
+            pass
+
+    return (alerts, notes)
+
 def main():
     verbose = "--verbose" in sys.argv
     alerts = []
@@ -186,6 +258,15 @@ def main():
     if verbose:
         print(f"Check 6 (Component Heartbeats): {c6 if c6 else 'OK'}")
     alerts.extend(c6)
+
+    # Check 7 (Sentiment Data-Status)
+    c7_alerts, c7_notes = run_check7()
+    if verbose:
+        status = c7_alerts if c7_alerts else 'OK'
+        print(f"Check 7 (Sentiment Status): {status}")
+        for note in c7_notes:
+            print(f"  {note}")
+    alerts.extend(c7_alerts)
 
     if alerts:
         # Get ET timezone time formatted as HH:MM
