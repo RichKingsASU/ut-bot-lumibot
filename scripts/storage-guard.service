@@ -1,0 +1,31 @@
+[Unit]
+Description=Tick-Storage Self-Healing Guard (Disrupting Alpha)
+Documentation=file:///home/k2/ut-bot-lumibot/scripts/storage_guard.sh
+After=network.target local-fs.target docker.service
+Wants=docker.service
+ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+
+[Service]
+Type=oneshot
+# Run as root: needs mount privilege + docker access + no sudoers carve-out needed
+User=root
+
+# Working directory so `docker compose` finds docker-compose.yml
+WorkingDirectory=/home/k2/ut-bot-lumibot
+
+ExecStart=/bin/bash /home/k2/ut-bot-lumibot/scripts/storage_guard.sh
+
+# Allow non-zero exit (e.g., FAILED state) without causing service failure cascade
+SuccessExitStatus=0 1
+
+# Resource limits — this is a lightweight guard, not a long-running service
+TimeoutStartSec=120
+KillMode=process
+
+# Logging goes to journald (in addition to the script's own log file)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=storage-guard
+
+[Install]
+WantedBy=multi-user.target
