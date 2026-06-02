@@ -128,6 +128,14 @@ def _heartbeat_loop():
         # 1. Update online status
         _upsert_status("online")
 
+        # 1b. Component-level heartbeat for 'main' (ADDITIVE — lets the watchdog
+        #     detect partial failure independent of the global bot_status row).
+        try:
+            from adapters.component_heartbeat import beat as _component_beat
+            _component_beat("main", status="online")
+        except Exception as e:
+            logger.debug("Component heartbeat failed: %s", e)
+
         # 2. Check for remote commands
         cmd = _check_remote_commands()
         if cmd == "shutdown":
