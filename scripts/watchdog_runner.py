@@ -9,6 +9,25 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from send_telegram import send_message
 
+# ── Staleness thresholds (named constants) ───────────────────────────────────
+AGENT_SIGNALS_STALE_MIN = 30   # Check 1: agent_signals freshness
+BOT_HEARTBEAT_STALE_MIN = 5    # Check 2: global bot_status heartbeat freshness
+ALPACA_MIN_EQUITY = 50000      # Check 5: minimum account equity
+
+# Check 6: component-level heartbeat freshness (component_status table).
+# Per-process because cadences differ:
+#   - 'main'       beats every 30s   → 300s (5 min) gives a 10x margin.
+#   - 'run_agents' beats only at the END of each ~15min cycle → 1500s (25 min)
+#     = one cycle interval + ~10 min margin for a long-running cycle.
+# Only processes that ACTUALLY emit a component heartbeat belong here; adding a
+# process that does not write one would produce a permanent false alarm. The
+# collectors (news/tick/option/sentiment/vectors) are not yet wired to emit
+# heartbeats — wire them in component_heartbeat first, then add them here.
+COMPONENT_STALENESS_SECONDS = {
+    "main": 300,
+    "run_agents": 1500,
+}
+
 def run_check1():
     load_dotenv('/home/k2/ut-bot-lumibot/.env')
     url = os.getenv('SUPABASE_URL')
@@ -16,7 +35,7 @@ def run_check1():
     if not url or not key:
         return "ALERT: Supabase credentials missing"
     h = {'apikey': key, 'Authorization': f'Bearer {key}'}
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=AGENT_SIGNALS_STALE_MIN)).isoformat()
     try:
         r = httpx.get(f'{url}/rest/v1/agent_signals', headers=h,
             params={'select':'created_at','order':'created_at.desc','limit':'1'},
@@ -41,7 +60,7 @@ def run_check2():
             timeout=10)
         rows = r.json()
         if rows:
-            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=BOT_HEARTBEAT_STALE_MIN)).isoformat()
             if rows[0]['last_heartbeat'] < cutoff:
                 return "ALERT: bot heartbeat stale"
         else:
@@ -86,11 +105,44 @@ def run_check5():
         if r.status_code != 200:
             return f"ALERT: Alpaca unreachable status code {r.status_code}"
         equity = float(r.json().get('equity', 0))
-        if equity < 50000:
+        if equity < ALPACA_MIN_EQUITY:
             return f"ALERT: equity low ${equity:,.0f}"
     except Exception as e:
         return f"ALERT: Alpaca unreachable {e}"
     return "OK"
+
+def run_check6():
+    """Component-level freshness: detects PARTIAL failure (one process dead
+    while the global heartbeat stays fresh)."""
+    load_dotenv('/home/k2/ut-bot-lumibot/.env')
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    if not url or not key:
+        return ["ALERT: Supabase credentials missing"]
+    h = {'apikey': key, 'Authorization': f'Bearer {key}'}
+    try:
+        r = httpx.get(f'{url}/rest/v1/component_status', headers=h,
+            params={'select': 'process_name,last_heartbeat,last_successful_cycle_id,status'},
+            timeout=10)
+        rows = {row['process_name']: row for row in r.json()}
+    except Exception as e:
+        return [f"ALERT: component_status check failed: {e}"]
+
+    alerts = []
+    now = datetime.now(timezone.utc)
+    for proc, max_age in COMPONENT_STALENESS_SECONDS.items():
+        row = rows.get(proc)
+        if not row:
+            alerts.append(f"ALERT: component '{proc}' has no heartbeat row")
+            continue
+        cutoff = (now - timedelta(seconds=max_age)).isoformat()
+        if not row.get('last_heartbeat') or row['last_heartbeat'] < cutoff:
+            alerts.append(f"ALERT: component '{proc}' heartbeat stale (>{max_age}s)")
+        # run_agents writes its heartbeat only on successful cycle completion,
+        # so a missing cycle id means no cycle has ever succeeded.
+        if proc == 'run_agents' and row.get('last_successful_cycle_id') is None:
+            alerts.append("ALERT: run_agents has no successful cycle recorded")
+    return alerts
 
 def main():
     verbose = "--verbose" in sys.argv
@@ -128,7 +180,13 @@ def main():
         print(f"Check 5 (Alpaca): {c5}")
     if c5.startswith("ALERT"):
         alerts.append(c5)
-        
+
+    # Check 6
+    c6 = run_check6()
+    if verbose:
+        print(f"Check 6 (Component Heartbeats): {c6 if c6 else 'OK'}")
+    alerts.extend(c6)
+
     if alerts:
         # Get ET timezone time formatted as HH:MM
         utc_now = datetime.now(timezone.utc)

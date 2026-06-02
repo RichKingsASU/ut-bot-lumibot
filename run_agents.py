@@ -18,6 +18,8 @@ import httpx
 import requests
 from dotenv import load_dotenv
 
+from adapters import component_heartbeat
+
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 load_dotenv()
 
@@ -279,6 +281,13 @@ async def main() -> None:
         try:
             await run_cycle()
             logger.info(f"[RunAgents] ── Cycle #{cycle_count} complete ──")
+            # Component heartbeat: written ONLY on successful cycle completion,
+            # so its freshness is the "cycle advanced" signal the watchdog uses.
+            component_heartbeat.beat(
+                "run_agents",
+                status="ok",
+                last_successful_cycle_id=cycle_count,
+            )
         except Exception as exc:
             logger.error(f"[RunAgents] Cycle #{cycle_count} raised an exception: {exc}", exc_info=True)
 
