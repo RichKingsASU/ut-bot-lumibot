@@ -402,6 +402,11 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
             scaled_val = orig_val * 0.5
             kelly_result['position_value'] = scaled_val
             kelly_result['position_value_str'] = f"${scaled_val:.2f}"
+            # Display-only: scale the DISPLAYED Kelly fraction by the same 0.5 so the
+            # reported % tracks the halved $. adjusted_kelly is only read for display
+            # (orchestrator report lines), never for sizing/risk — the single 50% cut
+            # to position_value above remains the sole change to deployed capital.
+            kelly_result['adjusted_kelly'] = kelly_result.get('adjusted_kelly', 0.0) * 0.5
             logger.info(f"[Orchestrator] Scaled Kelly position size by 50% due to PROCEED_CAUTIOUSLY debate verdict: {orig_val} -> {scaled_val}")
         logger.info(f"[Orchestrator] {symbol} Kelly sizing resolved: {kelly_result.get('position_value_str')}")
         return {**state, "kelly_sizing": kelly_result}
