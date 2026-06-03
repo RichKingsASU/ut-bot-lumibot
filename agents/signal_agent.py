@@ -203,14 +203,14 @@ class SignalAgent(BaseAgent):
                     confidence = 'HIGH'
                 elif confidence_boost < 0 and confidence == 'HIGH':
                     confidence = 'MEDIUM'
-                reasoning += f" | TimesFM: {forecast['forecast_direction']} ({forecast['forecast_pct_change']:+.1f}%)"
+                reasoning += f" | Linear Baseline: {forecast['forecast_direction']} ({forecast['forecast_pct_change']:+.1f}%)"
                 timesfm_forecast = forecast['forecast_direction']
                 timesfm_pct = forecast['forecast_pct_change']
             else:
                 timesfm_forecast = "NONE"
                 timesfm_pct = 0.0
         except Exception as e:
-            logger.warning(f'TimesFM integration skipped: {e}')
+            logger.warning(f'Linear baseline forecast skipped: {e}')
             timesfm_forecast = 0.0
             timesfm_pct = 0.0
 

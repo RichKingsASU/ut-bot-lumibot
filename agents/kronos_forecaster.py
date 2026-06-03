@@ -359,7 +359,7 @@ def compare_with_timesfm(symbol: str, variant: str = DEFAULT_MODEL) -> dict:
         tfm_dir = tfm_fc.get('forecast_direction', 'NEUTRAL')
         tfm_pct = tfm_fc.get('forecast_pct_change', 0.0)
     except Exception as exc:
-        logger.warning(f'[KRONOS] TimesFM comparison failed: {exc}')
+        logger.warning(f'[KRONOS] Linear baseline comparison failed: {exc}')
         tfm_dir = 'UNAVAILABLE'
         tfm_pct = 0.0
 
@@ -381,9 +381,9 @@ def compare_with_timesfm(symbol: str, variant: str = DEFAULT_MODEL) -> dict:
     }
 
     logger.info(
-        f'[KRONOS vs TimesFM] {symbol}: '
+        f'[KRONOS vs Linear Baseline] {symbol}: '
         f'Kronos={kronos["direction"]} {kronos["pct_change"]:+.2f}% | '
-        f'TimesFM={tfm_dir} {tfm_pct:+.2f}% | '
+        f'Linear Baseline={tfm_dir} {tfm_pct:+.2f}% | '
         f'{"✅ AGREE" if agree else "⚠️ CONFLICT"}'
     )
     return comparison

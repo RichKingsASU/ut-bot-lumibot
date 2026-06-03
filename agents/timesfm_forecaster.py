@@ -189,7 +189,7 @@ class TimesFMForecaster:
         if 'ts' in b and 'timestamp' not in b:
             b['timestamp'] = b['ts'].isoformat()
     # Log the exact line format requested
-    logger.info(f"TimesFM {symbol.split('/')[0]} input: {len(bars_list)} bars, latest={bars_list[-1]['timestamp']}")
+    logger.info(f"Linear Baseline {symbol.split('/')[0]} input: {len(bars_list)} bars, latest={bars_list[-1]['timestamp']}")
     
     # Normalize: prices / prices[-1] (relative to last)
     norm_closes = closes / last_price
