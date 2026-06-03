@@ -86,7 +86,7 @@ class BearAgent(BaseAgent):
                 base_bear += 7.0
                 
             score = max(0.0, min(100.0, base_bear))
-            risks.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, timesfm={timesfm_forecast}")
+            risks.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, linear_baseline={timesfm_forecast}")
         else:
             if sentiment < -0.3:
                 score += 30

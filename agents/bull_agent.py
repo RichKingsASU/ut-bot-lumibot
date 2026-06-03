@@ -84,7 +84,7 @@ class BullAgent(BaseAgent):
                 base_bull += 7.0
                 
             score = max(0.0, min(100.0, base_bull))
-            factors.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, timesfm={timesfm_forecast}")
+            factors.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, linear_baseline={timesfm_forecast}")
         else:
             if sentiment > 0.3:
                 score += 30

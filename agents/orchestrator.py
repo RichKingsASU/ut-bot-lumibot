@@ -1091,7 +1091,7 @@ async def run_cycle() -> dict:
         return (
             f'🔮 Kronos ({k.get("model", "Kronos")}): '
             f'{k["direction"]} {k["pct_change"]:+.2f}% | '
-            f'TimesFM: {t_dir} {t_pct:+.2f}% | '
+            f'Linear Baseline: {t_dir} {t_pct:+.2f}% | '
             f'{agree_icon} {kc.get("agreement_signal", "")}'
         )
 
