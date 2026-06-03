@@ -9,7 +9,9 @@ import asyncio
 import json
 import logging
 import os
+import datetime as _dt
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import TypedDict
 
 import httpx
@@ -37,6 +39,83 @@ from agents.node_circuit_breaker import CIRCUIT_BREAKER
 
 _TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 _TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+
+# ── Daily stop module-level state ─────────────────────────────────────────────
+_DAILY_STOP_ACTIVE: bool = False
+_DAILY_STOP_ALERTED: bool = False
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _send_daily_stop_alert(loss: float, limit: float, equity: float) -> None:
+    """Send a one-shot Telegram alert when the soft daily stop is triggered."""
+    global _DAILY_STOP_ALERTED
+    if _DAILY_STOP_ALERTED:
+        return  # Only alert once per day
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        return
+    msg = (
+        f"⚠️ SOFT DAILY STOP TRIGGERED\n"
+        f"Daily loss: ${loss:.2f}\n"
+        f"Limit: ${limit:.2f} (2.5%)\n"
+        f"Current equity: ${equity:,.2f}\n"
+        f"New BUY signals paused for remainder of session.\n"
+        f"Hard stop remains at ${5000:.0f}."
+    )
+    try:
+        httpx.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            data={'chat_id': '8641189809', 'text': msg},
+            timeout=5
+        )
+        _DAILY_STOP_ALERTED = True
+        logger.info("[DAILY STOP] Telegram alert sent.")
+    except Exception as e:
+        logger.warning(f"Daily stop alert failed: {e}")
+
+
+def _check_daily_stop() -> bool:
+    """Query Alpaca paper account equity and set/clear _DAILY_STOP_ACTIVE.
+
+    Returns True if the soft stop is active (daily loss > 2.5%).
+    """
+    global _DAILY_STOP_ACTIVE, _DAILY_STOP_ALERTED
+
+    # Reset alert flag at the start of a new trading day (before market open)
+    now_et = _dt.datetime.now(_ET)
+    if now_et.hour == 9 and now_et.minute < 30:
+        _DAILY_STOP_ALERTED = False
+
+    try:
+        ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+        ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+        acct_r = httpx.get(
+            'https://paper-api.alpaca.markets/v2/account',
+            headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': ask},
+            timeout=5
+        )
+        acct = acct_r.json()
+        current_equity = float(acct.get('equity', 0))
+        last_equity = float(acct.get('last_equity', current_equity))
+
+        SOFT_STOP_PCT = 0.025
+        soft_stop_usd = last_equity * SOFT_STOP_PCT
+        daily_loss = last_equity - current_equity
+
+        if daily_loss > soft_stop_usd:
+            logger.warning(
+                f"[DAILY STOP] Soft stop triggered — lost ${daily_loss:.2f} today "
+                f"(limit: ${soft_stop_usd:.2f}). Pausing new BUY signals."
+            )
+            _send_daily_stop_alert(daily_loss, soft_stop_usd, current_equity)
+            _DAILY_STOP_ACTIVE = True
+        else:
+            _DAILY_STOP_ACTIVE = False
+    except Exception as e:
+        logger.warning(f"[DAILY STOP] Could not check daily P&L: {e}")
+
+    return _DAILY_STOP_ACTIVE
 
 
 # ── Telegram helper ───────────────────────────────────────────────────────────
@@ -187,6 +266,37 @@ def signal_node(state: AgentState) -> AgentState:
                 kelly_val = signal_recommendation.get('kelly_position_value', 0.0)
                 kelly_val *= gex_data.get('size_modifier', 1.0)
                 signal_recommendation['kelly_position_value'] = min(kelly_val, 2500.0)
+
+            # ── Session filter: block BUY outside active equities windows ──────
+            from agents.session_filter import get_session_context
+            session = state.get('_session_context') or get_session_context()
+            if not session.get('allow_buy') and signal_recommendation.get('action') == 'BUY':
+                signal_recommendation['action'] = 'HOLD'
+                signal_recommendation['reasoning'] = (
+                    signal_recommendation.get('reasoning', '') +
+                    f" | SESSION FILTER: BUY blocked — {session['reason']}"
+                )
+                logger.info(f"[SESSION] BUY converted to HOLD — {session['reason']}")
+
+            # ── Conviction modifier: scale Kelly position size ─────────────────
+            conv_mod = session.get('conviction_modifier', 1.0)
+            if conv_mod < 1.0:
+                kelly_val = signal_recommendation.get('kelly_position_value', 0)
+                signal_recommendation['kelly_position_value'] = kelly_val * conv_mod
+                logger.info(f"[SESSION] Kelly scaled by conviction_modifier={conv_mod}")
+
+        # ── Daily soft stop: block BUY for all asset classes ──────────────────
+        import sys as _sys
+        _orch_mod = _sys.modules.get(__name__, None)
+        if getattr(_orch_mod, '_DAILY_STOP_ACTIVE', False):
+            if signal_recommendation.get('action') == 'BUY':
+                signal_recommendation['action'] = 'HOLD'
+                signal_recommendation['reasoning'] = (
+                    signal_recommendation.get('reasoning', '') +
+                    " | DAILY STOP: Soft 2.5% daily loss limit reached. BUY paused."
+                )
+                logger.info("[DAILY STOP] BUY converted to HOLD — daily stop active.")
+
         return {**state, "signal_recommendation": signal_recommendation}
     except Exception as e:
         logger.error(f"[Signal] Failed: {e}")
@@ -777,6 +887,9 @@ async def run_crypto_cycle() -> dict:
         logger.warning("Crypto cycle HALTED — stale price data")
         return {"halted": True, "reason": "stale_data", "asset_class": "crypto"}
 
+    # GATE 3 — Soft daily stop check (crypto always active, but BUY still blocked)
+    _check_daily_stop()
+
     initial_state: AgentState = {
         "asset_class": "crypto",
         "regime_summary": {},
@@ -802,6 +915,23 @@ async def run_equities_cycle() -> dict:
         logger.warning("Equities cycle HALTED — stale price data")
         return {"halted": True, "reason": "stale_data", "asset_class": "equities"}
 
+    # GATE 3 — Time-of-day session filter
+    from agents.session_filter import get_session_context
+    session = get_session_context()
+    logger.info(f"[SESSION] {session['session']} — {session['reason']}")
+    if not session['equities_active']:
+        logger.info("[SESSION] Equities not active this session — skipping cycle")
+        return {
+            "halted": True,
+            "reason": "session_inactive",
+            "asset_class": "equities",
+            "session": session['session'],
+            "session_reason": session['reason'],
+        }
+
+    # GATE 4 — Soft daily stop check
+    _check_daily_stop()
+
     gex_data = compute_gex()
     ma_data = get_spy_200day_ma()
 
@@ -817,11 +947,14 @@ async def run_equities_cycle() -> dict:
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
         "gex_data": gex_data,
-        "ma_data": ma_data
+        "ma_data": ma_data,
+        "_session_context": session,
     }
     logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
     result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
     logger.info("[Orchestrator] Equities cycle complete.")
+    # Propagate session context so run_cycle can include it in the report
+    result['_session_context'] = session
     return result
 
 
@@ -954,7 +1087,8 @@ async def run_cycle() -> dict:
         f"{_greeks_line(e_gd)}\n"
         f"📉 VaR: {e_var_pct:.1%} daily | DD: {e_dd_pct:.1%}\n"
         f"🕐 Execution: {'APPROVED' if equities_result.get('execution_approved', True) else 'SKIP'} — {equities_result.get('execution_reason', 'N/A')}\n"
-        f"Risk: {e_rd.get('decision', 'N/A')}"
+        f"Risk: {e_rd.get('decision', 'N/A')}\n"
+        f"🕐 Session: {equities_result.get('_session_context', {}).get('session', 'N/A')} — {equities_result.get('_session_context', {}).get('reason', 'N/A')}"
     )
 
     await _send_telegram(report_text, chat_id="8641189809")
