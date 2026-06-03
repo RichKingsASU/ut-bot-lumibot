@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -23,7 +24,26 @@ logger = logging.getLogger("OptionDataWorker")
 ALPACA_API_KEY    = os.getenv("ALPACA_API_KEY", "")
 ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET", "")
 ALPACA_BASE_URL   = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+ALPACA_DATA_URL   = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
 NATS_URL          = os.getenv("NATS_URL", "nats://localhost:4222")
+
+# ── Options chain feed config ─────────────────────────────────────────────────
+# The reference endpoint (/v2/options/contracts) only returns contract
+# DEFINITIONS — it never populates volume/bid/ask, so the worker dropped 100%
+# of contracts. We pull live quotes/volume from the market-data snapshot feed.
+# 'indicative' is included on the Basic data plan (OPRA is not required because
+# Greeks are solved locally via mibian downstream).
+OPTIONS_FEED        = os.getenv("ALPACA_OPTIONS_FEED", "indicative")
+# Bound the strike ladder to ±band around the underlying so we don't enrich the
+# entire chain (snapshot returns the full ladder, paginated 1000/page).
+STRIKE_BAND_PCT     = float(os.getenv("OPTIONS_STRIKE_BAND_PCT", "0.10"))
+# Liquidity gate on daily volume. NOTE (flagged for review): the old gate was
+# volume > 100, which drops everything near the open before volume accumulates
+# (the prime-morning window). Defaulted to 0 so the pipeline writes real
+# snapshots at all; tighten once verified during regular trading hours.
+MIN_CONTRACT_VOLUME = int(os.getenv("OPTIONS_MIN_VOLUME", "0"))
+# Safety cap on snapshot pagination (each page is up to 1000 contracts).
+MAX_SNAPSHOT_PAGES  = 4
 
 # ── Scan Tiers ────────────────────────────────────────────────────────────────
 PRIORITY_1 = {"SPY": 60,  "QQQ": 60,  "IWM": 60}
@@ -125,10 +145,39 @@ async def _fetch_underlying_price(symbol: str, client: httpx.AsyncClient) -> Opt
         return None
 
 
-async def _fetch_options_chain(symbol: str, client: httpx.AsyncClient) -> list[dict]:
+_OCC_RE = re.compile(r"^(?P<root>[A-Z]+)(?P<yy>\d{2})(?P<mm>\d{2})(?P<dd>\d{2})"
+                     r"(?P<cp>[CP])(?P<strike>\d{8})$")
+
+
+def _parse_occ_symbol(occ: str) -> Optional[dict]:
     """
-    Pull options contracts from Alpaca REST API.
-    Returns a list of normalised contract dicts filtered to volume > 100.
+    Decode an OCC option symbol into strike / expiry / type.
+    e.g. 'SPY260604C00722000' → strike 722.0, expiry '2026-06-04', type 'call'.
+    Returns None if the symbol does not match the OCC layout.
+    """
+    m = _OCC_RE.match(occ or "")
+    if not m:
+        return None
+    return {
+        "strike":      int(m.group("strike")) / 1000.0,
+        "expiry":      f"20{m.group('yy')}-{m.group('mm')}-{m.group('dd')}",
+        "option_type": "call" if m.group("cp") == "C" else "put",
+    }
+
+
+async def _fetch_options_chain(
+    symbol: str,
+    client: httpx.AsyncClient,
+    underlying_price: Optional[float] = None,
+) -> list[dict]:
+    """
+    Pull live option snapshots from the Alpaca market-data feed and return a
+    list of normalised contract dicts.
+
+    Quote/volume come from the snapshot feed (the reference endpoint
+    /v2/options/contracts never populates them). strike/expiry/type are decoded
+    from the OCC symbol key, so no separate reference call is needed. The strike
+    ladder is bounded to ±STRIKE_BAND_PCT around the underlying when known.
     """
     today = datetime.now(timezone.utc).date()
     # Next Friday (or today if it is Friday)
@@ -137,61 +186,82 @@ async def _fetch_options_chain(symbol: str, client: httpx.AsyncClient) -> list[d
         days_until_friday = 7
     next_friday = today + timedelta(days=days_until_friday)
 
-    url = f"{ALPACA_BASE_URL}/v2/options/contracts"
+    url = f"{ALPACA_DATA_URL}/v1beta1/options/snapshots/{symbol}"
     headers = {
         "APCA-API-KEY-ID":     ALPACA_API_KEY,
         "APCA-API-SECRET-KEY": ALPACA_API_SECRET,
     }
-    params = {
-        "underlying_symbols":    symbol,
-        "expiration_date_gte":   today.isoformat(),
-        "expiration_date_lte":   next_friday.isoformat(),
-        "limit":                 100,
+    params: dict = {
+        "feed":                OPTIONS_FEED,
+        "expiration_date_gte": today.isoformat(),
+        "expiration_date_lte": next_friday.isoformat(),
+        "limit":               1000,
     }
+    if underlying_price and underlying_price > 0:
+        params["strike_price_gte"] = round(underlying_price * (1 - STRIKE_BAND_PCT), 2)
+        params["strike_price_lte"] = round(underlying_price * (1 + STRIKE_BAND_PCT), 2)
 
-    try:
-        resp = await client.get(url, headers=headers, params=params, timeout=15.0)
-        resp.raise_for_status()
-        raw = resp.json()
-    except Exception as exc:
-        logger.error("Options chain fetch failed for %s: %s", symbol, exc)
-        return []
-
-    contracts_raw = raw.get("option_contracts", raw) if isinstance(raw, dict) else raw
-    if not isinstance(contracts_raw, list):
-        logger.warning("Unexpected response shape for %s: %s", symbol, type(raw))
-        return []
-
-    contracts: list[dict] = []
-    for c in contracts_raw:
+    # ── Paginate the snapshot feed (best-effort, capped) ──────────────────────
+    snapshots: dict = {}
+    page_token: Optional[str] = None
+    for _ in range(MAX_SNAPSHOT_PAGES):
+        if page_token:
+            params["page_token"] = page_token
         try:
-            volume = int(c.get("volume") or 0)
-            if volume <= 100:
+            resp = await client.get(url, headers=headers, params=params, timeout=15.0)
+            resp.raise_for_status()
+            raw = resp.json()
+        except Exception as exc:
+            logger.error("Options snapshot fetch failed for %s: %s", symbol, exc)
+            break
+        snapshots.update(raw.get("snapshots", {}) or {})
+        page_token = raw.get("next_page_token")
+        if not page_token:
+            break
+
+    if not snapshots:
+        return []
+
+    # ── Normalise each snapshot into the contract shape the calculator wants ──
+    contracts: list[dict] = []
+    for occ, snap in snapshots.items():
+        try:
+            parsed = _parse_occ_symbol(occ)
+            if parsed is None:
                 continue
 
-            bid = c.get("bid_price")
-            ask = c.get("ask_price")
-            close_price = float(c.get("close_price") or 0)
+            daily = snap.get("dailyBar")    or {}
+            quote = snap.get("latestQuote") or {}
+            trade = snap.get("latestTrade") or {}
 
-            if bid is not None and ask is not None:
+            volume = int(daily.get("v") or 0)
+            if volume < MIN_CONTRACT_VOLUME:
+                continue
+
+            bid = quote.get("bp")
+            ask = quote.get("ap")
+            if bid is not None and ask is not None and (float(bid) > 0 or float(ask) > 0):
                 price = (float(bid) + float(ask)) / 2.0
-            elif close_price:
-                price = close_price
             else:
-                price = 0.0
+                # fall back to last trade / daily close
+                price = float(daily.get("c") or trade.get("p") or 0.0)
+
+            if price <= 0:
+                # no usable quote → mibian can't solve; skip dead contract
+                continue
 
             contracts.append({
-                "symbol":       c.get("symbol"),
-                "strike":       float(c.get("strike_price") or 0),
-                "expiry":       str(c.get("expiration_date", "")),
-                "option_type":  str(c.get("type", c.get("option_type", ""))).lower(),
-                "price":        price,
-                "volume":       volume,
-                "open_interest": int(c.get("open_interest") or 0),
-                "iv":           float(c["implied_volatility"]) if c.get("implied_volatility") is not None else None,
+                "symbol":        occ,
+                "strike":        parsed["strike"],
+                "expiry":        parsed["expiry"],
+                "option_type":   parsed["option_type"],
+                "price":         price,
+                "volume":        volume,
+                "open_interest": int(snap.get("openInterest") or 0),
+                "iv":            None,   # solved locally by mibian downstream
             })
         except (TypeError, ValueError, KeyError) as exc:
-            logger.debug("Skipping malformed contract: %s — %s", c.get("symbol"), exc)
+            logger.debug("Skipping malformed snapshot: %s — %s", occ, exc)
             continue
 
     return contracts
@@ -214,7 +284,7 @@ async def scan_symbol(symbol: str, ttl: int) -> None:
 
     async with httpx.AsyncClient() as client:
         underlying_price = await _fetch_underlying_price(symbol, client)
-        contracts        = await _fetch_options_chain(symbol, client)
+        contracts        = await _fetch_options_chain(symbol, client, underlying_price)
 
     entry: dict = {
         "timestamp":        time.time(),
