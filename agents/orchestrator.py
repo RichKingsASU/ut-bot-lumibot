@@ -30,6 +30,7 @@ from agents.pead_signal import get_pead_signal
 from agents.ma_regime_filter import get_spy_200day_ma, apply_ma_filter
 from agents.market_freshness import validate_market_freshness
 from agents.hitl_queue import submit_for_approval
+from agents.kronos_forecaster import compare_with_timesfm as _kronos_compare
 
 load_dotenv()
 
@@ -890,6 +891,13 @@ async def run_crypto_cycle() -> dict:
     # GATE 3 — Soft daily stop check (crypto always active, but BUY still blocked)
     _check_daily_stop()
 
+    # ── Kronos parallel forecast (non-blocking — best-effort) ────────────────
+    kronos_crypto = {}
+    try:
+        kronos_crypto = await asyncio.to_thread(_kronos_compare, 'ETH/USD')
+    except Exception as _ke:
+        logger.warning(f'[KRONOS] Crypto compare failed (non-fatal): {_ke}')
+
     initial_state: AgentState = {
         "asset_class": "crypto",
         "regime_summary": {},
@@ -901,9 +909,11 @@ async def run_crypto_cycle() -> dict:
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+        "kronos_comparison": kronos_crypto,
     }
     logger.info(f"[Orchestrator] Starting crypto cycle at {initial_state['cycle_timestamp']}")
     result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
+    result['kronos_comparison'] = kronos_crypto
     logger.info("[Orchestrator] Crypto cycle complete.")
     return result
 
@@ -935,6 +945,13 @@ async def run_equities_cycle() -> dict:
     gex_data = compute_gex()
     ma_data = get_spy_200day_ma()
 
+    # ── Kronos parallel forecast (non-blocking — best-effort) ────────────────
+    kronos_eq = {}
+    try:
+        kronos_eq = await asyncio.to_thread(_kronos_compare, 'SPY')
+    except Exception as _ke:
+        logger.warning(f'[KRONOS] Equities compare failed (non-fatal): {_ke}')
+
     initial_state: AgentState = {
         "asset_class": "equities",
         "regime_summary": {},
@@ -949,9 +966,11 @@ async def run_equities_cycle() -> dict:
         "gex_data": gex_data,
         "ma_data": ma_data,
         "_session_context": session,
+        "kronos_comparison": kronos_eq,
     }
     logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
     result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
+    result['kronos_comparison'] = kronos_eq
     logger.info("[Orchestrator] Equities cycle complete.")
     # Propagate session context so run_cycle can include it in the report
     result['_session_context'] = session
@@ -1060,11 +1079,31 @@ async def run_cycle() -> dict:
     ma_data = equities_result.get("ma_data") or {}
     pead_data = equities_result.get("pead_data") or {}
 
+    # ── Kronos forecast lines ──────────────────────────────────────────────────
+    def _kronos_line(kc: dict, label: str) -> str:
+        if not kc or not kc.get('kronos', {}).get('direction'):
+            return f'🔮 Kronos ({label}): unavailable'
+        k = kc['kronos']
+        t = kc.get('timesfm', {})
+        agree_icon = '✅' if kc.get('agree') else '⚠️'
+        t_dir = t.get('direction', 'N/A')
+        t_pct = t.get('pct_change', 0.0)
+        return (
+            f'🔮 Kronos ({k.get("model", "Kronos")}): '
+            f'{k["direction"]} {k["pct_change"]:+.2f}% | '
+            f'TimesFM: {t_dir} {t_pct:+.2f}% | '
+            f'{agree_icon} {kc.get("agreement_signal", "")}'
+        )
+
+    c_kronos = crypto_result.get('kronos_comparison') or {}
+    e_kronos = equities_result.get('kronos_comparison') or {}
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
         f"🎯 Regime: {c_symbol_regime} ({c_symbol_regime_prob:.0%})\n"
         f"{_sentiment_line(c_mc, c_sr, c_art)}\n"
+        f"{_kronos_line(c_kronos, 'ETH/USD')}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} adj. portfolio)\n"
@@ -1079,6 +1118,7 @@ async def run_cycle() -> dict:
         f"GEX: {gex_data.get('gex_regime', 'UNKNOWN')} (${gex_data.get('gex_value_millions', 0):.0f}M)\n"
         f"200MA: {ma_data.get('regime', 'UNKNOWN')} ({ma_data.get('pct_from_ma', 0):+.1f}%)\n"
         f"PEAD: {pead_data.get('signal', 'NEUTRAL')} {pead_data.get('description','')[:60]}\n"
+        f"{_kronos_line(e_kronos, 'SPY')}\n"
         f"{_sentiment_line(e_mc, e_sr, e_art)}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
