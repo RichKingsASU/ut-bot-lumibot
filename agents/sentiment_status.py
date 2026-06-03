@@ -53,9 +53,29 @@ def _get_bool(key: str, default: bool) -> bool:
 # Freshness window: how far back we look for ANY usable scored article.
 FRESHNESS_HOURS = _get_int("SENTIMENT_FRESHNESS_HOURS", 24)
 
-# Staleness window: the newest scored article must be at least this fresh to count
-# as OK. Older-but-present scored data is STALE (degrade only — never a block).
-STALENESS_MIN = _get_int("SENTIMENT_STALENESS_MIN", 15)
+def get_staleness_threshold() -> int:
+    import os
+    if "SENTIMENT_STALENESS_MIN" in os.environ:
+        return _get_int("SENTIMENT_STALENESS_MIN", 15)
+        
+    import datetime
+    now_et = datetime.datetime.now(datetime.timezone.utc).astimezone(
+        datetime.timezone(datetime.timedelta(hours=-5)))
+    hour_et = now_et.hour
+    
+    if 9 <= hour_et < 16:      # market hours
+        return 15
+    elif 7 <= hour_et < 9:     # pre-market
+        return 30
+    elif 16 <= hour_et < 20:   # post-market
+        return 45
+    else:                       # overnight
+        return 120
+
+def __getattr__(name: str):
+    if name == "STALENESS_MIN":
+        return get_staleness_threshold()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Per-asset enforcement of the hard-block on NO_DATA / ERROR.
 _ENFORCE = {

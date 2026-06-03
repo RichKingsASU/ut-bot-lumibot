@@ -188,7 +188,8 @@ class RegimeDetector(BaseAgent):
                         'volatility': classification['volatility'],
                         'trend_strength': classification['trend_strength'],
                         'volume_ratio': classification['volume_ratio'],
-                        'hidden_state': classification['hidden_state']
+                        'hidden_state': classification['hidden_state'],
+                        'detected_at': datetime.now(timezone.utc).isoformat()
                     }
                     headers = {
                         "apikey": supabase_key,

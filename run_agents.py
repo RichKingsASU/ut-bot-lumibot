@@ -288,8 +288,15 @@ async def main() -> None:
                 status="ok",
                 last_successful_cycle_id=cycle_count,
             )
-        except Exception as exc:
-            logger.error(f"[RunAgents] Cycle #{cycle_count} raised an exception: {exc}", exc_info=True)
+        except (httpx.ConnectError, httpx.TimeoutException,
+                ConnectionResetError, OSError) as e:
+            logger.warning(f"Network error: {e} — retrying in 60s")
+            await asyncio.sleep(60)
+            continue
+        except Exception as e:
+            logger.error(f"Cycle error: {e} — retrying in 30s")
+            await asyncio.sleep(30)
+            continue
 
         # Daily at 8:00 PM ET: signal health check
         if now_et.hour == 20 and now_et.minute < 15:

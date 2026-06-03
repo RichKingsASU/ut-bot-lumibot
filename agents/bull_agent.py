@@ -177,17 +177,14 @@ class BullAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Failed to query live agent_signals from Supabase: {e}")
             
-        try:
-            regime_rows = await self.query_supabase(
-                table="regime_states",
-                select="regime,regime_probability,detected_at",
-                filters={"symbol": f"eq.{symbol}", "order": "detected_at.desc"},
-                limit=1
-            )
-            if regime_rows:
-                current_regime_row = regime_rows[0]
-        except Exception as e:
-            logger.error(f"Failed to query live regime_states from Supabase: {e}")
+        # Use passed in-memory regime_summary
+        sym_regime_dict = regime_summary.get('symbol_regimes', {}).get(symbol, {})
+        sym_regime = sym_regime_dict.get('regime') or regime_summary.get('overall_regime', 'Unknown')
+        sym_prob = sym_regime_dict.get('regime_probability')
+        if sym_prob is not None:
+            regime_str = f"{sym_regime} (Prob: {sym_prob})"
+        else:
+            regime_str = f"{sym_regime}"
             
         try:
             recent_sentiment = await self.query_supabase(
@@ -200,16 +197,16 @@ class BullAgent(BaseAgent):
             logger.error(f"Failed to query live news sentiment from Supabase: {e}")
 
         signals_str = "\n".join([f"  - {s.get('symbol')}: {s.get('action')} ({s.get('confidence')})" for s in latest_signals]) if latest_signals else "  None"
-        regime_str = f"{current_regime_row.get('regime')} (Prob: {current_regime_row.get('regime_probability')})" if current_regime_row else "Unknown"
         sentiment_str = "\n".join([f"  - {ns.get('title')} (score: {ns.get('sentiment_score')})" for ns in recent_sentiment]) if recent_sentiment else "  None"
 
         from agents._llm import call_claude, llm_available
         reasoning = ' | '.join(factors)
 
         if llm_available():
+            regime_val_str = f"{sym_regime} ({sym_prob:.0%})" if sym_prob is not None else f"{sym_regime}"
             prompt = f'''
 Symbol: {symbol}
-Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"} (Live Regime: {regime_str})
+Regime: {regime_val_str}
 Sentiment: {sentiment:.3f} ({market_context.get("sentiment_label", "neutral")}) [status: {market_context.get("sentiment_status", "OK")}]
 Velocity: {market_context.get("sentiment_trend", "STABLE")}
 Signal: {signal_recommendation.get("action", "HOLD")}

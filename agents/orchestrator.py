@@ -787,10 +787,20 @@ async def run_cycle() -> dict:
             f"{reasoning_display}"
         )
 
+    c_sym = c_ks.get("symbol", "ETH/USD")
+    c_sym_regime_dict = c_rs.get('symbol_regimes', {}).get(c_sym, {})
+    c_symbol_regime = c_sym_regime_dict.get('regime', c_rs.get('overall_regime', 'QUIET'))
+    c_symbol_regime_prob = c_sym_regime_dict.get('regime_probability', 1.0)
+
+    e_sym = e_ks.get("symbol", "SPY")
+    e_sym_regime_dict = e_rs.get('symbol_regimes', {}).get(e_sym, {})
+    e_symbol_regime = e_sym_regime_dict.get('regime', e_rs.get('overall_regime', 'QUIET'))
+    e_symbol_regime_prob = e_sym_regime_dict.get('regime_probability', 1.0)
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
-        f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
+        f"🎯 Regime: {c_symbol_regime} ({c_symbol_regime_prob:.0%})\n"
         f"{_sentiment_line(c_mc, c_sr, c_art)}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
@@ -801,7 +811,7 @@ async def run_cycle() -> dict:
         f"🕐 Execution: {'APPROVED' if crypto_result.get('execution_approved', True) else 'SKIP'} — {crypto_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
-        f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
+        f"🎯 Regime: {e_symbol_regime} ({e_symbol_regime_prob:.0%})\n"
         f"{_sentiment_line(e_mc, e_sr, e_art)}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
