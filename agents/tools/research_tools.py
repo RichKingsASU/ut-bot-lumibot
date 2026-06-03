@@ -134,13 +134,16 @@ def get_news_summary(
     since = _parse_window(window)
     params: Dict[str, Any] = {
         "created_at": f"gte.{since}",
-        "select": "headline,source,url,published_at,sentiment_score,symbols",
+        "select": "title,source,url,published_at,sentiment_score,summary",
         "order": "published_at.desc",
         "limit": 50,
     }
 
     try:
         rows = _supa_get("news_articles", **params)
+        for r in rows:
+            if "title" in r:
+                r["headline"] = r["title"]
     except Exception as exc:
         log.warning(f"news_articles table not available: {exc}")
         rows = []
@@ -150,7 +153,7 @@ def get_news_summary(
         sym_set = {s.upper() for s in symbols}
         rows = [
             r for r in rows
-            if any(s in sym_set for s in (r.get("symbols") or []))
+            if any(s in f"{r.get('title') or ''} {r.get('summary') or ''}".upper() for s in sym_set)
         ]
 
     sentiments = [

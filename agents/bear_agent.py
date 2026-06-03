@@ -60,87 +60,105 @@ class BearAgent(BaseAgent):
         risks = []
 
         # 1. SENTIMENT (0-30 points bear case):
-        # avg_sentiment is None unless status == OK; treat missing/stale sentiment
-        # as neutral for this advisory debate score (the hard block/degrade decision
-        # is made upstream in SignalAgent).
         sentiment = market_context.get('avg_sentiment', 0.0)
         if sentiment is None:
             sentiment = 0.0
-        if sentiment < -0.3:
-            score += 30
-            risks.append(f'Strong bearish sentiment {sentiment:.2f}')
-        elif sentiment < -0.1:
-            score += 20
-            risks.append(f'Mild bearish sentiment {sentiment:.2f}')
-        elif sentiment < 0.1:
-            score += 15
-            risks.append(f'Neutral — no bullish catalyst {sentiment:.2f}')
-        elif sentiment < 0.3:
-            score += 5
-            risks.append(f'Mild bullish sentiment {sentiment:.2f}')
+
+        asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
+        if asset_class == 'equities':
+            base_bear = 50.0
+            regime = (regime_summary or {}).get('overall_regime', '')
+            if regime == 'BEAR':
+                base_bear += 15.0
+            elif regime == 'VOLATILE':
+                base_bear += 10.0
+            
+            sentiment_velocity = market_context.get('sentiment_velocity', 0.0)
+            if sentiment_velocity < -0.05:
+                base_bear += 8.0
+                
+            timesfm_forecast = signal_recommendation.get('timesfm_forecast', 'NONE')
+            if timesfm_forecast == 'DOWN':
+                base_bear += 7.0
+                
+            score = max(0.0, min(100.0, base_bear))
+            risks.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, timesfm={timesfm_forecast}")
         else:
-            score += 0
-            risks.append(f'Strong bullish sentiment {sentiment:.2f}')
-
-        # 2. REGIME (0-30 points bear case):
-        regime = (regime_summary or {}).get('overall_regime', '')
-        if regime == 'BEAR':
-            score += 30
-            risks.append('BEAR regime — strong headwind')
-        elif regime == 'VOLATILE':
-            score += 20
-            risks.append('VOLATILE — downside risk elevated')
-        elif regime == 'QUIET':
-            score += 10
-            risks.append('QUIET — limited upside momentum')
-        elif regime == 'BULL':
-            score += 5
-            risks.append('BULL regime — bears fighting trend')
-        else:
-            score += 15
-            risks.append('Unknown regime — uncertainty')
-
-        # 3. TECHNICAL SIGNAL (0-20 points bear case):
-        action = signal_recommendation.get('action', 'HOLD')
-        sell_sig = signal_recommendation.get('sell_sig', False)
-        buy_sig = signal_recommendation.get('buy_sig', False)
-        if sell_sig or action == 'SELL':
-            score += 20
-            risks.append('Active SELL signal')
-        elif action == 'HOLD' and not buy_sig:
-            score += 10
-            risks.append('No buy signal — momentum absent')
-        elif buy_sig or action == 'BUY':
-            score += 0
-            risks.append('Active BUY signal — bull has edge')
-
-        # 4. VELOCITY (0-10 points bear case):
-        trend = market_context.get('sentiment_trend', 'STABLE')
-        if trend == 'DETERIORATING':
-            score += 10
-            risks.append('Sentiment deteriorating')
-        elif trend == 'STABLE':
-            score += 5
-            risks.append('No sentiment improvement')
-        else:
-            score += 0
-            risks.append('Sentiment improving')
-
-        # 5. GREEKS RISK (0-10 points bear case):
-        if greeks_context:
-            gamma = greeks_context.get('gamma', 0.0)
-            rvol = greeks_context.get('rvol', 1.0)
-            if gamma > 0.05:
-                score += 10
-                risks.append(f'High gamma {gamma:.4f} — risk elevated')
-            elif rvol < 2.5:
-                score += 8
-                risks.append(f'Low RVOL {rvol:.1f}x — thin volume')
+            if sentiment < -0.3:
+                score += 30
+                risks.append(f'Strong bearish sentiment {sentiment:.2f}')
+            elif sentiment < -0.1:
+                score += 20
+                risks.append(f'Mild bearish sentiment {sentiment:.2f}')
+            elif sentiment < 0.1:
+                score += 15
+                risks.append(f'Neutral — no bullish catalyst {sentiment:.2f}')
+            elif sentiment < 0.3:
+                score += 5
+                risks.append(f'Mild bullish sentiment {sentiment:.2f}')
             else:
-                score += 2
-                risks.append('Greeks within normal range')
+                score += 0
+                risks.append(f'Strong bullish sentiment {sentiment:.2f}')
 
-        score = min(100.0, score)
+            # 2. REGIME (0-30 points bear case):
+            regime = (regime_summary or {}).get('overall_regime', '')
+            if regime == 'BEAR':
+                score += 30
+                risks.append('BEAR regime — strong headwind')
+            elif regime == 'VOLATILE':
+                score += 20
+                risks.append('VOLATILE — downside risk elevated')
+            elif regime == 'QUIET':
+                score += 10
+                risks.append('QUIET — limited upside momentum')
+            elif regime == 'BULL':
+                score += 5
+                risks.append('BULL regime — bears fighting trend')
+            else:
+                score += 15
+                risks.append('Unknown regime — uncertainty')
+
+            # 3. TECHNICAL SIGNAL (0-20 points bear case):
+            action = signal_recommendation.get('action', 'HOLD')
+            sell_sig = signal_recommendation.get('sell_sig', False)
+            buy_sig = signal_recommendation.get('buy_sig', False)
+            if sell_sig or action == 'SELL':
+                score += 20
+                risks.append('Active SELL signal')
+            elif action == 'HOLD' and not buy_sig:
+                score += 10
+                risks.append('No buy signal — momentum absent')
+            elif buy_sig or action == 'BUY':
+                score += 0
+                risks.append('Active BUY signal — bull has edge')
+
+            # 4. VELOCITY (0-10 points bear case):
+            trend = market_context.get('sentiment_trend', 'STABLE')
+            if trend == 'DETERIORATING':
+                score += 10
+                risks.append('Sentiment deteriorating')
+            elif trend == 'STABLE':
+                score += 5
+                risks.append('No sentiment improvement')
+            else:
+                score += 0
+                risks.append('Sentiment improving')
+
+            # 5. GREEKS RISK (0-10 points bear case):
+            if greeks_context:
+                gamma = greeks_context.get('gamma', 0.0)
+                rvol = greeks_context.get('rvol', 1.0)
+                if gamma > 0.05:
+                    score += 10
+                    risks.append(f'High gamma {gamma:.4f} — risk elevated')
+                elif rvol < 2.5:
+                    score += 8
+                    risks.append(f'Low RVOL {rvol:.1f}x — thin volume')
+                else:
+                    score += 2
+                    risks.append('Greeks within normal range')
+
+            score = min(100.0, score)
 
         # Fetch live data from Supabase
         asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
@@ -154,7 +172,7 @@ class BearAgent(BaseAgent):
             latest_signals = await self.query_supabase(
                 table="agent_signals",
                 select="symbol,action,confidence,created_at",
-                filters={"asset_class": asset_filter, "order": "created_at.desc"},
+                filters={"symbol": f"eq.{symbol}", "order": "created_at.desc"},
                 limit=5
             )
         except Exception as e:
@@ -164,7 +182,7 @@ class BearAgent(BaseAgent):
             regime_rows = await self.query_supabase(
                 table="regime_states",
                 select="regime,regime_probability,detected_at",
-                filters={"asset_class": asset_filter, "order": "detected_at.desc"},
+                filters={"symbol": f"eq.{symbol}", "order": "detected_at.desc"},
                 limit=1
             )
             if regime_rows:

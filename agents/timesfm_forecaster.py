@@ -6,6 +6,7 @@ import glob
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 logger = logging.getLogger('TimesFMForecaster')
 
@@ -62,7 +63,7 @@ class TimesFMForecaster:
     asset_class: str = 'equities',
     timeframe: str = '1D'
   ) -> pd.DataFrame:
-    """Load bars from Parquet."""
+    """Load bars from Parquet, enriched with latest live data from Alpaca."""
     if asset_class == 'equities':
         path = HIST_ROOT / 'equities' / symbol
         pattern = f'{symbol}_1D_*.parquet'
@@ -74,14 +75,92 @@ class TimesFMForecaster:
     # Use glob to find files.
     files = glob.glob(str(path / pattern))
     if not files:
+        logger.warning(f"No historical parquet files found for {symbol}")
+        df = pd.DataFrame(columns=['symbol', 'ts', 'open', 'high', 'low', 'close', 'volume', 'trade_count', 'vwap'])
+    else:
+        try:
+            df = pd.read_parquet(files[0])
+            if 'timestamp' in df.columns and 'ts' not in df.columns:
+                df = df.rename(columns={'timestamp': 'ts'})
+        except Exception as e:
+            logger.error(f"Error reading parquet file for {symbol}: {e}")
+            df = pd.DataFrame(columns=['symbol', 'ts', 'open', 'high', 'low', 'close', 'volume', 'trade_count', 'vwap'])
+
+    # Find the latest date in df
+    if not df.empty and 'ts' in df.columns:
+        df['ts'] = pd.to_datetime(df['ts'], utc=True)
+        last_ts = df['ts'].max()
+        start_date = last_ts.strftime('%Y-%m-%d')
+    else:
+        import datetime as dt
+        start_date = (dt.datetime.now(timezone.utc) - dt.timedelta(days=750)).strftime('%Y-%m-%d')
+
+    # Fetch live bars from Alpaca
+    live_bars = []
+    try:
+        api_key = os.getenv("ALPACA_API_KEY")
+        api_secret = os.getenv("ALPACA_API_SECRET")
+        headers = {
+            'APCA-API-KEY-ID': api_key,
+            'APCA-API-SECRET-KEY': api_secret
+        }
+        
+        if asset_class == 'equities':
+            import requests
+            url = 'https://data.alpaca.markets/v2/stocks/bars'
+            params = {
+                'symbols': symbol,
+                'timeframe': '1Day',
+                'start': start_date,
+                'limit': 1000
+            }
+            res = requests.get(url, headers=headers, params=params, timeout=10.0)
+            if res.status_code == 200:
+                live_bars = res.json().get('bars', {}).get(symbol, [])
+        else:
+            import requests
+            url = 'https://data.alpaca.markets/v1beta3/crypto/us/bars'
+            params = {
+                'symbols': symbol,
+                'timeframe': '1Day',
+                'start': start_date,
+                'limit': 1000
+            }
+            res = requests.get(url, headers=headers, params=params, timeout=10.0)
+            if res.status_code == 200:
+                live_bars = res.json().get('bars', {}).get(symbol, [])
+                
+        if live_bars:
+            logger.info(f"Fetched {len(live_bars)} live bars from Alpaca for {symbol} starting from {start_date}")
+            live_rows = []
+            for b in live_bars:
+                live_rows.append({
+                    'symbol': symbol,
+                    'ts': pd.to_datetime(b['t'], utc=True),
+                    'open': float(b['o']),
+                    'high': float(b['h']),
+                    'low': float(b['l']),
+                    'close': float(b['c']),
+                    'volume': float(b['v']),
+                    'trade_count': float(b.get('n', 0.0)),
+                    'vwap': float(b.get('vw', 0.0))
+                })
+            live_df = pd.DataFrame(live_rows)
+            if not df.empty:
+                df = pd.concat([df, live_df], ignore_index=True)
+            else:
+                df = live_df
+                
+            df = df.drop_duplicates(subset=['symbol', 'ts'], keep='last')
+    except Exception as e:
+        logger.error(f"Failed to fetch or merge live bars from Alpaca for {symbol}: {e}")
+
+    if df.empty:
         return None
+
+    # Sort by ts ascending.
+    df = df.sort_values('ts', ascending=True).reset_index(drop=True)
         
-    df = pd.read_parquet(files[0])
-    # Sort by timestamp ascending.
-    if 'timestamp' in df.columns:
-        df = df.sort_values('timestamp', ascending=True)
-        
-    # Return last CONTEXT_LENGTH rows.
     if len(df) < 30:
         return None
     return df.tail(CONTEXT_LENGTH)
@@ -101,6 +180,14 @@ class TimesFMForecaster:
         
     closes = df['close'].values
     last_price = float(closes[-1])
+    
+    # Verification log requested in Step 3D/3E
+    bars_list = df.to_dict(orient='records')
+    for b in bars_list:
+        if 'ts' in b and 'timestamp' not in b:
+            b['timestamp'] = b['ts'].isoformat()
+    # Log the exact line format requested
+    logger.info(f"TimesFM {symbol.split('/')[0]} input: {len(bars_list)} bars, latest={bars_list[-1]['timestamp']}")
     
     # Normalize: prices / prices[-1] (relative to last)
     norm_closes = closes / last_price
