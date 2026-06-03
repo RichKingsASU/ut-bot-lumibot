@@ -4,6 +4,8 @@ import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from agents.risk_models import PositionSizeModel, MAX_POSITION_VALUE
+from pydantic import ValidationError
 
 logger = logging.getLogger("KellySizer")
 load_dotenv()
@@ -260,7 +262,20 @@ class KellySizer:
     # 7. Calculate final position value:
     #    position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
     position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
-    
+
+    # 8. Pydantic hard-cap validation (GATE 1)
+    try:
+        PositionSizeModel(
+            symbol=symbol,
+            asset_class=asset_class,
+            proposed_position_value=position_value,
+            account_equity=portfolio_value,
+            verdict="PENDING"
+        )
+    except ValidationError as e:
+        logger.error(f"Kelly validation FAILED for {symbol}: {e}")
+        position_value = min(position_value, MAX_POSITION_VALUE)
+
     return {
       "symbol": symbol,
       "kelly_fraction": kelly_fraction,

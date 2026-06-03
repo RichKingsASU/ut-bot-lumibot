@@ -26,6 +26,8 @@ from agents.greeks_risk_engine import GreeksRiskEngine
 from agents.gex_calculator import compute_gex
 from agents.pead_signal import get_pead_signal
 from agents.ma_regime_filter import get_spy_200day_ma, apply_ma_filter
+from agents.market_freshness import validate_market_freshness
+from agents.hitl_queue import submit_for_approval
 
 load_dotenv()
 
@@ -628,6 +630,29 @@ def report_node(state: AgentState) -> AgentState:
         )
     logger.info(f"[Orchestrator] {asset} pipeline cycle completed. {greeks_line}")
 
+    # HITL approval gate (GATE 3)
+    try:
+        sig = state.get("signal_recommendation", {})
+        signal_id = sig.get("id")
+        if (sig.get('action') == 'BUY'
+                and state.get('execution_approved', False)
+                and os.getenv('HITL_ENABLED', 'false').lower() == 'true'):
+            # Enrich signal with pipeline context for the queue
+            hitl_signal = dict(sig)
+            debate_res = state.get('debate_result', {})
+            kelly_sz = state.get('kelly_sizing', {})
+            regime_sum = state.get('regime_summary', {})
+            hitl_signal['debate_verdict'] = debate_res.get('verdict')
+            hitl_signal['debate_bull_score'] = debate_res.get('bull_score')
+            hitl_signal['debate_bear_score'] = debate_res.get('bear_score')
+            hitl_signal['regime'] = regime_sum.get('overall_regime')
+            hitl_signal['kelly_position_value'] = kelly_sz.get('position_value', 0)
+            hitl_signal['asset_class'] = state.get('asset_class', 'equities')
+            submit_for_approval(hitl_signal)
+            logger.info(f"[HITL] Signal for {sig.get('symbol')} submitted for human approval — execution held")
+    except Exception as e:
+        logger.warning(f"[HITL] Submit error in report_node: {e}")
+
     # Update cloud Supabase agent_signals table with the rich cycle metrics
     try:
         sig = state.get("signal_recommendation", {})
@@ -747,6 +772,11 @@ _equities_compiled_graph = _build_graph().compile()
 
 async def run_crypto_cycle() -> dict:
     """Run crypto agent pipeline and return cycle result dict."""
+    # GATE 2 — Stale price data halt (crypto uses ETH/USD)
+    if not validate_market_freshness('ETH/USD', 'crypto'):
+        logger.warning("Crypto cycle HALTED — stale price data")
+        return {"halted": True, "reason": "stale_data", "asset_class": "crypto"}
+
     initial_state: AgentState = {
         "asset_class": "crypto",
         "regime_summary": {},
@@ -767,6 +797,11 @@ async def run_crypto_cycle() -> dict:
 
 async def run_equities_cycle() -> dict:
     """Run equities agent pipeline and return cycle result dict."""
+    # GATE 2 — Stale price data halt
+    if not validate_market_freshness('SPY', 'equities'):
+        logger.warning("Equities cycle HALTED — stale price data")
+        return {"halted": True, "reason": "stale_data", "asset_class": "equities"}
+
     gex_data = compute_gex()
     ma_data = get_spy_200day_ma()
 
