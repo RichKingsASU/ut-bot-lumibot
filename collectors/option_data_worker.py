@@ -235,6 +235,14 @@ async def scan_symbol(symbol: str, ttl: int) -> None:
         len(contracts), symbol, entry["underlying_price"], subject
     )
 
+    try:
+        from agents.greeks_agent import GreeksAgent
+        g_agent = GreeksAgent("options-greeks", "equities")
+        asyncio.create_task(g_agent.analyze())
+        logger.info("Triggered background GreeksAgent scan for %s", symbol)
+    except Exception as e:
+        logger.error("Failed to trigger GreeksAgent scan for %s: %s", symbol, e)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Priority loops

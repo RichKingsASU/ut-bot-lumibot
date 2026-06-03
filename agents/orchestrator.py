@@ -288,15 +288,42 @@ async def _greeks_intercept_async(state: AgentState) -> AgentState:
 
     # Only run Greeks for equities during market hours
     if asset_class == 'crypto' or not is_market_hours():
+        iv_rank = 50.0
+        gamma = 0.0
+        trade_mode = 'NEUTRAL'
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and service_role_key:
+                headers = {
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                }
+                url = f"{supabase_url}/rest/v1/greeks_snapshots"
+                params = {
+                    "symbol": f"eq.{symbol}",
+                    "order": "snapshot_at.desc",
+                    "limit": "1"
+                }
+                resp = requests.get(url, headers=headers, params=params, timeout=5.0)
+                if resp.status_code == 200 and resp.json():
+                    greeks_snap = resp.json()[0]
+                    iv_rank = float(greeks_snap.get("iv_rank", 50.0))
+                    gamma = float(greeks_snap.get("gamma", 0.0))
+                    trade_mode = greeks_snap.get("trade_mode", "NEUTRAL")
+                    logger.info(f"[Greeks] Using historical Supabase greeks for outside market hours: iv_rank={iv_rank}, gamma={gamma}")
+        except Exception as e:
+            logger.warning(f"[Greeks] Failed to query Supabase greeks in outside market hours block: {e}")
+
         state['greeks_decision'] = {
             'action': 'APPROVE',
             'reason': 'Crypto or outside market hours — Greeks skipped',
             'trigger': 'SKIPPED',
             'size_scalar': 1.0,
             'position_value': 2500.0,
-            'trade_mode': 'NEUTRAL',
-            'iv_rank': 50.0,
-            'gamma': 0.0,
+            'trade_mode': trade_mode,
+            'iv_rank': iv_rank,
+            'gamma': gamma,
             'delta': 0.0,
             'rvol': 1.0,
             'alerts': []
@@ -305,6 +332,29 @@ async def _greeks_intercept_async(state: AgentState) -> AgentState:
 
     # Get cached Greeks
     greeks = get_cached_greeks(symbol)
+
+    if greeks is None:
+        logger.info(f"[Greeks] No cached data for {symbol} in memory, trying Supabase greeks_snapshots...")
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and service_role_key:
+                headers = {
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                }
+                url = f"{supabase_url}/rest/v1/greeks_snapshots"
+                params = {
+                    "symbol": f"eq.{symbol}",
+                    "order": "snapshot_at.desc",
+                    "limit": "1"
+                }
+                resp = requests.get(url, headers=headers, params=params, timeout=5.0)
+                if resp.status_code == 200 and resp.json():
+                    greeks = resp.json()[0]
+                    logger.info(f"[Greeks] Successfully retrieved latest Greeks from Supabase for {symbol}")
+        except Exception as e:
+            logger.warning(f"[Greeks] Failed to query Supabase greeks_snapshots: {e}")
 
     if greeks is None:
         logger.warning(f"[Greeks] No cached data for {symbol} — using safe defaults")
@@ -566,6 +616,7 @@ def report_node(state: AgentState) -> AgentState:
                 
                 update_payload = {
                     "signal_type": sig.get("technical_signal"),
+                    "sentiment_score": float(sig.get("sentiment_score") or 0.0) if sig.get("sentiment_score") is not None else None,
                     "sentiment_trend": sig.get("sentiment_trend"),
                     "timesfm_forecast": sig.get("timesfm_forecast"),
                     "timesfm_pct": float(sig.get("timesfm_pct") or 0.0) if sig.get("timesfm_pct") is not None else None,

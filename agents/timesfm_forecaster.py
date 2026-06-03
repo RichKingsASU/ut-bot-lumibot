@@ -112,7 +112,9 @@ class TimesFMForecaster:
                 'symbols': symbol,
                 'timeframe': '1Day',
                 'start': start_date,
-                'limit': 1000
+                'limit': 1000,
+                'feed': 'sip',
+                'adjustment': 'all'
             }
             res = requests.get(url, headers=headers, params=params, timeout=10.0)
             if res.status_code == 200:

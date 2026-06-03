@@ -231,11 +231,26 @@ class SignalAgent(BaseAgent):
             "timesfm_pct": timesfm_pct,
         }
 
-        # ── Step 3b: Greeks modifier ───────────────────────────────────────────
-        if greeks_context and greeks_context.get('trade_mode'):
-            trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
-            iv_rank = greeks_context.get('iv_rank', 50.0)
-            gamma = greeks_context.get('gamma', 0.0)
+        # ── Step 3b: Greeks modifier (with Supabase fallback) ───────────────────
+        resolved_greeks = greeks_context
+        if not resolved_greeks or not resolved_greeks.get('trade_mode'):
+            try:
+                greeks_rows = await self.query_supabase(
+                    table="greeks_snapshots",
+                    select="*",
+                    filters={"symbol": f"eq.{symbol}", "order": "snapshot_at.desc"},
+                    limit=1
+                )
+                if greeks_rows:
+                    resolved_greeks = greeks_rows[0]
+                    logger.info(f"Loaded Greeks for {symbol} from Supabase: {resolved_greeks}")
+            except Exception as e:
+                logger.error(f"Failed to query greeks_snapshots for {symbol}: {e}")
+
+        if resolved_greeks and resolved_greeks.get('trade_mode'):
+            trade_mode = resolved_greeks.get('trade_mode', 'NEUTRAL')
+            iv_rank = float(resolved_greeks.get('iv_rank', 50.0))
+            gamma = float(resolved_greeks.get('gamma', 0.0))
 
             # Boost confidence if Greeks align
             if trade_mode == 'LONG_GAMMA' and action == 'BUY':
@@ -261,6 +276,11 @@ class SignalAgent(BaseAgent):
             # Update confidence after possible modification
             signal_recommendation['confidence'] = confidence
             signal_recommendation['reasoning'] = reasoning
+        else:
+            # Safe defaults if no Greeks available
+            signal_recommendation['trade_mode'] = 'NEUTRAL'
+            signal_recommendation['iv_rank'] = 50.0
+            signal_recommendation['gamma'] = 0.0
 
         logger.info(f"Signal recommendation → {signal_recommendation}")
 
@@ -294,6 +314,7 @@ class SignalAgent(BaseAgent):
                     "action": signal_recommendation.get("action"),
                     "confidence": signal_recommendation.get("confidence"),
                     "reasoning": signal_recommendation.get("reasoning"),
+                    "sentiment_score": signal_recommendation.get("sentiment_score"),
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "agent_name": self.name,
                 }
