@@ -56,6 +56,10 @@ class BearAgent(BaseAgent):
         greeks_context = greeks_context or {}
         regime_summary = regime_summary or {}
 
+        from agents.pead_signal import get_pead_signal
+        pead = get_pead_signal(symbol)
+        pead_context = f"Post-Earnings Signal: {pead.get('signal')}\n{pead.get('description')}"
+
         score = 0.0
         risks = []
 
@@ -160,6 +164,11 @@ class BearAgent(BaseAgent):
 
             score = min(100.0, score)
 
+        if pead['signal'] == 'BEARISH_DRIFT':
+            score -= pead.get('modifier', 0)
+            risks.append(f"PEAD bearish drift modifier: +{abs(pead.get('modifier', 0))}")
+        score = max(0.0, min(100.0, score))
+
         # Fetch live data from Supabase
         asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
         asset_filter = "eq.crypto" if asset_class == "crypto" else "in.(equity,equities)"
@@ -203,6 +212,9 @@ class BearAgent(BaseAgent):
         from agents._llm import call_claude, llm_available
         reasoning = ' | '.join(risks)
 
+        gex_context = market_context.get('gex_context', 'N/A')
+        ma_context = market_context.get('ma_context', 'N/A')
+
         if llm_available():
             regime_val_str = f"{sym_regime} ({sym_prob:.0%})" if sym_prob is not None else f"{sym_regime}"
             prompt = f'''
@@ -212,6 +224,15 @@ Sentiment: {sentiment:.3f} [status: {market_context.get("sentiment_status", "OK"
 Velocity: {market_context.get("sentiment_trend", "STABLE")}
 Signal: {signal_recommendation.get("action", "HOLD")}
 Bear score: {score:.0f}/100
+
+Dealer Gamma Positioning:
+{gex_context}
+
+200-day MA Regime:
+{ma_context}
+
+Post-Earnings Signal:
+{pead_context}
 
 Live Signals (Supabase):
 {signals_str}

@@ -23,6 +23,9 @@ from agents.research_agent import ResearchAgent
 from agents.regime_detector import RegimeDetector
 from agents.kelly_sizer import KellySizer
 from agents.greeks_risk_engine import GreeksRiskEngine
+from agents.gex_calculator import compute_gex
+from agents.pead_signal import get_pead_signal
+from agents.ma_regime_filter import get_spy_200day_ma, apply_ma_filter
 
 load_dotenv()
 
@@ -174,6 +177,14 @@ def signal_node(state: AgentState) -> AgentState:
             agent.analyze(state["market_context"], greeks_context=greeks_context)
         )
         logger.info(f"[Orchestrator] {asset} signal_recommendation: {signal_recommendation}")
+        if asset == 'equities':
+            ma_data = state.get('ma_data') or {}
+            signal_recommendation = apply_ma_filter(signal_recommendation, ma_data)
+            gex_data = state.get('gex_data') or {}
+            if gex_data.get('available'):
+                kelly_val = signal_recommendation.get('kelly_position_value', 0.0)
+                kelly_val *= gex_data.get('size_modifier', 1.0)
+                signal_recommendation['kelly_position_value'] = min(kelly_val, 2500.0)
         return {**state, "signal_recommendation": signal_recommendation}
     except Exception as e:
         logger.error(f"[Signal] Failed: {e}")
@@ -199,6 +210,23 @@ async def _debate_node_async(state: AgentState) -> AgentState:
 
     market['sentiment_trend'] = signal.get('sentiment_trend', market.get('sentiment_trend', 'STABLE'))
     market['sentiment_velocity'] = signal.get('sentiment_velocity', market.get('sentiment_velocity', 0.0))
+
+    if asset_class == 'equities':
+        from agents.pead_signal import get_pead_signal
+        pead_data = get_pead_signal(symbol)
+        state['pead_data'] = pead_data
+        
+        gex_data = state.get('gex_data') or {}
+        ma_data = state.get('ma_data') or {}
+        
+        gex_context = f"GEX Regime: {gex_data.get('gex_regime', 'UNKNOWN')}\nNet GEX: ${gex_data.get('gex_value_millions', 0):.1f}M\nInterpretation: {gex_data.get('interpretation', 'N/A')}"
+        ma_context = f"200-day MA regime: {ma_data.get('regime')} — {ma_data.get('signal')}"
+        pead_context = f"Post-Earnings Signal: {pead_data.get('signal')}\n{pead_data.get('description')}"
+        
+        market['gex_context'] = gex_context
+        market['ma_context'] = ma_context
+        market['pead_context'] = pead_context
+        state['market_context'] = market
 
     try:
         bull = BullAgent(f'{asset_class}-bull')
@@ -447,15 +475,22 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
             regime=regime,
             greeks_scalar=greeks.get("size_scalar", 1.0)
         ))
+        
+        gex_data = state.get('gex_data') or {}
+        if asset == 'equities' and gex_data.get('available') and gex_data.get('size_modifier') is not None:
+            orig_val = kelly_result.get('position_value', 2500.0)
+            scaled_val = orig_val * gex_data['size_modifier']
+            scaled_val = min(scaled_val, 2500.0)
+            kelly_result['position_value'] = scaled_val
+            kelly_result['position_value_str'] = f"${scaled_val:.2f}"
+            kelly_result['adjusted_kelly'] = kelly_result.get('adjusted_kelly', 0.0) * gex_data['size_modifier']
+            logger.info(f"[Orchestrator] Scaled Kelly position size by GEX modifier {gex_data['size_modifier']}: {orig_val} -> {scaled_val}")
+
         if state.get('debate_result', {}).get('verdict') == 'PROCEED_CAUTIOUSLY':
             orig_val = kelly_result.get('position_value', 2500.0)
             scaled_val = orig_val * 0.5
             kelly_result['position_value'] = scaled_val
             kelly_result['position_value_str'] = f"${scaled_val:.2f}"
-            # Display-only: scale the DISPLAYED Kelly fraction by the same 0.5 so the
-            # reported % tracks the halved $. adjusted_kelly is only read for display
-            # (orchestrator report lines), never for sizing/risk — the single 50% cut
-            # to position_value above remains the sole change to deployed capital.
             kelly_result['adjusted_kelly'] = kelly_result.get('adjusted_kelly', 0.0) * 0.5
             logger.info(f"[Orchestrator] Scaled Kelly position size by 50% due to PROCEED_CAUTIOUSLY debate verdict: {orig_val} -> {scaled_val}")
         logger.info(f"[Orchestrator] {symbol} Kelly sizing resolved: {kelly_result.get('position_value_str')}")
@@ -732,6 +767,9 @@ async def run_crypto_cycle() -> dict:
 
 async def run_equities_cycle() -> dict:
     """Run equities agent pipeline and return cycle result dict."""
+    gex_data = compute_gex()
+    ma_data = get_spy_200day_ma()
+
     initial_state: AgentState = {
         "asset_class": "equities",
         "regime_summary": {},
@@ -743,6 +781,8 @@ async def run_equities_cycle() -> dict:
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+        "gex_data": gex_data,
+        "ma_data": ma_data
     }
     logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
     result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
@@ -848,6 +888,10 @@ async def run_cycle() -> dict:
     e_symbol_regime = e_sym_regime_dict.get('regime', e_rs.get('overall_regime', 'QUIET'))
     e_symbol_regime_prob = e_sym_regime_dict.get('regime_probability', 1.0)
 
+    gex_data = equities_result.get("gex_data") or {}
+    ma_data = equities_result.get("ma_data") or {}
+    pead_data = equities_result.get("pead_data") or {}
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
@@ -863,6 +907,10 @@ async def run_cycle() -> dict:
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
         f"🎯 Regime: {e_symbol_regime} ({e_symbol_regime_prob:.0%})\n"
+        f"📊 Market Context:\n"
+        f"GEX: {gex_data.get('gex_regime', 'UNKNOWN')} (${gex_data.get('gex_value_millions', 0):.0f}M)\n"
+        f"200MA: {ma_data.get('regime', 'UNKNOWN')} ({ma_data.get('pct_from_ma', 0):+.1f}%)\n"
+        f"PEAD: {pead_data.get('signal', 'NEUTRAL')} {pead_data.get('description','')[:60]}\n"
         f"{_sentiment_line(e_mc, e_sr, e_art)}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
