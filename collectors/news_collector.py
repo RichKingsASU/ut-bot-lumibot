@@ -28,26 +28,29 @@ class NewsCollector(BaseCollector):
         self.seen_url_hashes = set()
         
         # RSS Feeds to poll
+        # BUG 2 FIX: replaced low-velocity CNBC/MarketWatch/WSJ with high-volume feeds
         self.rss_feeds = {
             "Cointelegraph": "https://cointelegraph.com/rss",
             "Decrypt": "https://decrypt.co/feed",
             "BitcoinMagazine": "https://bitcoinmagazine.com/.rss/full/",
-            # Reuters' public RSS (feeds.reuters.com) was discontinued; CNBC Markets
-            # is a reliable, resolvable equities/business-news replacement.
-            "CNBC": "https://www.cnbc.com/id/20910258/device/rss/rss.html",
-            "MarketWatch": "https://feeds.marketwatch.com/marketwatch/topstories",
             "SeekingAlpha": "https://seekingalpha.com/feed.xml",
-            "WSJ": "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+            "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
+            "AP Business": "https://feeds.apnews.com/rss/business",
+            "Yahoo Finance": "https://finance.yahoo.com/news/rssindex",
+            "Investopedia": "https://www.investopedia.com/feedbuilder/feed/getfeed?feedName=rss_headline",
+            "TheStreet": "https://www.thestreet.com/rss/main.xml"
         }
 
         self.feed_asset_classes = {
             "Cointelegraph": "crypto",
             "Decrypt": "crypto",
             "BitcoinMagazine": "crypto",
-            "CNBC": "equities",
-            "MarketWatch": "equities",
             "SeekingAlpha": "equities",
-            "WSJ": "equities"
+            "Reuters Business": "equities",
+            "AP Business": "equities",
+            "Yahoo Finance": "equities",
+            "Investopedia": "equities",
+            "TheStreet": "equities"
         }
 
         # follow_redirects so feeds that 301 (MarketWatch, BitcoinMagazine) resolve.
@@ -226,12 +229,20 @@ class NewsCollector(BaseCollector):
                         "asset_class": asset_class
                     }
                     
-                    # 1. Publish to NATS
-                    nats_subject = "news.equities" if asset_class == "equities" else "news.crypto"
-                    await self.publish(nats_subject, article)
-                    
-                    # 2. Write to Supabase
+                    # BUG 1 FIX: write to Supabase FIRST, then publish to NATS so
+                    # the sentiment scorer only receives articles that are persisted.
+                    # 1. Write to Supabase
                     await self._write_to_supabase(article)
+
+                    # 2. Publish to NATS (after DB write succeeds)
+                    nats_subject = "news.equities" if asset_class == "equities" else "news.crypto"
+                    try:
+                        await self.publish(nats_subject, article)
+                    except Exception as pub_err:
+                        logger.error(
+                            f"[NEWS] NATS publish failed for {source} article "
+                            f"({nats_subject}): {pub_err}"
+                        )
                     
                 logger.info(f"[NEWS] RSS Feed {source} poll complete. Discovered {new_count} new articles.")
             except Exception as e:
