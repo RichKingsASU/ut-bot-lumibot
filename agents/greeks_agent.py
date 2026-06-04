@@ -336,9 +336,6 @@ class GreeksAgent(BaseAgent):
             "rvol":          greeks.get("rvol"),
             "volume":        greeks.get("volume"),
             "trade_mode":    risk_decision.get("trade_mode"),
-            "action":        risk_decision.get("action"),
-            "size_scalar":   risk_decision.get("size_scalar"),
-            "position_value": risk_decision.get("position_value"),
             "snapshot_at":   datetime.now(timezone.utc).isoformat(),
         }
 
@@ -356,4 +353,9 @@ class GreeksAgent(BaseAgent):
                 resp.raise_for_status()
             logger.debug("Snapshot persisted for %s", symbol)
         except Exception as exc:
-            logger.error("Supabase snapshot write failed for %s: %s", symbol, exc)
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            response_text = getattr(getattr(exc, "response", None), "text", "")
+            logger.error(
+                "Supabase snapshot write failed for %s: %s (Status: %s, Body: %s)",
+                symbol, exc, status_code, response_text
+            )
