@@ -39,9 +39,9 @@ class AlpacaStreamer:
                 "high": bar.high,
                 "low": bar.low,
                 "close": bar.close,
-                "volume": bar.volume,
+                "volume": int(bar.volume) if bar.volume is not None else 0,
                 "vwap": bar.vwap,
-                "trade_count": bar.trade_count,
+                "trade_count": int(bar.trade_count) if bar.trade_count is not None else 0,
                 "feed": self.feed
             }
             

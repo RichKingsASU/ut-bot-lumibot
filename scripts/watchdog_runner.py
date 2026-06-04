@@ -71,10 +71,10 @@ def run_check2():
 
 def run_check3():
     alerts = []
-    for session in ["agents", "crypto-bot", "trading-bot"]:
-        res = subprocess.run(["tmux", "has-session", "-t", session], capture_output=True)
+    for service, unit in [("agents", "da-agents"), ("crypto-bot", "da-crypto-bot"), ("trading-bot", "da-trading-bot")]:
+        res = subprocess.run(["systemctl", "is-active", "--quiet", unit])
         if res.returncode != 0:
-            alerts.append(f"ALERT: {session} session dead")
+            alerts.append(f"ALERT: {service} service dead")
     return alerts
 
 def run_check4():

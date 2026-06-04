@@ -9,9 +9,10 @@ docker compose up -d questdb nats qdrant tick-collector news-collector
 sleep 10
 
 echo "2. Killing existing tmux sessions..."
-tmux kill-session -t agents 2>/dev/null
-tmux kill-session -t crypto-bot 2>/dev/null
-tmux kill-session -t trading-bot 2>/dev/null
+# Core services managed by systemd now (da-agents, da-crypto-bot, da-trading-bot)
+# tmux kill-session -t agents 2>/dev/null
+# tmux kill-session -t crypto-bot 2>/dev/null
+# tmux kill-session -t trading-bot 2>/dev/null
 tmux kill-session -t sentiment 2>/dev/null
 tmux kill-session -t vectors 2>/dev/null
 tmux kill-session -t options 2>/dev/null
@@ -19,18 +20,19 @@ tmux kill-session -t telegram-bot 2>/dev/null
 tmux kill-session -t watchdog 2>/dev/null
 
 echo "3. Starting all tmux sessions..."
-tmux new-session -d -s crypto-bot \
-  "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_crypto_bot.py"
-tmux new-session -d -s trading-bot \
-  "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python main.py"
+# Core services managed by systemd now
+# tmux new-session -d -s crypto-bot \
+#   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_crypto_bot.py"
+# tmux new-session -d -s trading-bot \
+#   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python main.py"
 tmux new-session -d -s sentiment \
   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_sentiment_scorer.py"
 tmux new-session -d -s vectors \
   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_vector_store.py"
 tmux new-session -d -s options \
   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_option_data_worker.py"
-tmux new-session -d -s agents \
-  "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_agents.py"
+# tmux new-session -d -s agents \
+#   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_agents.py"
 tmux new-session -d -s telegram-bot \
   "cd /home/k2/ut-bot-lumibot && source venv/bin/activate && python run_telegram_bot.py"
 tmux new-session -d -s watchdog \

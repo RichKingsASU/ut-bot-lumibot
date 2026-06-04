@@ -46,13 +46,13 @@ def main():
     except Exception as e:
         alerts.append(f'ALERT: bot heartbeat check failed: {e}')
         
-    # ── CHECK 3 — Critical sessions alive ──
-    for session, expected_msg in [
-        ('agents', 'ALERT: agents session dead'),
-        ('crypto-bot', 'ALERT: crypto-bot dead'),
-        ('trading-bot', 'ALERT: trading-bot dead')
+    # ── CHECK 3 — Critical services alive ──
+    for service, unit, expected_msg in [
+        ('agents', 'da-agents', 'ALERT: agents service dead'),
+        ('crypto-bot', 'da-crypto-bot', 'ALERT: crypto-bot dead'),
+        ('trading-bot', 'da-trading-bot', 'ALERT: trading-bot dead')
     ]:
-        res = subprocess.run(['tmux', 'has-session', '-t', session], capture_output=True)
+        res = subprocess.run(['systemctl', 'is-active', '--quiet', unit])
         if res.returncode != 0:
             alerts.append(expected_msg)
             

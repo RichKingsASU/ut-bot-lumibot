@@ -57,12 +57,25 @@ try:
 except:
     pass
 
-# Check tmux sessions
+# Check tmux sessions and systemd services
 import subprocess
 sessions = subprocess.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
     capture_output=True, text=True).stdout.strip().split('\n')
-required = ['agents','crypto-bot','trading-bot','sentiment','vectors','options','telegram-bot','watchdog']
-session_status = '\n'.join([f'  {\"✅\" if s in sessions else \"❌\"} {s}' for s in required])
+required_tmux = ['sentiment','vectors','options','telegram-bot','watchdog']
+required_systemd = {
+    'agents': 'da-agents',
+    'crypto-bot': 'da-crypto-bot',
+    'trading-bot': 'da-trading-bot'
+}
+statuses = []
+for s in ['agents','crypto-bot','trading-bot','sentiment','vectors','options','telegram-bot','watchdog']:
+    if s in required_systemd:
+        unit = required_systemd[s]
+        is_active = subprocess.run(['systemctl', 'is-active', '--quiet', unit]).returncode == 0
+        statuses.append(f'  {\"✅\" if is_active else \"❌\"} {s} (systemd)')
+    else:
+        statuses.append(f'  {\"✅\" if s in sessions else \"❌\"} {s} (tmux)')
+session_status = '\n'.join(statuses)
 
 # Overall health
 issues = hb_status.count('⚠️') + hb_status.count('❌') + sig_status.count('❌')
