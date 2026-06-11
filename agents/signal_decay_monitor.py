@@ -165,7 +165,8 @@ class SignalDecayMonitor(BaseAgent):
             # Require proximity within 5 days to ensure signal-trade logical alignment
             if closest_outcome and min_diff <= 86400 * 5:
                 pnl_pct = float(closest_outcome.get('pnl_pct', 0.0) or 0.0)
-                matched_pairs.append((sig_score, pnl_pct))
+                # Convert trade PnL to predicted-frame return: sig_score * pnl_pct (so winning shorts align positively)
+                matched_pairs.append((sig_score, sig_score * pnl_pct))
                 
         if len(matched_pairs) < MIN_TRADES:
             logger.info(f"Fewer than {MIN_TRADES} matched pairs ({len(matched_pairs)}). Returning None.")
@@ -266,6 +267,8 @@ class SignalDecayMonitor(BaseAgent):
             trade_count = len(outcomes)
             ic = self.calculate_ic(signals, outcomes)
             status, recommendation = self.classify_status(ic, trade_count)
+            if status == 'INSUFFICIENT_DATA':
+                ic = None
             
             # Calculate win rate and avg return for writing to database
             win_count = sum(1 for o in outcomes if o.get('win') in (True, 1, "true", "True", "1"))
