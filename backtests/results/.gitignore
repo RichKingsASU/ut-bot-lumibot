@@ -1,0 +1,5 @@
+# Generated backtest artifacts — reproducible via scripts/run_options_backtest.py
+*.csv
+*.png
+!.gitignore
+!README.md
