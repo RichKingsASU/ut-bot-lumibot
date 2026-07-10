@@ -90,38 +90,17 @@ class NewsCollector(BaseCollector):
 
     async def _write_to_supabase(self, article: dict):
         """Write article to Cloud Supabase news_articles table."""
-        if not self.supabase_url or not self.supabase_key:
-            return
-            
-        headers = {
-            "apikey": self.supabase_key,
-            "Authorization": f"Bearer {self.supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal"
+        from common.safe_write import safe_write_async
+        row = {
+            "title": article["title"],
+            "url": article["url"],
+            "source": article["source"],
+            "published_at": article["published_at"],
+            "summary": article["summary"],
+            "sentiment_score": None,  # Placeholder for Phase 3 scoring
+            "asset_class": article.get("asset_class", "crypto")
         }
-        
-        try:
-            # Table fields: id (auto), title, url, source, published_at, summary, sentiment_score, created_at (auto), asset_class
-            row = {
-                "title": article["title"],
-                "url": article["url"],
-                "source": article["source"],
-                "published_at": article["published_at"],
-                "summary": article["summary"],
-                "sentiment_score": None,  # Placeholder for Phase 3 scoring
-                "asset_class": article.get("asset_class", "crypto")
-            }
-            
-            resp = await self.http_client.post(
-                f"{self.supabase_url}/rest/v1/news_articles",
-                headers=headers,
-                json=row,
-                timeout=10.0
-            )
-            if resp.status_code not in (200, 201):
-                logger.warning(f"[NEWS] Supabase insert failed ({resp.status_code}): {resp.text[:200]}")
-        except Exception as e:
-            logger.error(f"[NEWS] Supabase insert error: {e}")
+        await safe_write_async("news_articles", row, "news-collector")
 
     async def poll_finnhub(self):
         """Poll Finnhub API for crypto news."""
@@ -264,6 +243,17 @@ class NewsCollector(BaseCollector):
                 logger.error(f"[NEWS] Error in RSS poll loop: {e}")
             await asyncio.sleep(10 * 60) # 10 minutes
 
+    async def _heartbeat_loop(self):
+        from common.safe_write import beat_async
+        while self._running:
+            status = "OK"
+            meta = {}
+            if not self.nc or not self.nc.is_connected:
+                status = "DEGRADED"
+                meta["error"] = "NATS connection down"
+            await beat_async("news-collector", status=status, meta=meta)
+            await asyncio.sleep(60)
+
     async def run(self):
         self._running = True
         
@@ -276,6 +266,7 @@ class NewsCollector(BaseCollector):
         # Start loops in parallel tasks
         asyncio.create_task(self._finnhub_loop())
         asyncio.create_task(self._rss_loop())
+        asyncio.create_task(self._heartbeat_loop())
         
         # Keep running
         while self._running:

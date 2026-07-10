@@ -87,7 +87,7 @@ export default async (req: Request, _context: Context) => {
     // 4. Fetch Regime Summary (limit 10)
     const { data: regimesData } = await supabase
       .from("regime_states")
-      .select("symbol, regime, probability, detected_at")
+      .select("symbol, regime, probability:regime_probability, detected_at")
       .order("detected_at", { ascending: false })
       .limit(10);
 

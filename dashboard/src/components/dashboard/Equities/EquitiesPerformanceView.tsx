@@ -55,8 +55,8 @@ export default function EquitiesPerformanceView() {
       // 2. Fetch equity snapshots for curve
       const { data: snapshots } = await supabase
         .from('portfolio_snapshots')
-        .select('created_at, equity')
-        .order('created_at', { ascending: true })
+        .select('created_at:snapshot_at, equity')
+        .order('snapshot_at', { ascending: true })
         .limit(100);
       
       const curve = (snapshots || []).map(s => ({

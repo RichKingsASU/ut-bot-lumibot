@@ -37,7 +37,7 @@ export function AccountHealthView() {
       // 2. Fetch Portfolio Snapshots
       const { data: snapshotsData, error: snapError } = await supabase
         .from('portfolio_snapshots')
-        .select('snapshot_at, equity, portfolio_value')
+        .select('snapshot_at, equity, portfolio_value:equity')
         .order('snapshot_at', { ascending: true })
 
       if (snapError) throw snapError

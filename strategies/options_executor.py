@@ -30,10 +30,18 @@ if not logger.handlers:
 
 ET = pytz.timezone("America/New_York")
 
+def extract_underlying(contract_symbol: str) -> str:
+    """Extract underlying symbol from option contract symbol (e.g. SPY260326C00580000 -> SPY)."""
+    for i, char in enumerate(contract_symbol):
+        if char.isdigit():
+            return contract_symbol[:i]
+    return contract_symbol
+
 # ── Module-level position state ──────────────────────────────────────────────
 open_position: dict = {}
 # When populated:
 # {
+#     "symbol": "SPY",
 #     "contract_symbol": "SPY260326C00580000",
 #     "strike": 580.0,
 #     "expiration": "2026-03-26",
@@ -44,6 +52,8 @@ open_position: dict = {}
 #     "entry_underlying_price": 580.12,
 #     "entry_rsi": 62.4,
 #     "direction": "LONG" | "SHORT",
+#     "order_id": "...",
+#     "recovered": True | False
 # }
 
 # Cooldown state — after a rejected order, wait before retrying
@@ -51,12 +61,14 @@ _last_rejection_time: float = 0.0
 REJECTION_COOLDOWN_SECONDS = 300  # 5 minutes
 
 
-def sync_state_with_broker(underlying: str = "SPY"):
+def sync_state_with_broker(underlying: str) -> bool:
     """
-    Query Alpaca for existing open positions and recover module state.
-    Call this on startup to prevent 'zombie' positions after a crash.
+    Check Alpaca for an existing open options position for the underlying.
+    If found, populate the module-level open_position dict and return True.
+    Returns False otherwise.
     """
     global open_position
+    
     logger.info("Checking Alpaca for existing %s positions...", underlying)
     
     try:
@@ -76,7 +88,9 @@ def sync_state_with_broker(underlying: str = "SPY"):
                 qty = int(pos.get("qty", 1))
                 fill_price = float(pos.get("avg_entry_price", 0))
                 
+                underlying_symbol = extract_underlying(symbol)
                 open_position = {
+                    "symbol": underlying_symbol,
                     "contract_symbol": symbol,
                     "qty": qty,
                     "fill_price": fill_price,
@@ -557,6 +571,7 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
 
         # 6. Store position
         open_position = {
+            "symbol": underlying,
             "contract_symbol": contract_symbol,
             "strike": strike,
             "expiration": expiration,
@@ -668,6 +683,26 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
                 entry_rsi=open_position.get("entry_rsi"),
             )
             
+            # Record trade outcome for learning loop
+            try:
+                from agents.kelly_sizer import KellySizer
+                import asyncio
+                sizer = KellySizer()
+                pos_val = float(open_position.get("fill_price", 0.0)) * qty * 100
+                asyncio.run(sizer.record_trade_outcome(
+                    symbol=open_position.get("symbol", ""),
+                    asset_class="equities",
+                    signal_type="ut_bot",
+                    entry_price=float(open_position.get("fill_price", 0.0)),
+                    exit_price=0.0,
+                    kelly_fraction=0.0,
+                    position_value=pos_val,
+                    regime=open_position.get("regime"),
+                    iv_rank=open_position.get("iv_rank")
+                ))
+            except Exception as outcome_exc:
+                logger.warning("[RECORD OUTCOME] failed to record trade outcome on worthless exit: %s", outcome_exc)
+            
             logger.info("POSITION CLOSED (expired worthless): P&L=$%.2f", pnl)
             open_position = {}
             return {"status": "expired_worthless", "pnl": pnl}
@@ -720,6 +755,26 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
             exit_reason=exit_reason,
             entry_rsi=open_position.get("entry_rsi"),
         )
+
+        # Record trade outcome for learning loop
+        try:
+            from agents.kelly_sizer import KellySizer
+            import asyncio
+            sizer = KellySizer()
+            pos_val = float(open_position.get("fill_price", 0.0)) * qty * 100
+            asyncio.run(sizer.record_trade_outcome(
+                symbol=open_position.get("symbol", ""),
+                asset_class="equities",
+                signal_type="ut_bot",
+                entry_price=float(open_position.get("fill_price", 0.0)),
+                exit_price=float(exit_price),
+                kelly_fraction=0.0,
+                position_value=pos_val,
+                regime=open_position.get("regime"),
+                iv_rank=open_position.get("iv_rank")
+            ))
+        except Exception as outcome_exc:
+            logger.warning("[RECORD OUTCOME] failed to record trade outcome: %s", outcome_exc)
 
         logger.info("POSITION CLOSED: %s exit=%.2f P&L=$%.2f reason=%s",
                      contract_symbol, exit_price, pnl, exit_reason)

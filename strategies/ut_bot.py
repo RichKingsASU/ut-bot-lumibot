@@ -38,6 +38,16 @@ ET = pytz.timezone("America/New_York")
 
 from logger import bot_logger, ErrorCategory
 
+def _daily_bar_is_stale(last_bar_time, now, max_age_days: int = 5):
+    """Daily-bar freshness. Stale only if the last bar's SESSION DATE is more than
+    max_age_days calendar days behind `now` (tolerates weekends/holidays). Returns
+    (is_stale: bool, age_days: int). Replaces a mistaken 90-second intraday threshold;
+    this guards daily-SERIES currency only — intraday feed liveness is handled by the
+    orchestrator's MarketDataFreshnessModel, not here."""
+    age_days = (now.date() - last_bar_time.date()).days
+    return age_days > max_age_days, age_days
+
+
 class UTBotStrategy(Strategy):
     parameters = {
         "symbol": "SPY",
@@ -98,12 +108,12 @@ class UTBotStrategy(Strategy):
         if not df.empty:
             last_bar_time = df.index[-1]
             now = datetime.now(last_bar_time.tzinfo if last_bar_time.tzinfo else ET)
-            time_diff = (now - last_bar_time).total_seconds()
-            
-            # If data is > 90 seconds old, it's considered stale for 1m intraday trading
-            if time_diff > 90:
-                logger.error("STALE DATA DETECTED: Last bar (%s) is %.1f seconds old. Aborting iteration to prevent bad fills.", 
-                             last_bar_time.strftime("%H:%M:%S"), time_diff)
+            max_age_days = int(self.parameters.get("max_bar_age_days", 5))
+            is_stale, age_days = _daily_bar_is_stale(last_bar_time, now, max_age_days)
+            if is_stale:
+                logger.error(
+                    "STALE DAILY DATA: last bar (%s) is %d calendar days old (> %d). Aborting iteration.",
+                    last_bar_time.date().isoformat(), age_days, max_age_days)
                 return
         else:
             logger.warning("Empty dataframe returned from broker. Aborting iteration.")

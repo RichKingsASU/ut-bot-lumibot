@@ -32,7 +32,7 @@ export function useMetrics(): TradingMetrics {
         const { data, error } = await supabase
           .from('portfolio_snapshots')
           .select('*')
-          .order('created_at', { ascending: false })
+          .order('snapshot_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 

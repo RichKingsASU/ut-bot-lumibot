@@ -35,35 +35,26 @@ class SentimentScorer(BaseCollector):
 
     async def _update_supabase_sentiment(self, url: str, sentiment_score: float) -> bool:
         """Update sentiment_score in cloud Supabase news_articles table WHERE url = article url."""
-        if not self.supabase_url or not self.supabase_key:
-            logger.warning("[SCORER] Supabase credentials missing. Skipping DB update.")
-            return False
-            
-        headers = {
-            "apikey": self.supabase_key,
-            "Authorization": f"Bearer {self.supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal"
-        }
-        
-        try:
-            # PostgREST PATCH WHERE url = eq.<url>
-            params = {"url": f"eq.{url}"}
-            resp = await self.http_client.patch(
-                f"{self.supabase_url}/rest/v1/news_articles",
-                headers=headers,
-                params=params,
-                json={"sentiment_score": sentiment_score},
-                timeout=10.0
-            )
-            if resp.status_code in (200, 204):
-                return True
-            else:
-                logger.warning(f"[SCORER] Supabase PATCH failed for {url} ({resp.status_code}): {resp.text[:200]}")
-                return False
-        except Exception as e:
-            logger.error(f"[SCORER] Supabase PATCH error for {url}: {e}")
-            return False
+        from common.safe_write import safe_write_async
+        params = {"url": f"eq.{url}"}
+        return await safe_write_async(
+            "news_articles",
+            {"sentiment_score": sentiment_score},
+            "sentiment-scorer",
+            method="patch",
+            params=params,
+        )
+
+    async def _heartbeat_loop(self):
+        from common.safe_write import beat_async
+        while self._running:
+            status = "OK"
+            meta = {}
+            if not self.nc or not self.nc.is_connected:
+                status = "DEGRADED"
+                meta["error"] = "NATS connection down"
+            await beat_async("sentiment-scorer", status=status, meta=meta)
+            await asyncio.sleep(60)
 
     async def process_message(self, msg):
         """Callback for NATS subscription to news.crypto and news.equities."""
@@ -150,6 +141,9 @@ class SentimentScorer(BaseCollector):
         await self.nc.subscribe("news.crypto", cb=message_handler)
         await self.nc.subscribe("news.equities", cb=message_handler)
         logger.info("Subscribed to news.crypto and news.equities. Listening for messages...")
+        
+        # Start NATS-aware heartbeat loop
+        asyncio.create_task(self._heartbeat_loop())
         
         # Keep running
         while self._running:

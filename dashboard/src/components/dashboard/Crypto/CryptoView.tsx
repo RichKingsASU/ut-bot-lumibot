@@ -65,7 +65,7 @@ export function CryptoView() {
       // 3. Fetch Regime States from Supabase
       const { data: regimesData } = await supabase
         .from('regime_states')
-        .select('symbol, regime, probability, detected_at')
+        .select('symbol, regime, probability:regime_probability, detected_at')
         .in('symbol', ['BTC/USD', 'ETH/USD', 'SOL/USD'])
         .order('detected_at', { ascending: false })
         .limit(10)

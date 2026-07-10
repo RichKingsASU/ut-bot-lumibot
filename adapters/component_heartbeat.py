@@ -25,31 +25,8 @@ logger = logging.getLogger("component_heartbeat")
 
 def _post(payload: dict) -> None:
     """Blocking upsert to component_status. Called from a daemon thread."""
-    url = os.getenv("SUPABASE_URL", "")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not key:
-        return
-    try:
-        import httpx
-
-        # Upsert on the process_name primary key.
-        resp = httpx.post(
-            f"{url}/rest/v1/component_status",
-            json=payload,
-            headers={
-                "apikey": key,
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates",
-            },
-            timeout=10,
-        )
-        if resp.status_code >= 300:
-            logger.warning(
-                "Component heartbeat HTTP %d: %s", resp.status_code, resp.text[:200]
-            )
-    except Exception as e:
-        logger.warning("Component heartbeat failed (non-blocking): %s", e)
+    from common.safe_write import safe_write_sync
+    safe_write_sync("component_status", payload, "component-heartbeat")
 
 
 def beat(

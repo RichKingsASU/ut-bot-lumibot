@@ -42,7 +42,7 @@ echo "4. Waiting 20 seconds for services to initialize..."
 sleep 20
 
 echo "5. Running health check..."
-HEALTH_OUT=$(python3 scripts/health_check.py)
+HEALTH_OUT=$(venv/bin/python3 scripts/health_check.py)
 echo "$HEALTH_OUT"
 
 if echo "$HEALTH_OUT" | grep -q "GREEN"; then

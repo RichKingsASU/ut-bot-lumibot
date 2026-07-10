@@ -191,21 +191,11 @@ class RegimeDetector(BaseAgent):
                         'hidden_state': classification['hidden_state'],
                         'detected_at': datetime.now(timezone.utc).isoformat()
                     }
-                    headers = {
-                        "apikey": supabase_key,
-                        "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
-                    }
-                    try:
-                        with httpx.Client(timeout=10.0) as client:
-                            resp = client.post(f"{supabase_url}/rest/v1/regime_states", json=row, headers=headers)
-                            if resp.status_code not in (200, 201, 204):
-                                logger.error(f"[Regime] Supabase write for {symbol} failed: {resp.status_code} — {resp.text[:200]}")
-                    except Exception as write_exc:
-                        logger.error(f"[Regime] Supabase write for {symbol} errored: {write_exc}")
-                else:
-                    logger.warning("[Regime] Supabase credentials missing — regime_states write skipped")
+                    from common.safe_write import safe_write_sync
+                    safe_write_sync(
+                        "regime_states", row, "regime-detector",
+                        _url=supabase_url, _key=supabase_key,
+                    )
                 
                 # Publish to NATS
                 if hasattr(self, 'nc') and self.nc and self.nc.is_connected:

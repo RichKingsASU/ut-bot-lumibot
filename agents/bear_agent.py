@@ -55,6 +55,8 @@ class BearAgent(BaseAgent):
         signal_recommendation = signal_recommendation or {}
         greeks_context = greeks_context or {}
         regime_summary = regime_summary or {}
+        sym_regime_dict = regime_summary.get('symbol_regimes', {}).get(symbol, {})
+        regime = sym_regime_dict.get('regime') or regime_summary.get('overall_regime', '')
 
         from agents.pead_signal import get_pead_signal
         pead = get_pead_signal(symbol)
@@ -71,7 +73,6 @@ class BearAgent(BaseAgent):
         asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
         if asset_class == 'equities':
             base_bear = 50.0
-            regime = (regime_summary or {}).get('overall_regime', '')
             if regime == 'BEAR':
                 base_bear += 15.0
             elif regime == 'VOLATILE':
@@ -105,7 +106,6 @@ class BearAgent(BaseAgent):
                 risks.append(f'Strong bullish sentiment {sentiment:.2f}')
 
             # 2. REGIME (0-30 points bear case):
-            regime = (regime_summary or {}).get('overall_regime', '')
             if regime == 'BEAR':
                 score += 30
                 risks.append('BEAR regime — strong headwind')
