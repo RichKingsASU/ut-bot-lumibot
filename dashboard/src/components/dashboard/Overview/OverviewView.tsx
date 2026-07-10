@@ -75,7 +75,7 @@ export default function OverviewView() {
         // 1. Fetch regime
         const { data: regimeRows } = await supabase
           .from('regime_states')
-          .select('regime, probability, detected_at')
+          .select('regime, probability:regime_probability, detected_at')
           .order('detected_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -91,7 +91,7 @@ export default function OverviewView() {
         // 2. Fetch portfolio snapshots
         const { data: snapshots } = await supabase
           .from('portfolio_snapshots')
-          .select('snapshot_at, portfolio_value, equity')
+          .select('snapshot_at, portfolio_value:equity, equity')
           .order('snapshot_at', { ascending: true })
 
         if (snapshots && !cancelled) {

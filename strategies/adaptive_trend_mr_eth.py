@@ -67,6 +67,8 @@ class AdaptiveTrendMR(Strategy):
         self._trail_stop = None
         self._entry_price = None
         self._position_side = None
+        self._last_entry_price = None
+        self._last_position_side = None
         self._min_bars = max(self.ema_slow, self.bb_period,
                              self.rsi_period, self.adx_period) + 5
 
@@ -242,6 +244,8 @@ class AdaptiveTrendMR(Strategy):
         )
 
     def _reset_state(self):
+        self._last_entry_price = self._entry_price
+        self._last_position_side = self._position_side
         self._trail_stop = None
         self._entry_price = None
         self._position_side = None
@@ -250,6 +254,33 @@ class AdaptiveTrendMR(Strategy):
     def on_filled_order(self, position, order, price, quantity, multiplier):
         self.log_message(
             f"Order filled: {order.side} {quantity:.4f} ETH @ {price:.2f}")
+        
+        last_side = getattr(self, "_last_position_side", None)
+        if last_side is not None and order.side == ("sell" if last_side == "long" else "buy"):
+            try:
+                from agents.kelly_sizer import KellySizer
+                import asyncio
+                sizer = KellySizer()
+                
+                entry_p = float(getattr(self, "_last_entry_price", price) or price)
+                exit_p = float(price)
+                qty = float(quantity)
+                pos_val = entry_p * qty
+                
+                asyncio.run(sizer.record_trade_outcome(
+                    symbol=self.symbol + "/" + self.quote_symbol,
+                    asset_class="crypto",
+                    signal_type="adaptive_trend_mr",
+                    entry_price=entry_p,
+                    exit_price=exit_p,
+                    kelly_fraction=self.kelly_cap,
+                    position_value=pos_val,
+                    regime=None,
+                    iv_rank=0.0
+                ))
+                self._last_position_side = None
+            except Exception as e:
+                self.log_message(f"Failed to record crypto trade outcome: {e}")
 
     def on_canceled_order(self, order):
         self.log_message(f"Order canceled: {order}")

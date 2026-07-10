@@ -808,12 +808,13 @@ def report_node(state: AgentState) -> AgentState:
                     "reasoning": sig.get("reasoning"),
                 }
                 
-                import requests
-                resp = requests.patch(url, headers=headers, json=update_payload, timeout=5)
-                if resp.status_code in (200, 204):
-                    logger.info(f"[SUPABASE] Successfully updated agent_signal ID {signal_id} with full pipeline metrics.")
-                else:
-                    logger.warning(f"[SUPABASE] Failed to update agent_signal ID {signal_id} ({resp.status_code}): {resp.text}")
+                from common.safe_write import safe_write_sync
+                safe_write_sync(
+                    f"agent_signals?id=eq.{signal_id}",
+                    update_payload,
+                    "orchestrator-report-node",
+                    method="patch",
+                )
     except Exception as e:
         logger.warning(f"[SUPABASE] Error updating agent_signal table in report_node: {e}")
 

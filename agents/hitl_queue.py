@@ -25,6 +25,7 @@ def submit_for_approval(signal: dict) -> Optional[int]:
         'reasoning_summary': str(signal.get('reasoning', ''))[:500],
     }
     try:
+        # Direct httpx needed to capture the returned row id (return=representation).
         r = httpx.post(f'{SUPABASE_URL}/rest/v1/hitl_queue',
             headers=_headers(), json=payload, timeout=5)
         if r.status_code in (200, 201):
@@ -32,6 +33,8 @@ def submit_for_approval(signal: dict) -> Optional[int]:
             qid = row[0].get('id') if isinstance(row, list) else row.get('id')
             _telegram_alert(signal, qid)
             return qid
+        else:
+            logger.error(f"[HITL] Submit failed HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.error(f"[HITL] Submit error: {e}")
     return None
@@ -49,13 +52,13 @@ def get_approved_signals() -> list:
         return []
 
 def mark_executed(qid: int):
-    try:
-        httpx.patch(f'{SUPABASE_URL}/rest/v1/hitl_queue?id=eq.{qid}',
-            headers=_headers(),
-            json={'executed': True, 'executed_at': datetime.datetime.utcnow().isoformat()},
-            timeout=5)
-    except Exception as e:
-        logger.error(f"[HITL] Mark executed error: {e}")
+    from common.safe_write import safe_write_sync
+    safe_write_sync(
+        f"hitl_queue?id=eq.{qid}",
+        {'executed': True, 'executed_at': datetime.datetime.utcnow().isoformat()},
+        "hitl-queue",
+        method="patch",
+    )
 
 def _telegram_alert(signal: dict, qid: Optional[int]):
     if not TELEGRAM_TOKEN:

@@ -198,33 +198,30 @@ async def handle_command(message: dict):
                 response_text = f"Error restarting crypto bot: {e}"
 
         elif command == '/stop':
-            headers = {
-                'apikey': SUPABASE_KEY,
-                'Authorization': f'Bearer {SUPABASE_KEY}',
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal'
-            }
             try:
-                payload = {"status": "kill", "target_status": "stopped"}
-                # Assuming table is bot_status and has a single row or we update all.
-                # If there's an id we should provide it, but let's just do a bulk update or match some id.
-                # Assuming update without where works if 1 row, or we add eq.id=1
-                r = await client.patch(f"{SUPABASE_URL}/rest/v1/bot_status", headers=headers, json=payload)
-                response_text = "🛑 Kill switch activated"
+                from common.safe_write import safe_write_async
+                ok = await safe_write_async(
+                    "bot_status",
+                    {"status": "kill", "target_status": "stopped"},
+                    "telegram-bot",
+                    method="patch",
+                    params={"id": "eq.1"},
+                )
+                response_text = "🛑 Kill switch activated" if ok else "❌ Kill switch failed — DB write error"
             except Exception as e:
                 response_text = f"Error activating kill switch: {e}"
 
         elif command == '/resume':
-            headers = {
-                'apikey': SUPABASE_KEY,
-                'Authorization': f'Bearer {SUPABASE_KEY}',
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal'
-            }
             try:
-                payload = {"status": "running", "target_status": "running"}
-                r = await client.patch(f"{SUPABASE_URL}/rest/v1/bot_status", headers=headers, json=payload)
-                response_text = "✅ Kill switch deactivated"
+                from common.safe_write import safe_write_async
+                ok = await safe_write_async(
+                    "bot_status",
+                    {"status": "running", "target_status": "running"},
+                    "telegram-bot",
+                    method="patch",
+                    params={"id": "eq.1"},
+                )
+                response_text = "✅ Kill switch deactivated" if ok else "❌ Resume failed — DB write error"
             except Exception as e:
                 response_text = f"Error deactivating kill switch: {e}"
 

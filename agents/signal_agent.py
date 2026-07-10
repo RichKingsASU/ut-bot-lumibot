@@ -301,13 +301,6 @@ class SignalAgent(BaseAgent):
         try:
             service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
             if self.supabase_url and service_role_key:
-                url = f"{self.supabase_url}/rest/v1/agent_signals"
-                headers = {
-                    "apikey": service_role_key,
-                    "Authorization": f"Bearer {service_role_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation",
-                }
                 payload = {
                     "asset_class": signal_recommendation.get("asset_class"),
                     "symbol": signal_recommendation.get("symbol"),
@@ -318,8 +311,24 @@ class SignalAgent(BaseAgent):
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "agent_name": self.name,
                 }
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post(url, headers=headers, json=payload)
+                # Use return=representation to capture the inserted row ID downstream.
+                # safe_write_async doesn't return the body, so we do a direct post here
+                # but still route through the heartbeat/alert machinery via beat_async.
+                from common.safe_write import beat_async
+                from datetime import timezone as _tz
+                _now = datetime.now(_tz.utc).isoformat()
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp = await client.post(
+                            f"{self.supabase_url}/rest/v1/agent_signals",
+                            headers={
+                                "apikey": service_role_key,
+                                "Authorization": f"Bearer {service_role_key}",
+                                "Content-Type": "application/json",
+                                "Prefer": "return=representation",
+                            },
+                            json=payload,
+                        )
                     if resp.status_code in (200, 201):
                         logger.info("signal_recommendation written to Supabase agent_signals.")
                         resp_data = resp.json()
@@ -328,10 +337,14 @@ class SignalAgent(BaseAgent):
                             if inserted_id:
                                 signal_recommendation["id"] = inserted_id
                                 logger.info(f"Stored agent_signal ID: {inserted_id} in recommendation.")
+                        await beat_async("signal-agent", status="OK", meta={"table": "agent_signals"})
                     else:
-                        logger.error(
-                            f"Supabase insert failed: {resp.status_code} — {resp.text}"
-                        )
+                        err = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                        logger.error(f"Supabase insert failed: {err}")
+                        await beat_async("signal-agent", status="DEGRADED", last_error=err)
+                except Exception as inner_exc:
+                    logger.error(f"Failed to write signal_recommendation to Supabase: {inner_exc}")
+                    await beat_async("signal-agent", status="DEGRADED", last_error=str(inner_exc))
             else:
                 logger.warning("Supabase credentials not set; skipping agent_signals write.")
         except Exception as e:

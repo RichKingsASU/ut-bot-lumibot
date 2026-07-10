@@ -3,7 +3,7 @@
 cd /home/k2/ut-bot-lumibot
 source venv/bin/activate
 
-python3 -c "
+venv/bin/python3 -c "
 import os, httpx, datetime
 from dotenv import load_dotenv
 load_dotenv('/home/k2/ut-bot-lumibot/.env')

@@ -47,21 +47,8 @@ def _init():
 def _post(table: str, row: dict):
     """Blocking POST to Supabase REST API. Call from a daemon thread only."""
     _init()
-    if not _url or not _key:
-        logger.warning("[SUPABASE] Missing credentials — skipping %s write", table)
-        return
-    try:
-        resp = httpx.post(
-            f"{_url}/rest/v1/{table}",
-            headers=_headers,
-            json=row,
-            timeout=10,
-        )
-        if resp.status_code not in (200, 201):
-            logger.warning("[SUPABASE] %s write failed (%d): %s",
-                           table, resp.status_code, resp.text[:200])
-    except Exception as e:
-        logger.warning("[SUPABASE] %s write error: %s", table, e)
+    from common.safe_write import safe_write_sync
+    safe_write_sync(table, row, f"supabase-logger-{table}")
 
 
 def _fire(table: str, row: dict):
@@ -132,26 +119,18 @@ def log_session_start(symbol: str, metadata: dict | None = None):
 def log_session_end():
     """Update session status to 'stopped'."""
     _init()
-    if not _url or not _key:
-        return
-    try:
-        resp = httpx.patch(
-            f"{_url}/rest/v1/sessions?session_id=eq.{SESSION_ID}",
-            headers=_headers,
-            json={
-                "ended_at": datetime.now(ET).isoformat(),
-                "status": "stopped",
-                "total_pnl": round(_cumulative_pnl, 2),
-            },
-            timeout=10,
-        )
-        if resp.status_code not in (200, 204):
-            logger.warning("[SUPABASE] session end update failed: %d %s",
-                           resp.status_code, resp.text[:200])
-        else:
-            logger.info("[SUPABASE] Session ended: %s", SESSION_ID)
-    except Exception as e:
-        logger.warning("[SUPABASE] session end error: %s", e)
+    from common.safe_write import safe_write_sync
+    safe_write_sync(
+        f"sessions?session_id=eq.{SESSION_ID}",
+        {
+            "ended_at": datetime.now(ET).isoformat(),
+            "status": "stopped",
+            "total_pnl": round(_cumulative_pnl, 2),
+        },
+        "supabase-logger-sessions",
+        method="patch",
+    )
+    logger.info("[SUPABASE] Session ended: %s", SESSION_ID)
 
 
 def log_bar(symbol: str, bar: dict):
@@ -321,14 +300,15 @@ def _update_session_trades():
             )
             if resp.status_code == 200 and resp.json():
                 current = resp.json()[0].get("trades_count", 0) or 0
-                httpx.patch(
-                    f"{_url}/rest/v1/sessions?session_id=eq.{SESSION_ID}",
-                    headers=_headers,
-                    json={
+                from common.safe_write import safe_write_sync
+                safe_write_sync(
+                    f"sessions?session_id=eq.{SESSION_ID}",
+                    {
                         "trades_count": current + 1,
                         "total_pnl": round(_cumulative_pnl, 2),
                     },
-                    timeout=10,
+                    "supabase-logger-sessions",
+                    method="patch",
                 )
         except Exception as e:
             logger.warning("[SUPABASE] session update error: %s", e)

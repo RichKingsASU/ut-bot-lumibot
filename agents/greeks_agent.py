@@ -339,23 +339,10 @@ class GreeksAgent(BaseAgent):
             "snapshot_at":   datetime.now(timezone.utc).isoformat(),
         }
 
-        url     = f"{SUPABASE_URL}/rest/v1/greeks_snapshots"
-        headers = {
-            "apikey":        SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type":  "application/json",
-            "Prefer":        "resolution=merge-duplicates",
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, headers=headers, json=row)
-                resp.raise_for_status()
+        from common.safe_write import safe_write_async
+        ok = await safe_write_async(
+            "greeks_snapshots", row, "greeks-agent",
+            method="post",
+        )
+        if ok:
             logger.debug("Snapshot persisted for %s", symbol)
-        except Exception as exc:
-            status_code = getattr(getattr(exc, "response", None), "status_code", None)
-            response_text = getattr(getattr(exc, "response", None), "text", "")
-            logger.error(
-                "Supabase snapshot write failed for %s: %s (Status: %s, Body: %s)",
-                symbol, exc, status_code, response_text
-            )
