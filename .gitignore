@@ -102,3 +102,10 @@ dashboard/dist/
 dashboard/.env
 !dashboard/src/lib/
 scratch/
+node-local/
+
+# Local workspace debris
+venv_old/
+test.wav
+.harness/
+
