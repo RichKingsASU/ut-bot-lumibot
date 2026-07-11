@@ -1,0 +1,1 @@
+-- Remote-only placeholder migration to satisfy Supabase CLI sync check
