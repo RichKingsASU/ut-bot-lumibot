@@ -76,7 +76,7 @@ def _upsert_status(status: str = "online", target_status: str = "running"):
     from common.safe_write import safe_write_sync
     safe_write_sync(
         "bot_status", payload, "heartbeat",
-        method="post",
+        method="post", upsert=True,
     )
     logger.debug("Heartbeat sent (status=%s)", status)
 

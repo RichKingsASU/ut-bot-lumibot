@@ -43,7 +43,7 @@ def _send_telegram_alert_sync(text: str):
 
 # ── Async APIs ──────────────────────────────────────────────────────────────
 
-async def safe_write_async(table: str, payload: dict, component: str, method: str = "post", params: dict = None, _url: str = None, _key: str = None) -> bool:
+async def safe_write_async(table: str, payload: dict, component: str, method: str = "post", params: dict = None, upsert: bool = False, _url: str = None, _key: str = None) -> bool:
     """
     Perform an async write to Supabase table.
     Updates component_heartbeat, triggers Telegram alert on state transition,
@@ -60,7 +60,10 @@ async def safe_write_async(table: str, payload: dict, component: str, method: st
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal"
+        # merge-duplicates turns an INSERT into an upsert on the primary key,
+        # required for singleton/keyed rows (bot_status id=1, component_status
+        # process_name) that would otherwise 409 on every write.
+        "Prefer": "return=minimal,resolution=merge-duplicates" if upsert else "return=minimal",
     }
 
     # Increment cycle count
@@ -190,7 +193,7 @@ async def beat_async(component: str, status: str = "OK", last_error: str = None,
 
 # ── Sync APIs ───────────────────────────────────────────────────────────────
 
-def safe_write_sync(table: str, payload: dict, component: str, method: str = "post", params: dict = None, _url: str = None, _key: str = None) -> bool:
+def safe_write_sync(table: str, payload: dict, component: str, method: str = "post", params: dict = None, upsert: bool = False, _url: str = None, _key: str = None) -> bool:
     """Sync version of safe_write_async. Pass _url/_key to override env credentials."""
     url = _url or os.getenv("SUPABASE_URL")
     key = _key or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -202,7 +205,10 @@ def safe_write_sync(table: str, payload: dict, component: str, method: str = "po
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal"
+        # merge-duplicates turns an INSERT into an upsert on the primary key,
+        # required for singleton/keyed rows (bot_status id=1, component_status
+        # process_name) that would otherwise 409 on every write.
+        "Prefer": "return=minimal,resolution=merge-duplicates" if upsert else "return=minimal",
     }
 
     with _lock:

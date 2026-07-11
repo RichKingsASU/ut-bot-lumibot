@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Bitcoin, Coins, TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, RefreshCw, Terminal } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { parseConfidence } from '../../../lib/confidence'
 
 interface CryptoAsset {
   name: string
@@ -98,7 +99,7 @@ export function CryptoView() {
       })
 
       setAssets(updatedAssets)
-      setSignals(signalsData || [])
+      setSignals((signalsData || []).map((s: any) => ({ ...s, confidence: parseConfidence(s.confidence) })))
 
       // Deduplicate regimes to get the latest per symbol
       const latestRegimes: Record<string, CryptoRegime> = {}
