@@ -24,7 +24,13 @@ export default async (req: Request, context: Context) => {
 
   // Accept both camelCase (frontend) and snake_case (API) field names
   const symbol = body.symbol;
-  const timeframe = body.timeframe || '15m';
+  // Normalize timeframe: Alpaca stores as '1Min', '5Min', '15Min', '1Hour', '1Day'
+  const tfAlias: Record<string, string> = {
+    '1m': '1Min', '5m': '5Min', '15m': '15Min', '1h': '1Hour', '1d': '1Day',
+    '1min': '1Min', '5min': '5Min', '15min': '15Min', '1hour': '1Hour', '1day': '1Day',
+  };
+  const rawTf = (body.timeframe || '15Min').toString();
+  const timeframe = tfAlias[rawTf.toLowerCase()] || rawTf;
   const date_start = body.date_start || body.startDate;
   const date_end = body.date_end || body.endDate;
   const atr_period = body.atr_period || 10;
