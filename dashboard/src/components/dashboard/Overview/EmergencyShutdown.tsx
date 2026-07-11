@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Loader2 } from 'lucide-react';
-
-const colors = {
-  red: '#f85149',
-  border: '#30363d',
-  bgTertiary: '#21262d',
-};
+import { cn } from '../../../lib/utils';
 
 export function EmergencyShutdown() {
   const [loading, setLoading] = useState(false);
@@ -47,27 +42,20 @@ export function EmergencyShutdown() {
     <button
       onClick={handleFlatten}
       disabled={loading}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 16px',
-        borderRadius: 6,
-        backgroundColor: confirmed ? colors.red : colors.bgTertiary,
-        border: `1px solid ${confirmed ? colors.red : colors.border}`,
-        color: confirmed ? '#fff' : colors.red,
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: 'pointer',
-        transition: 'all 0.2s',
-      }}
+      aria-label={confirmed ? 'Confirm emergency shutdown' : 'Emergency shutdown'}
+      className={cn(
+        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-200 border",
+        confirmed
+          ? "bg-destructive text-destructive-foreground border-destructive shadow-[0_0_12px_rgba(239,68,68,0.3)]"
+          : "bg-secondary text-[#ef4444] border-border hover:bg-destructive/10 hover:border-destructive/40"
+      )}
     >
       {loading ? (
-        <Loader2 size={16} className="animate-spin" />
+        <Loader2 size={14} className="animate-spin" />
       ) : (
-        <ShieldAlert size={16} />
+        <ShieldAlert size={14} />
       )}
-      {confirmed ? 'CONFIRM SHUTDOWN' : 'EMERGENCY SHUTDOWN'}
+      {confirmed ? 'CONFIRM' : 'KILL SWITCH'}
     </button>
   );
 }
