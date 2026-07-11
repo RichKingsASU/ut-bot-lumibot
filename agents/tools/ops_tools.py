@@ -253,7 +253,7 @@ def run_health_check() -> Dict[str, Any]:
         f"{sys.executable} {script}",
         timeout=60,
     )
-    output = result.stdout + result.stderr
+    output = (result.stdout or "") + (result.stderr or "")
     return {
         "available": True,
         "returncode": result.returncode,
