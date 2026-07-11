@@ -3,6 +3,8 @@ import { useTradingContext } from '../../../context/TradingContext'
 import { fmtPrice } from '../../../utils/formatters'
 import { supabase } from '../../../lib/supabaseClient'
 import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
+import { useSupabaseRealtime } from '../../../hooks/useSupabaseRealtime'
+import { cn } from '../../../lib/utils'
 
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D'
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
@@ -102,6 +104,17 @@ export function TopBar() {
   const online = connected
   const tradingMode = useTradingMode()
   const modeBadge = tradingModeBadgeStyle(tradingMode)
+  const { realtimeConnected, heartbeatAgeMs } = useSupabaseRealtime()
+
+  const heartbeatAgeSec = heartbeatAgeMs != null ? Math.floor(heartbeatAgeMs / 1000) : null
+  const heartbeatColor = heartbeatAgeSec == null
+    ? 'text-muted-foreground'
+    : heartbeatAgeSec < 30
+      ? 'text-[#10b981]'
+      : heartbeatAgeSec < 120
+        ? 'text-[#f59e0b]'
+        : 'text-[#ef4444]'
+  const heartbeatLabel = heartbeatAgeSec == null ? '—' : heartbeatAgeSec < 60 ? `${heartbeatAgeSec}s` : `${Math.floor(heartbeatAgeSec / 60)}m`
 
   return (
     <header
@@ -233,6 +246,27 @@ export function TopBar() {
         >
           <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-green-400' : 'bg-red-400'} ${online ? 'animate-ping' : ''}`} />
           {online ? 'ONLINE' : 'OFFLINE'}
+        </div>
+
+        {/* Realtime Heartbeat Latency */}
+        <div
+          className={cn(
+            "flex items-center gap-1.5 text-[9px] font-bold px-2 py-1 rounded-lg border transition-smooth",
+            realtimeConnected
+              ? 'bg-emerald-500/5 border-emerald-500/20'
+              : 'bg-red-500/5 border-red-500/20'
+          )}
+          title={realtimeConnected ? `Realtime connected, last msg ${heartbeatLabel} ago` : 'Realtime disconnected'}
+        >
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+            )}
+          />
+          <span className={heartbeatColor + ' font-mono tabular-nums'}>
+            {realtimeConnected ? heartbeatLabel : 'RT OFF'}
+          </span>
         </div>
 
         <div className="w-px h-6 bg-border-muted/50" />
