@@ -108,4 +108,6 @@ node-local/
 venv_old/
 test.wav
 .harness/
+supabase/.temp/
+venv_broken_py314/
 

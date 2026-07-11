@@ -913,9 +913,25 @@ async def run_crypto_cycle() -> dict:
         "kronos_comparison": kronos_crypto,
     }
     logger.info(f"[Orchestrator] Starting crypto cycle at {initial_state['cycle_timestamp']}")
-    result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
-    result['kronos_comparison'] = kronos_crypto
-    logger.info("[Orchestrator] Crypto cycle complete.")
+    try:
+        result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
+        result['kronos_comparison'] = kronos_crypto
+        logger.info("[Orchestrator] Crypto cycle complete.")
+    except Exception as exc:
+        logger.error(f"[Orchestrator] CRITICAL: Crypto cycle pipeline execution crashed: {exc}", exc_info=True)
+        result = {
+            "halted": True,
+            "reason": f"Pipeline execution failure: {exc}",
+            "asset_class": "crypto",
+            "regime_summary": {},
+            "market_context": {},
+            "signal_recommendation": {"action": "HOLD", "confidence": "LOW"},
+            "debate_result": {},
+            "greeks_decision": {},
+            "kelly_sizing": {"symbol": "ETH/USD", "position_value": 0.0, "position_value_str": "$0.00"},
+            "risk_decision": {"decision": "BLOCK", "reason": f"degraded due to pipeline crash: {exc}"},
+            "kronos_comparison": kronos_crypto,
+        }
     return result
 
 
@@ -970,9 +986,25 @@ async def run_equities_cycle() -> dict:
         "kronos_comparison": kronos_eq,
     }
     logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
-    result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
-    result['kronos_comparison'] = kronos_eq
-    logger.info("[Orchestrator] Equities cycle complete.")
+    try:
+        result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
+        result['kronos_comparison'] = kronos_eq
+        logger.info("[Orchestrator] Equities cycle complete.")
+    except Exception as exc:
+        logger.error(f"[Orchestrator] CRITICAL: Equities cycle pipeline execution crashed: {exc}", exc_info=True)
+        result = {
+            "halted": True,
+            "reason": f"Pipeline execution failure: {exc}",
+            "asset_class": "equities",
+            "regime_summary": {},
+            "market_context": {},
+            "signal_recommendation": {"action": "HOLD", "confidence": "LOW"},
+            "debate_result": {},
+            "greeks_decision": {},
+            "kelly_sizing": {"symbol": "SPY", "position_value": 0.0, "position_value_str": "$0.00"},
+            "risk_decision": {"decision": "BLOCK", "reason": f"degraded due to pipeline crash: {exc}"},
+            "kronos_comparison": kronos_eq,
+        }
     # Propagate session context so run_cycle can include it in the report
     result['_session_context'] = session
     return result
