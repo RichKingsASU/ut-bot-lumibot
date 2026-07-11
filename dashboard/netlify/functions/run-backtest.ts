@@ -223,7 +223,17 @@ export default async (req: Request, context: Context) => {
     avg_win: avgWin,
     avg_loss: avgLoss,
     profit_factor: profitFactor,
-    equityCurve: equityCurve.slice(0, 500).map((eq, i) => ({ ts: bars[i]?.ts, close: eq })),
+    equityCurve: equityCurve.slice(0, 500).map((eq, i) => {
+      const ts = bars[i]?.ts;
+      const time = ts ? Math.floor(Date.parse(ts) / 1000) : Math.floor(Date.now() / 1000);
+      return {
+        time,
+        open: eq,
+        high: eq,
+        low: eq,
+        close: eq
+      };
+    }),
     params: { atr_period, sensitivity }
   };
 
