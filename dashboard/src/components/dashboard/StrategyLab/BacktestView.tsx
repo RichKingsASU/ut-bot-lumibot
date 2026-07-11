@@ -226,13 +226,17 @@ export default function BacktestView() {
         body: JSON.stringify({
           strategyId: strategy.id,
           symbol,
+          timeframe: '15m',
           startDate,
           endDate,
+          date_start: startDate,
+          date_end: endDate,
         }),
       })
-      if (!res.ok) throw new Error(`run-backtest returned ${res.status}`)
       const data = await res.json()
-      if (data?.error) throw new Error(data.error)
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || `Backtest failed with status ${res.status}`)
+      }
 
       const run: BacktestRun = {
         id: String(data.id ?? `${Date.now()}`),
@@ -251,11 +255,15 @@ export default function BacktestView() {
       setLatest(run)
       setHistory((prev) => [run, ...prev].slice(0, 20))
     } catch (e) {
-      setStatusMsg(
-        e instanceof Error && e.message.includes('run-backtest')
-          ? 'Backtest engine not yet connected — wire /.netlify/functions/run-backtest to enable runs.'
-          : 'Backtest run failed. Check the network tab and try again.',
-      )
+      let msg = 'Backtest run failed.'
+      if (e instanceof Error) {
+        if (e.message.includes('run-backtest')) {
+          msg = 'Backtest engine not connected — wire /.netlify/functions/run-backtest to enable runs.'
+        } else {
+          msg = e.message
+        }
+      }
+      setStatusMsg(msg)
     } finally {
       setRunning(false)
     }
