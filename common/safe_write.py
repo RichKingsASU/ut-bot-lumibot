@@ -60,10 +60,9 @@ async def safe_write_async(table: str, payload: dict, component: str, method: st
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        # merge-duplicates turns an INSERT into an upsert on the primary key,
-        # required for singleton/keyed rows (bot_status id=1, component_status
-        # process_name) that would otherwise 409 on every write.
-        "Prefer": "return=minimal,resolution=merge-duplicates" if upsert else "return=minimal",
+        # PostgREST requires resolution=merge-duplicates BEFORE return=minimal.
+        # Wrong order causes 409 duplicate key errors on every heartbeat write.
+        "Prefer": "resolution=merge-duplicates,return=minimal" if upsert else "return=minimal",
     }
 
     # Increment cycle count
@@ -132,13 +131,13 @@ async def safe_write_async(table: str, payload: dict, component: str, method: st
     if alert_to_send:
         await _send_telegram_alert(alert_to_send)
 
-    # Upsert to component_heartbeat
+    # Upsert to component_heartbeat (always use merge-duplicates first)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             hb_resp = await client.post(
                 f"{url}/rest/v1/component_heartbeat",
                 json=heartbeat_payload,
-                headers={**headers, "Prefer": "resolution=merge-duplicates"},
+                headers={**headers, "Prefer": "resolution=merge-duplicates,return=minimal"},
             )
             if hb_resp.status_code >= 300:
                 logger.warning(f"[SAFE_WRITE] Failed to upsert heartbeat for {component} (HTTP {hb_resp.status_code}): {hb_resp.text[:200]}")
@@ -205,10 +204,9 @@ def safe_write_sync(table: str, payload: dict, component: str, method: str = "po
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        # merge-duplicates turns an INSERT into an upsert on the primary key,
-        # required for singleton/keyed rows (bot_status id=1, component_status
-        # process_name) that would otherwise 409 on every write.
-        "Prefer": "return=minimal,resolution=merge-duplicates" if upsert else "return=minimal",
+        # PostgREST requires resolution=merge-duplicates BEFORE return=minimal.
+        # Wrong order causes 409 duplicate key errors on every heartbeat write.
+        "Prefer": "resolution=merge-duplicates,return=minimal" if upsert else "return=minimal",
     }
 
     with _lock:
@@ -280,7 +278,7 @@ def safe_write_sync(table: str, payload: dict, component: str, method: str = "po
             hb_resp = client.post(
                 f"{url}/rest/v1/component_heartbeat",
                 json=heartbeat_payload,
-                headers={**headers, "Prefer": "resolution=merge-duplicates"},
+                headers={**headers, "Prefer": "resolution=merge-duplicates,return=minimal"},
             )
             if hb_resp.status_code >= 300:
                 logger.warning(f"[SAFE_WRITE] Failed to upsert heartbeat for {component} (HTTP {hb_resp.status_code}): {hb_resp.text[:200]}")
