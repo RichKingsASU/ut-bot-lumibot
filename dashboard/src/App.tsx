@@ -47,6 +47,11 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session: s }, error }) => {
       if (error) setAuthError(toUserMessage(error))
+      if (s?.user?.user_metadata?.ADMIN_API_KEY) {
+        const key = s.user.user_metadata.ADMIN_API_KEY;
+        localStorage.setItem('ADMIN_API_KEY', key);
+        localStorage.setItem('admin_api_key', key);
+      }
       setSession(s)
       setAuthLoading(false)
     }).catch((err) => {
@@ -55,6 +60,11 @@ export default function App() {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (s?.user?.user_metadata?.ADMIN_API_KEY) {
+        const key = s.user.user_metadata.ADMIN_API_KEY;
+        localStorage.setItem('ADMIN_API_KEY', key);
+        localStorage.setItem('admin_api_key', key);
+      }
       setSession(s)
     })
 

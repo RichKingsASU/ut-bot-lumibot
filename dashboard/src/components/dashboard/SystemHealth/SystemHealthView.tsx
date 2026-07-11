@@ -177,9 +177,18 @@ export default function SystemHealthView() {
                 <input 
                   type={showKey ? "text" : "password"}
                   value={adminKey}
-                  onChange={(e) => {
-                    setAdminKey(e.target.value)
-                    localStorage.setItem('ADMIN_API_KEY', e.target.value)
+                  onChange={async (e) => {
+                    const val = e.target.value
+                    setAdminKey(val)
+                    localStorage.setItem('ADMIN_API_KEY', val)
+                    localStorage.setItem('admin_api_key', val)
+                    try {
+                      await supabase.auth.updateUser({
+                        data: { ADMIN_API_KEY: val }
+                      })
+                    } catch (err) {
+                      console.error('Failed to sync ADMIN_API_KEY to user profile metadata:', err)
+                    }
                   }}
                   style={{ 
                     background: 'none', 

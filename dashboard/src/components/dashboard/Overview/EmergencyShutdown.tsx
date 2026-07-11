@@ -20,7 +20,7 @@ export function EmergencyShutdown() {
 
     setLoading(true);
     try {
-      const adminKey = localStorage.getItem('admin_api_key') || '';
+      const adminKey = localStorage.getItem('ADMIN_API_KEY') || localStorage.getItem('admin_api_key') || '';
       const response = await fetch('/.netlify/functions/alpaca-flatten', {
         method: 'POST',
         headers: {
