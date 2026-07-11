@@ -45,6 +45,8 @@ def _run(cmd: str, timeout: int = 10) -> subprocess.CompletedProcess:
         shell=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 
