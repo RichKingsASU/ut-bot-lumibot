@@ -30,6 +30,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Control Tower', icon: LayoutDashboard, path: '/', section: 'operations' },
+  { label: 'Agent Brain', icon: Zap, path: '/admin/pipeline', section: 'operations' },
   {
     label: 'Equities Monitor',
     icon: LineChart,

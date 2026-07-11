@@ -1,37 +1,61 @@
-import React, { useState, useEffect } from 'react'
+import React, { Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from './components/LoginPage'
 import { MainLayout } from './components/dashboard/layout/MainLayout'
-import OverviewView from './components/dashboard/Overview/OverviewView'
-import EquitiesTradeView from './components/dashboard/Equities/EquitiesTradeView'
-import EquitiesMonitorView from './components/dashboard/Equities/EquitiesMonitorView'
-import EquitiesPerformanceView from './components/dashboard/Equities/EquitiesPerformanceView'
-import EquitiesStrategyView from './components/dashboard/Equities/EquitiesStrategyView'
-import GreeksHeatmap from './components/dashboard/Greeks/GreeksHeatmap'
-import CryptoTradeView from './components/dashboard/Crypto/CryptoTradeView'
-import CryptoMonitorView from './components/dashboard/Crypto/CryptoMonitorView'
-import CryptoPerformanceView from './components/dashboard/Crypto/CryptoPerformanceView'
-import CryptoStrategyView from './components/dashboard/Crypto/CryptoStrategyView'
-import StrategyLabView from './components/dashboard/StrategyLab/StrategyLabView'
-import BacktestView from './components/dashboard/StrategyLab/BacktestView'
-import NewsFeedView from './components/dashboard/NewsSocial/NewsFeedView'
-import SentimentView from './components/dashboard/NewsSocial/SentimentView'
-import WatchlistView from './components/dashboard/NewsSocial/WatchlistView'
-import PositionSizingView from './components/dashboard/RiskManager/PositionSizingView'
-import RiskRulesView from './components/dashboard/RiskManager/RiskRulesView'
-import AccountHealthView from './components/dashboard/RiskManager/AccountHealthView'
-import RiskManagerView from './components/dashboard/RiskManager/RiskManagerView'
-import { DataView } from './components/dashboard/Data/DataView'
-import { AlertsView } from './components/dashboard/Alerts/AlertsView'
-import SystemHealthView from './components/dashboard/SystemHealth/SystemHealthView'
-import SystemHealthPage from './pages/SystemHealthPage'
-import AgentPipelinePage from './pages/AgentPipelinePage'
-import { SettingsView } from './components/dashboard/Settings/SettingsView'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
 import { toUserMessage } from './lib/apiError'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
+import { Skeleton } from './components/ui/Skeleton'
 import type { Session } from '@supabase/supabase-js'
 import { TradingProvider } from './context/TradingContext'
+
+// ─── Lazy-loaded route components (code-split per surface) ──────────────
+const OverviewView = React.lazy(() => import('./components/dashboard/Overview/OverviewView'))
+const EquitiesTradeView = React.lazy(() => import('./components/dashboard/Equities/EquitiesTradeView'))
+const EquitiesMonitorView = React.lazy(() => import('./components/dashboard/Equities/EquitiesMonitorView'))
+const EquitiesPerformanceView = React.lazy(() => import('./components/dashboard/Equities/EquitiesPerformanceView'))
+const EquitiesStrategyView = React.lazy(() => import('./components/dashboard/Equities/EquitiesStrategyView'))
+const GreeksHeatmap = React.lazy(() => import('./components/dashboard/Greeks/GreeksHeatmap'))
+const CryptoTradeView = React.lazy(() => import('./components/dashboard/Crypto/CryptoTradeView'))
+const CryptoMonitorView = React.lazy(() => import('./components/dashboard/Crypto/CryptoMonitorView'))
+const CryptoPerformanceView = React.lazy(() => import('./components/dashboard/Crypto/CryptoPerformanceView'))
+const CryptoStrategyView = React.lazy(() => import('./components/dashboard/Crypto/CryptoStrategyView'))
+const StrategyLabView = React.lazy(() => import('./components/dashboard/StrategyLab/StrategyLabView'))
+const BacktestView = React.lazy(() => import('./components/dashboard/StrategyLab/BacktestView'))
+const NewsFeedView = React.lazy(() => import('./components/dashboard/NewsSocial/NewsFeedView'))
+const SentimentView = React.lazy(() => import('./components/dashboard/NewsSocial/SentimentView'))
+const WatchlistView = React.lazy(() => import('./components/dashboard/NewsSocial/WatchlistView'))
+const PositionSizingView = React.lazy(() => import('./components/dashboard/RiskManager/PositionSizingView'))
+const RiskRulesView = React.lazy(() => import('./components/dashboard/RiskManager/RiskRulesView'))
+const AccountHealthView = React.lazy(() => import('./components/dashboard/RiskManager/AccountHealthView'))
+const RiskManagerView = React.lazy(() => import('./components/dashboard/RiskManager/RiskManagerView'))
+const DataView = React.lazy(() => import('./components/dashboard/Data/DataView').then(m => ({ default: m.DataView })))
+const AlertsView = React.lazy(() => import('./components/dashboard/Alerts/AlertsView').then(m => ({ default: m.AlertsView })))
+const SystemHealthView = React.lazy(() => import('./components/dashboard/SystemHealth/SystemHealthView'))
+const SystemHealthPage = React.lazy(() => import('./pages/SystemHealthPage'))
+const AgentPipelinePage = React.lazy(() => import('./pages/AgentPipelinePage'))
+const SettingsView = React.lazy(() => import('./components/dashboard/Settings/SettingsView').then(m => ({ default: m.SettingsView })))
+
+// ─── Route Loading Fallback ─────────────────────────────────────────────
+function RouteFallback() {
+  return (
+    <div className="p-6 space-y-4">
+      <Skeleton className="h-8 w-48" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border bg-card p-4 space-y-3 min-h-[160px]">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-2 w-full" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border bg-card p-4 min-h-[300px]">
+        <Skeleton className="h-full w-full rounded-lg" />
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -73,24 +97,20 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div style={{
-        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg-primary)', color: 'var(--text-muted)'
-      }}>
-        Initializing...
+      <div className="h-screen flex items-center justify-center bg-background text-muted-foreground">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <span className="text-xs font-medium uppercase tracking-wider">Initializing</span>
+        </div>
       </div>
     )
   }
 
   if (authError) {
     return (
-      <div style={{
-        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: '1rem',
-        background: 'var(--bg-primary)', color: 'var(--text-muted)', padding: '2rem'
-      }}>
-        <div style={{ color: '#ef4444', fontWeight: 600, fontSize: '1.2rem' }}>Configuration Error</div>
-        <div style={{ maxWidth: '500px', textAlign: 'center', lineHeight: 1.6 }}>{authError}</div>
+      <div className="h-screen flex items-center justify-center flex-col gap-4 bg-background text-muted-foreground p-8">
+        <div className="text-destructive font-bold text-lg">Configuration Error</div>
+        <div className="max-w-md text-center text-sm leading-relaxed">{authError}</div>
       </div>
     )
   }
@@ -124,32 +144,32 @@ export default function App() {
         <ErrorBoundary>
         <Routes>
           <Route element={<MainLayout />}>
-            <Route path="/" element={<OverviewView />} />
-            <Route path="/equities/trade" element={<EquitiesTradeView />} />
-            <Route path="/equities/monitor" element={<EquitiesMonitorView />} />
-            <Route path="/equities/performance" element={<EquitiesPerformanceView />} />
-            <Route path="/equities/strategy" element={<EquitiesStrategyView />} />
-            <Route path="/equities/greeks" element={<GreeksHeatmap />} />
-            <Route path="/crypto/trade" element={<CryptoTradeView />} />
-            <Route path="/crypto/monitor" element={<CryptoMonitorView />} />
-            <Route path="/crypto/performance" element={<CryptoPerformanceView />} />
-            <Route path="/crypto/strategy" element={<CryptoStrategyView />} />
-            <Route path="/strategy-lab" element={<StrategyLabView />} />
-            <Route path="/strategy-lab/editor" element={<StrategyLabView />} />
-            <Route path="/strategy-lab/backtest" element={<BacktestView />} />
-            <Route path="/news/feed" element={<NewsFeedView />} />
-            <Route path="/news/sentiment" element={<SentimentView />} />
-            <Route path="/news/watchlist" element={<WatchlistView />} />
-            <Route path="/risk-manager" element={<RiskManagerView />} />
-            <Route path="/risk/sizing" element={<PositionSizingView />} />
-            <Route path="/risk/rules" element={<RiskRulesView />} />
-            <Route path="/risk/health" element={<AccountHealthView />} />
-            <Route path="/data" element={<DataView />} />
-            <Route path="/alerts" element={<AlertsView />} />
-            <Route path="/system-health" element={<SystemHealthView />} />
-            <Route path="/admin/health" element={<SystemHealthPage />} />
-            <Route path="/admin/pipeline" element={<AgentPipelinePage />} />
-            <Route path="/settings" element={<SettingsView />} />
+            <Route path="/" element={<Suspense fallback={<RouteFallback />}><OverviewView /></Suspense>} />
+            <Route path="/equities/trade" element={<Suspense fallback={<RouteFallback />}><EquitiesTradeView /></Suspense>} />
+            <Route path="/equities/monitor" element={<Suspense fallback={<RouteFallback />}><EquitiesMonitorView /></Suspense>} />
+            <Route path="/equities/performance" element={<Suspense fallback={<RouteFallback />}><EquitiesPerformanceView /></Suspense>} />
+            <Route path="/equities/strategy" element={<Suspense fallback={<RouteFallback />}><EquitiesStrategyView /></Suspense>} />
+            <Route path="/equities/greeks" element={<Suspense fallback={<RouteFallback />}><GreeksHeatmap /></Suspense>} />
+            <Route path="/crypto/trade" element={<Suspense fallback={<RouteFallback />}><CryptoTradeView /></Suspense>} />
+            <Route path="/crypto/monitor" element={<Suspense fallback={<RouteFallback />}><CryptoMonitorView /></Suspense>} />
+            <Route path="/crypto/performance" element={<Suspense fallback={<RouteFallback />}><CryptoPerformanceView /></Suspense>} />
+            <Route path="/crypto/strategy" element={<Suspense fallback={<RouteFallback />}><CryptoStrategyView /></Suspense>} />
+            <Route path="/strategy-lab" element={<Suspense fallback={<RouteFallback />}><StrategyLabView /></Suspense>} />
+            <Route path="/strategy-lab/editor" element={<Suspense fallback={<RouteFallback />}><StrategyLabView /></Suspense>} />
+            <Route path="/strategy-lab/backtest" element={<Suspense fallback={<RouteFallback />}><BacktestView /></Suspense>} />
+            <Route path="/news/feed" element={<Suspense fallback={<RouteFallback />}><NewsFeedView /></Suspense>} />
+            <Route path="/news/sentiment" element={<Suspense fallback={<RouteFallback />}><SentimentView /></Suspense>} />
+            <Route path="/news/watchlist" element={<Suspense fallback={<RouteFallback />}><WatchlistView /></Suspense>} />
+            <Route path="/risk-manager" element={<Suspense fallback={<RouteFallback />}><RiskManagerView /></Suspense>} />
+            <Route path="/risk/sizing" element={<Suspense fallback={<RouteFallback />}><PositionSizingView /></Suspense>} />
+            <Route path="/risk/rules" element={<Suspense fallback={<RouteFallback />}><RiskRulesView /></Suspense>} />
+            <Route path="/risk/health" element={<Suspense fallback={<RouteFallback />}><AccountHealthView /></Suspense>} />
+            <Route path="/data" element={<Suspense fallback={<RouteFallback />}><DataView /></Suspense>} />
+            <Route path="/alerts" element={<Suspense fallback={<RouteFallback />}><AlertsView /></Suspense>} />
+            <Route path="/system-health" element={<Suspense fallback={<RouteFallback />}><SystemHealthView /></Suspense>} />
+            <Route path="/admin/health" element={<Suspense fallback={<RouteFallback />}><SystemHealthPage /></Suspense>} />
+            <Route path="/admin/pipeline" element={<Suspense fallback={<RouteFallback />}><AgentPipelinePage /></Suspense>} />
+            <Route path="/settings" element={<Suspense fallback={<RouteFallback />}><SettingsView /></Suspense>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
