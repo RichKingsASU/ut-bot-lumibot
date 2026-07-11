@@ -26,7 +26,7 @@ logger = logging.getLogger("component_heartbeat")
 def _post(payload: dict) -> None:
     """Blocking upsert to component_status. Called from a daemon thread."""
     from common.safe_write import safe_write_sync
-    safe_write_sync("component_status", payload, "component-heartbeat")
+    safe_write_sync("component_status", payload, "component-heartbeat", upsert=True)
 
 
 def beat(

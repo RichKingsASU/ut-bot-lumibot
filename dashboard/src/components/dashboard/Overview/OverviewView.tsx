@@ -7,6 +7,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { useMetrics } from '../../../hooks/useMetrics'
 import { EmergencyShutdown } from './EmergencyShutdown'
 import { supabase } from '../../../lib/supabaseClient'
+import { parseConfidence } from '../../../lib/confidence'
 import { Link } from 'react-router-dom'
 import {
   AreaChart,
@@ -127,7 +128,7 @@ export default function OverviewView() {
             return {
               symbol: s.symbol,
               action: s.action || 'HOLD',
-              confidence: s.confidence != null ? Number(s.confidence) : 0.5,
+              confidence: parseConfidence(s.confidence),
               created_at: s.created_at || '',
               verdict,
               bull,
