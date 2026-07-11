@@ -107,7 +107,6 @@ node-local/
 # Local workspace debris
 venv_old/
 test.wav
-.harness/
 supabase/.temp/
 venv_broken_py314/
 

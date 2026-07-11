@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Shield, Save, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { PageHeader } from '../../ui/PageHeader'

@@ -83,11 +83,6 @@ export function CryptoView() {
         let price = quote ? quote.price : 0
         let change = quote ? quote.change_pct : 0
         
-        if (price === 0 && fallbackSignal) {
-          // Fallback to last signal price if available
-          price = fallbackSignal.price || 0
-        }
-
         return {
           name: def.name,
           symbol: def.symbol,

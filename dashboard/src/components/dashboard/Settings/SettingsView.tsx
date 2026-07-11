@@ -595,7 +595,7 @@ export function SettingsView() {
                 {testingDb ? 'Testing...' : 'Test Connection'}
               </button>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={styles.statusDot(dbConnected)} />
+                <span style={styles.statusDot(dbConnected === true)} />
                 <span style={{ fontSize: '13px', color: dbConnected === true ? 'var(--green, #3fb950)' : (dbConnected === false ? 'var(--red, #f85149)' : 'var(--text-muted, #8b949e)') }}>
                   {dbConnected === true ? 'Connected' : (dbConnected === false ? 'Failed' : 'Disconnected')}
                 </span>

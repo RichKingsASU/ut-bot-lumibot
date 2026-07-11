@@ -214,32 +214,25 @@ export default function OverviewView() {
     : 'detected recently'
 
   return (
-    <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
+    <div className="p-6 h-full overflow-y-auto bg-space bg-grid custom-scrollbar relative">
       <PageHeader
         title="Overview"
         subtitle="Live trading dashboard"
         actions={
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="flex items-center gap-3">
             {/* Regime Badge */}
             <Link
               to="/admin/pipeline"
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                padding: '6px 12px',
-                border: `1px solid ${regimeColor}`,
+                borderColor: regimeColor,
                 backgroundColor: `${regimeColor}10`,
-                borderRadius: 8,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
               }}
+              className="flex flex-col items-end px-3 py-1.5 border rounded-xl hover:bg-white/[0.02] transition-smooth cursor-pointer shadow-sm"
             >
-              <div style={{ fontSize: 10, fontWeight: 700, color: regimeColor, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              <div style={{ color: regimeColor }} className="text-[10px] font-bold tracking-wider uppercase leading-none">
                 REGIME: {regimeName}{regimeProb}
               </div>
-              <div style={{ fontSize: 9, color: colors.textMuted }}>
+              <div className="text-[9px] text-secondary mt-0.5 leading-none">
                 {regimeAge}
               </div>
             </Link>
@@ -248,38 +241,27 @@ export default function OverviewView() {
           </div>
         }
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
+      
+      {/* Statistics Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {statCards.map((card) => {
           const Icon = card.icon
           return (
             <div
               key={card.label}
-              style={{
-                backgroundColor: colors.bgSecondary,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                padding: 20,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-              }}
+              className="bg-surface-1/40 hover:bg-surface-1/65 border border-border-muted/50 hover:border-vibrant/40 rounded-2xl p-5 flex items-center gap-4 transition-smooth backdrop-blur-md shadow-premium"
             >
               <div
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 8,
-                  backgroundColor: `${card.color}18`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  backgroundColor: `${card.color}15`,
                 }}
+                className="w-11 h-11 rounded-xl flex items-center justify-center shadow-inner"
               >
-                <Icon size={22} color={card.color} />
+                <Icon size={20} color={card.color} />
               </div>
               <div>
-                <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>{card.label}</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>{card.value}</div>
+                <div className="text-xs text-secondary mb-0.5 tracking-tight font-medium">{card.label}</div>
+                <div className="text-lg font-bold text-primary tracking-tight leading-tight">{card.value}</div>
               </div>
             </div>
           )
@@ -289,43 +271,25 @@ export default function OverviewView() {
         <Link
           to="/admin/pipeline"
           style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${regimeColor}`,
-            borderRadius: 8,
-            padding: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            textDecoration: 'none',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
+            borderColor: regimeColor,
+            backgroundColor: 'rgba(24, 24, 27, 0.4)',
           }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = `${regimeColor}0a`
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = colors.bgSecondary
-          }}
+          className="hover:bg-surface-1/65 border rounded-2xl p-5 flex items-center gap-4 transition-smooth backdrop-blur-md shadow-premium cursor-pointer"
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-              backgroundColor: `${regimeColor}18`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              backgroundColor: `${regimeColor}15`,
             }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center shadow-inner"
           >
-            <TrendingUp size={22} color={regimeColor} />
+            <TrendingUp size={20} color={regimeColor} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>Market Regime</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: regimeColor }}>
+            <div className="text-xs text-secondary mb-0.5 tracking-tight font-medium">Market Regime</div>
+            <div style={{ color: regimeColor }} className="text-lg font-extrabold tracking-tight leading-tight">
               {regimeName}{regimeProb}
             </div>
-            <div style={{ fontSize: 11, color: colors.textMuted }}>
+            <div className="text-[10px] text-secondary mt-0.5 leading-none">
               {regimeAge}
             </div>
           </div>
@@ -334,42 +298,36 @@ export default function OverviewView() {
 
       {/* Equity Curve Chart */}
       <div
-        style={{
-          backgroundColor: colors.bgSecondary,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 8,
-          padding: 20,
-          marginBottom: 24,
-        }}
+        className="bg-surface-1/40 border border-border-muted/50 rounded-2xl p-5 mb-6 backdrop-blur-md shadow-premium"
       >
-        <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ChartIcon size={16} color={colors.blue} />
+        <div className="text-sm font-bold text-primary mb-4 flex items-center gap-2">
+          <ChartIcon size={16} className="text-blue-400" />
           Equity Curve (portfolio_snapshots)
         </div>
-        <div style={{ height: 260, position: 'relative' }}>
+        <div className="h-[280px] relative">
           {equityLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted, fontSize: 13 }}>
+            <div className="flex items-center justify-center h-full text-secondary text-xs">
               Loading portfolio snapshots...
             </div>
           ) : equityData.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted, gap: 10 }}>
-              <ChartIcon size={32} style={{ opacity: 0.3 }} />
-              <span style={{ fontSize: 13 }}>No snapshot data yet</span>
+            <div className="flex flex-col items-center justify-center h-full text-secondary gap-2">
+              <ChartIcon size={32} className="opacity-20" />
+              <span className="text-xs font-medium">No snapshot data yet</span>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={equityData}>
                 <defs>
                   <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={colors.blue} stopOpacity={0.2}/>
+                    <stop offset="5%" stopColor={colors.blue} stopOpacity={0.25}/>
                     <stop offset="95%" stopColor={colors.blue} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis
                   dataKey="snapshot_at"
-                  tick={{ fill: colors.textMuted, fontSize: 10 }}
-                  stroke={colors.border}
+                  tick={{ fill: colors.textMuted, fontSize: 9, fontWeight: 500 }}
+                  stroke="rgba(255,255,255,0.08)"
                   tickFormatter={(val) => {
                     try {
                       return new Date(val).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
@@ -379,18 +337,20 @@ export default function OverviewView() {
                   }}
                 />
                 <YAxis
-                  tick={{ fill: colors.textMuted, fontSize: 10 }}
-                  stroke={colors.border}
+                  tick={{ fill: colors.textMuted, fontSize: 9, fontWeight: 500 }}
+                  stroke="rgba(255,255,255,0.08)"
                   domain={['auto', 'auto']}
                   tickFormatter={(val) => currency.format(val).replace(/\.00$/, '')}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: colors.bgTertiary,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 6,
+                    backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
                     color: colors.textPrimary,
                     fontSize: 12,
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    backdropFilter: 'blur(8px)',
                   }}
                   labelFormatter={(label) => {
                     try {
@@ -416,85 +376,60 @@ export default function OverviewView() {
       </div>
 
       {/* Connection Health + Recent Signals row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 mb-6">
         {/* Connection Health */}
         <div
-          style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            padding: 20,
-          }}
+          className="bg-surface-1/40 border border-border-muted/50 rounded-2xl p-5 backdrop-blur-md shadow-premium"
         >
-          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
+          <div className="text-sm font-bold text-primary mb-4">
             Connection Health
           </div>
-          {connectionItems.map((item) => (
-            <div
-              key={item.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 0',
-                borderBottom: `1px solid ${colors.border}`,
-              }}
-            >
-              <span style={{ color: colors.textPrimary, fontSize: 13 }}>{item.name}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: item.online ? colors.green : colors.red,
-                  }}
-                />
-                <span style={{ fontSize: 12, color: item.online ? colors.green : colors.red }}>
-                  {item.online ? 'Connected' : 'Disconnected'}
-                </span>
+          <div className="space-y-1">
+            {connectionItems.map((item) => (
+              <div
+                key={item.name}
+                className="flex items-center justify-between py-2.5 border-b border-border-muted/20 last:border-b-0"
+              >
+                <span className="text-primary text-xs font-medium">{item.name}</span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      item.online ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                    }`}
+                  />
+                  <span className={`text-xs font-semibold ${item.online ? 'text-green-400' : 'text-red-400'}`}>
+                    {item.online ? 'Connected' : 'Disconnected'}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Recent Signals */}
         <div
-          style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            padding: 20,
-          }}
+          className="bg-surface-1/40 border border-border-muted/50 rounded-2xl p-5 backdrop-blur-md shadow-premium overflow-x-auto custom-scrollbar"
         >
-          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
+          <div className="text-sm font-bold text-primary mb-4">
             Recent Signals
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="w-full border-collapse">
             <thead>
-              <tr>
+              <tr className="border-b border-border-muted/30">
                 {['Time', 'Symbol', 'Action', 'Confidence', 'Verdict'].map((h) => (
                   <th
                     key={h}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 12px',
-                      fontSize: 11,
-                      color: colors.textMuted,
-                      borderBottom: `1px solid ${colors.border}`,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
+                    className="text-left px-3 py-2 text-[10px] font-bold text-secondary uppercase tracking-wider pb-2.5"
                   >
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border-muted/10">
               {liveAgentSignals.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: 16, color: colors.textMuted, textAlign: 'center', fontSize: 13 }}>
+                  <td colSpan={5} className="py-6 text-secondary text-center text-xs">
                     No signals yet
                   </td>
                 </tr>
@@ -503,55 +438,47 @@ export default function OverviewView() {
                 const verdictColor =
                   sig.verdict === 'ENTER' ? colors.green :
                   sig.verdict === 'AVOID' ? colors.red :
-                  colors.neutral
+                  colors.textMuted
                 return (
-                  <tr key={i}>
-                    <td style={{ padding: '8px 12px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                  <tr key={i} className="hover:bg-white/[0.01] transition-smooth">
+                    <td className="px-3 py-3 text-xs text-primary font-medium">
                       {new Date(sig.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
-                    <td style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: colors.blue, borderBottom: `1px solid ${colors.border}` }}>
+                    <td className="px-3 py-3 text-xs font-extrabold text-blue-400">
                       {sig.symbol}
                     </td>
-                    <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
+                    <td className="px-3 py-3">
                       <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 10px',
-                          borderRadius: 4,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          backgroundColor: sig.action === 'BUY' ? `${colors.green}22` : `${colors.red}22`,
-                          color: sig.action === 'BUY' ? colors.green : colors.red,
-                        }}
+                        className={`inline-block px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
+                          sig.action === 'BUY' 
+                            ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                        }`}
                       >
                         {sig.action}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 12px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
+                    <td className="px-3 py-3 text-xs text-primary font-mono">
                       {(sig.confidence * 100).toFixed(0)}%
                     </td>
-                    <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
                         {sig.verdict ? (
                           <span
+                            className="inline-block px-2 py-0.5 rounded-lg text-[9px] font-extrabold border uppercase"
                             style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 600,
-                              backgroundColor: `${verdictColor}22`,
+                              backgroundColor: `${verdictColor}18`,
                               color: verdictColor,
-                              textTransform: 'uppercase',
+                              borderColor: `${verdictColor}33`,
                             }}
                           >
                             {sig.verdict}
                           </span>
                         ) : (
-                          <span style={{ color: colors.textMuted }}>—</span>
+                          <span className="text-secondary">—</span>
                         )}
                         {(sig.bull !== null || sig.bear !== null) && (
-                          <span style={{ fontSize: 11, color: colors.textMuted }}>
+                          <span className="text-[10px] text-secondary font-mono">
                             B{sig.bull ?? 0} / S{sig.bear ?? 0}
                           </span>
                         )}
@@ -567,46 +494,32 @@ export default function OverviewView() {
 
       {/* Live Alerts */}
       <div
-        style={{
-          backgroundColor: colors.bgSecondary,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 8,
-          padding: 20,
-        }}
+        className="bg-surface-1/40 border border-border-muted/50 rounded-2xl p-5 backdrop-blur-md shadow-premium mb-6"
       >
-        <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
+        <div className="text-sm font-bold text-primary mb-4">
           Live Alerts
         </div>
         {recentLogs.length === 0 && (
-          <div style={{ color: colors.textMuted, fontSize: 13 }}>No alerts</div>
+          <div className="text-secondary text-xs">No alerts</div>
         )}
-        {recentLogs.map((log) => (
-          <div
-            key={log.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 0',
-              borderBottom: `1px solid ${colors.border}`,
-            }}
-          >
+        <div className="divide-y divide-border-muted/10">
+          {recentLogs.map((log) => (
             <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                flexShrink: 0,
-                backgroundColor:
-                  log.level === 'error' ? colors.red : log.level === 'warning' ? colors.amber : colors.blue,
-              }}
-            />
-            <span style={{ fontSize: 12, color: colors.textMuted, flexShrink: 0 }}>
-              {log.timestamp.toLocaleTimeString()}
-            </span>
-            <span style={{ fontSize: 13, color: colors.textPrimary }}>{log.message}</span>
-          </div>
-        ))}
+              key={log.id}
+              className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+            >
+              <div
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  log.level === 'error' ? 'bg-red-400 animate-pulse' : log.level === 'warning' ? 'bg-amber-400' : 'bg-blue-400'
+                }`}
+              />
+              <span className="text-[10px] text-secondary font-semibold font-mono flex-shrink-0">
+                {log.timestamp.toLocaleTimeString()}
+              </span>
+              <span className="text-xs text-primary font-medium">{log.message}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

@@ -47,7 +47,24 @@ export default function SystemHealthView() {
           health = await resp.json()
         } catch (e) {
           // Expected in cloud environment unless tunneled
-          health = { status: 'UNKNOWN', websocket: 'UNKNOWN' };
+          // Try to load from Netlify bot-status function
+          try {
+            const adminKeyVal = localStorage.getItem('ADMIN_API_KEY') || ''
+            const resp = await fetch('/.netlify/functions/bot-status', {
+              headers: { 'X-Admin-API-Key': adminKeyVal }
+            })
+            if (resp.ok) {
+              const statusData = await resp.json()
+              health = {
+                status: statusData.online ? 'ready' : (statusData.status === 'stale' ? 'stale' : 'offline'),
+                websocket: statusData.online ? 'connected' : 'disconnected'
+              }
+            } else {
+              health = { status: 'offline', websocket: 'disconnected' }
+            }
+          } catch {
+            health = { status: 'UNKNOWN', websocket: 'UNKNOWN' };
+          }
         }
 
         // Fetch recent audits

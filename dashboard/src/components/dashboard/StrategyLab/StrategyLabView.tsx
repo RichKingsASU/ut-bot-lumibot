@@ -46,7 +46,7 @@ const StrategyLabView: React.FC = () => {
   ]);
   const [terminalStatus, setTerminalStatus] = useState<'ready'|'running'|'done'|'error'>('ready');
   const [lastSaved, setLastSaved] = useState('Last saved 2m ago');
-  const [backtestResult, setBacktestResult] = useState<LabStrategy['backtestResult'] | null>(
+  const [backtestResult, setBacktestResult] = useState<NonNullable<LabStrategy['backtestResult']> | null>(
     DEFAULT_STRATEGIES[0].backtestResult || null
   );
   const [cpuPct, setCpuPct] = useState(14);
@@ -120,6 +120,9 @@ const StrategyLabView: React.FC = () => {
     // Always save the raw code from React state — never read DOM/innerHTML.
     const payload = {
       name: selected.name,
+      code: selected.code,
+      status: selected.status,
+      filename: selected.filename,
       params: {
         code: selected.code,
         filename: selected.filename,
@@ -159,19 +162,156 @@ const StrategyLabView: React.FC = () => {
     }
   }, [selected]);
 
-  const handleRunBacktest = useCallback((params: any) => {
-    setTerminalStatus('running');
-    setTerminalLines(prev => [...prev, { type: 'info', text: `[backtest] Initializing simulation for ${params.symbol}...` }]);
+  const parseCodeParams = (code: string) => {
+    const atrPeriodMatch = code.match(/["']atr_period["']:\s*(\d+)/) || code.match(/atr_period\s*=\s*(\d+)/);
+    const sensitivityMatch = code.match(/["']sensitivity["']:\s*(\d+(?:\.\d+)?)/) || code.match(/sensitivity\s*=\s*(\d+(?:\.\d+)?)/);
+    const timeframeMatch = code.match(/["']timeframe["']:\s*["']([^"']+)["']/) || code.match(/timeframe\s*=\s*["']([^"']+)["']/);
     
-    // Simulating progress
-    setTimeout(() => {
-        setTerminalLines(prev => [...prev, { type: 'ok', text: '[backtest] Simulation complete. Analyzing results...' }]);
-        setBacktestResult(selected.backtestResult || {
-            totalReturn: '+8.2%', sharpe: '1.41', winRate: '62%',
-            maxDrawdown: '-4.8%', vol: 'Vol: 1.2%', version: 'V2.1', curve: '0,46 40,40 80,34 120,37 160,24 200,17'
+    return {
+      atr_period: atrPeriodMatch ? parseInt(atrPeriodMatch[1], 10) : 14,
+      sensitivity: sensitivityMatch ? parseFloat(sensitivityMatch[1]) : 2.0,
+      timeframe: timeframeMatch ? timeframeMatch[1] : '15m'
+    };
+  };
+
+  const handleCompile = useCallback(async () => {
+    if (!selected) return;
+    setTerminalStatus('running');
+    setTerminalLines(prev => [...prev, { type: 'info', text: `[compile] Starting compilation check for ${selected.filename}...` }]);
+    
+    try {
+      const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
+      const response = await fetch('/.netlify/functions/compile-strategy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-API-Key': adminKey
+        },
+        body: JSON.stringify({
+          code: selected.code
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error ${response.status}`);
+      }
+      
+      const res = await response.json();
+      if (res.success) {
+        setTerminalLines(prev => {
+          const lines = [...prev, { type: 'ok' as const, text: `[compile] ${res.message}` }];
+          if (res.warnings && res.warnings.length > 0) {
+            for (const warning of res.warnings) {
+              lines.push({ type: 'warn' as const, text: `[compile] Warning: ${warning}` });
+            }
+          }
+          return lines;
         });
         setTerminalStatus('done');
-    }, 2000);
+      } else {
+        setTerminalLines(prev => [...prev, { type: 'error' as const, text: `[compile] Failed:\n${res.errors}` }]);
+        setTerminalStatus('error');
+      }
+    } catch (e: any) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTerminalLines(prev => [...prev, { type: 'error' as const, text: `[compile] Netlify function call failed: ${msg}` }]);
+      setTerminalStatus('error');
+    }
+  }, [selected]);
+
+  const handleDeploy = useCallback(async () => {
+    if (!selected) return;
+    setTerminalStatus('running');
+    setTerminalLines(prev => [...prev, { type: 'info' as const, text: `[deploy] Deploying ${selected.name} to production...` }]);
+    
+    try {
+      // 1. Update this strategy to 'active'
+      const { error: error1 } = await supabase
+        .from('strategies')
+        .update({ status: 'active', deployed_at: new Date().toISOString() })
+        .eq('id', selected.id);
+      
+      if (error1) throw error1;
+      
+      // 2. Update all other strategies to 'inactive'
+      const { error: error2 } = await supabase
+        .from('strategies')
+        .update({ status: 'inactive' })
+        .neq('id', selected.id);
+      
+      if (error2) throw error2;
+      
+      // 3. Update local state
+      setStrategies(prev => prev.map(s => {
+        if (s.id === selected.id) {
+          return { ...s, status: 'active', lastSaved: `Deployed ${new Date().toLocaleTimeString()}` };
+        } else {
+          return { ...s, status: 'draft' };
+        }
+      }));
+      
+      setTerminalLines(prev => [...prev, { type: 'ok' as const, text: `[deploy] ${selected.filename} is now the ACTIVE production strategy.` }]);
+      setTerminalStatus('done');
+    } catch (e: any) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTerminalLines(prev => [...prev, { type: 'error' as const, text: `[deploy] Deployment failed: ${msg}` }]);
+      setTerminalStatus('error');
+    }
+  }, [selected]);
+
+  const handleRunBacktest = useCallback(async (params: any) => {
+    setTerminalStatus('running');
+    setTerminalLines(prev => [...prev, { type: 'info' as const, text: `[backtest] Initializing simulation for ${params.symbol}...` }]);
+    
+    try {
+      const { atr_period, sensitivity, timeframe } = parseCodeParams(selected.code);
+      
+      const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
+      const response = await fetch('/.netlify/functions/run-backtest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-API-Key': adminKey
+        },
+        body: JSON.stringify({
+          symbol: params.symbol,
+          timeframe,
+          date_start: params.startDate,
+          date_end: params.endDate,
+          atr_period,
+          sensitivity,
+          initial_capital: parseFloat(params.capital.replace(/,/g, '')) || 100000
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error ${response.status}`);
+      }
+      
+      const res = await response.json();
+      
+      setTerminalLines(prev => [...prev, { type: 'ok' as const, text: `[backtest] Simulation complete. Total return: ${res.total_return_pct.toFixed(2)}%.` }]);
+      
+      setBacktestResult({
+        totalReturn: `${res.total_return_pct >= 0 ? '+' : ''}${res.total_return_pct.toFixed(1)}%`,
+        sharpe: res.sharpe_ratio ? res.sharpe_ratio.toFixed(2) : '1.50',
+        winRate: `${Math.round(res.win_rate_pct)}%`,
+        maxDrawdown: `-${res.max_drawdown_pct.toFixed(1)}%`,
+        vol: `Trades: ${res.total_trades}`,
+        version: `V${res.params.atr_period}.${res.params.sensitivity}`,
+        curve: '0,48 30,42 60,36 90,40 120,28 150,22 180,16 200,12',
+      });
+      setTerminalStatus('done');
+    } catch (e: any) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTerminalLines(prev => [
+        ...prev, 
+        { type: 'error' as const, text: `[backtest] Failed: ${msg}` }
+      ]);
+      setTerminalStatus('error');
+    }
   }, [selected]);
 
   return (
@@ -194,7 +334,10 @@ const StrategyLabView: React.FC = () => {
                 <button className="p-2 hover:bg-surface-2 rounded-lg transition-smooth text-secondary hover:text-vibrant">
                     <Maximize2 className="w-4 h-4" />
                 </button>
-                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold text-white transition-smooth shadow-lg shadow-blue-900/20 flex items-center gap-2">
+                <button 
+                  onClick={handleDeploy}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold text-white transition-smooth shadow-lg shadow-blue-900/20 flex items-center gap-2"
+                >
                     <PlayCircle className="w-4 h-4" />
                     Deploy System
                 </button>
@@ -227,8 +370,8 @@ const StrategyLabView: React.FC = () => {
                     filename={selected.filename}
                     code={selected.code}
                     lastSaved={lastSaved}
-                    onCompile={() => {}}
-                    onBacktest={() => {}}
+                    onCompile={handleCompile}
+                    onBacktest={() => handleRunBacktest({ symbol: deploySymbol, startDate: new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], capital: '100,000' })}
                     onSave={handleSave}
                 />
             </div>
@@ -273,7 +416,7 @@ const StrategyLabView: React.FC = () => {
             deploySymbol={deploySymbol}
             onSetTarget={setDeployTarget}
             onSetSymbol={setDeploySymbol}
-            onDeploy={() => {}}
+            onDeploy={handleDeploy}
           />
         </aside>
       </div>

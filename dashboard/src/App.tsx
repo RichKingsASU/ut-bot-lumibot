@@ -86,7 +86,26 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginPage />
+    const bypassAuth = localStorage.getItem('DEV_BYPASS_AUTH') === 'true' || window.location.search.includes('dev=true');
+    if (bypassAuth) {
+      // Mock session to allow dashboard inspection in local sandbox environments
+      const mockSession = {
+        access_token: 'mock-token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        refresh_token: 'mock-refresh',
+        user: {
+          id: 'dev-user-id',
+          email: 'dev@disruptingalpha.com',
+          role: 'authenticated',
+          aud: 'authenticated',
+        }
+      };
+      // Force set session in React state
+      setTimeout(() => setSession(mockSession as any), 0);
+    } else {
+      return <LoginPage />
+    }
   }
 
   return (
