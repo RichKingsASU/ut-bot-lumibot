@@ -43,7 +43,8 @@ export default function SystemHealthView() {
         // Fetch latest health status from bot (Local only)
         let health = null;
         try {
-          const resp = await fetch('http://localhost:8000/health', { signal: AbortSignal.timeout(2000) })
+          const botUrl = (import.meta.env.VITE_BOT_URL as string) || 'http://localhost:8000';
+          const resp = await fetch(`${botUrl}/health`, { signal: AbortSignal.timeout(2000) })
           health = await resp.json()
         } catch (e) {
           // Expected in cloud environment unless tunneled

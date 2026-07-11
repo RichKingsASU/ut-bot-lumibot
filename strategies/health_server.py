@@ -12,6 +12,13 @@ app = Flask(__name__)
 # Global status flags
 _is_ready = False
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Admin-API-Key'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    return response
+
 @app.route("/health")
 def health():
     """Consolidated health report for the dashboard."""
