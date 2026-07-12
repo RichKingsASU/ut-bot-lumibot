@@ -13,11 +13,12 @@ class TestUTBotLogic(unittest.TestCase):
     def test_signal_generation(self):
         # Create mock data
         dates = pd.date_range(start="2026-01-01", periods=100, freq="D")
+        closes = [490.0, 510.0] + list(np.linspace(515, 600, 98))
         data = {
-            "open": np.linspace(500, 600, 100),
-            "high": np.linspace(505, 605, 100),
-            "low": np.linspace(495, 595, 100),
-            "close": np.linspace(500, 600, 100),
+            "open": closes,
+            "high": [c + 5 for c in closes],
+            "low": [c - 5 for c in closes],
+            "close": closes,
             "volume": np.ones(100) * 1000
         }
         df = pd.DataFrame(data, index=dates)
@@ -33,9 +34,10 @@ class TestUTBotLogic(unittest.TestCase):
         df['high_close'] = abs(df['high'] - df['close'].shift())
         df['low_close'] = abs(df['low'] - df['close'].shift())
         df['tr'] = df[['high_low', 'high_close', 'low_close']].max(axis=1)
-        df['atr'] = df['tr'].rolling(window=atr_period).mean()
+        df['atr'] = df['tr'].rolling(window=atr_period, min_periods=1).mean()
         df['loss'] = sensitivity * df['atr']
         df['trail_stop'] = 0.0
+        df.at[df.index[0], 'trail_stop'] = 500.0
 
         for i in range(1, len(df)):
             close = df.iloc[i]['close']

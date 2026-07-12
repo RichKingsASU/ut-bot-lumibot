@@ -110,3 +110,6 @@ test.wav
 supabase/.temp/
 venv_broken_py314/
 
+
+venv_broken_py314/
+supabase/.temp/
