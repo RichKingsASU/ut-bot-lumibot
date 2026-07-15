@@ -179,28 +179,87 @@ def _synthetic(cfg) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Source 4: QuestDB ticks aggregated
+# ─────────────────────────────────────────────────────────────────────────────
+def _load_questdb(cfg) -> Optional[pd.DataFrame]:
+    try:
+        import requests
+        # Clean symbol (e.g. ETH/USD -> ETHUSD)
+        symbol_clean = cfg.symbol.replace("/", "")
+        
+        # Convert date to UTC ISO format strings for QuestDB query
+        start_str = f"{cfg.start.isoformat()}T00:00:00.000000Z"
+        end_str = f"{cfg.end.isoformat()}T23:59:59.999999Z"
+        
+        # Formulate SAMPLE BY query to let QuestDB do the heavy lifting
+        query = f"""
+        SELECT
+            timestamp,
+            first(price) as open,
+            max(price) as high,
+            min(price) as low,
+            last(price) as close,
+            sum(size) as volume
+        FROM ticks
+        WHERE symbol = '{symbol_clean}'
+          AND timestamp >= '{start_str}'
+          AND timestamp <= '{end_str}'
+        SAMPLE BY 1m ALIGN TO CALENDAR;
+        """
+        
+        url = f"{cfg.questdb_url}/exec"
+        resp = requests.get(url, params={"query": query.strip()}, timeout=15.0)
+        if resp.status_code != 200:
+            return None
+            
+        data = resp.json()
+        if "dataset" not in data or not data["dataset"]:
+            return None
+            
+        # Parse QuestDB JSON columns and rows
+        cols = [col["name"] for col in data["columns"]]
+        df = pd.DataFrame(data["dataset"], columns=cols)
+        
+        # Standardize the DataFrame
+        df = _standardize(df)
+        return df
+    except Exception:
+        return None
+
+
+from core.data_provenance import DataProvenance, SourcedData, enforce_provenance, SyntheticDataError
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Public loader
 # ─────────────────────────────────────────────────────────────────────────────
 def load_underlying(cfg, api_key: Optional[str] = None,
-                    api_secret: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
-    """Return (resampled_ohlcv, source_label) for the configured window/timeframe."""
-    source = None
-    df = _load_local(cfg)
-    if df is not None and len(df) > 0:
-        source = f"local-parquet:{cfg.data_store}"
-    elif api_key and api_secret:
-        df = _load_alpaca(cfg, api_key, api_secret)
+                    api_secret: Optional[str] = None) -> SourcedData:
+    """Return SourcedData for the configured window/timeframe."""
+    df = None
+    provenance = None
+
+    if getattr(cfg, "use_questdb", False):
+        df = _load_questdb(cfg)
         if df is not None and len(df) > 0:
-            source = "alpaca-minute-bars"
+            provenance = DataProvenance.REAL_QUESTDB
+
+    if df is None or len(df) == 0:
+        df = _load_local(cfg)
+        if df is not None and len(df) > 0:
+            provenance = DataProvenance.REAL_PARQUET
+        elif api_key and api_secret:
+            df = _load_alpaca(cfg, api_key, api_secret)
+            if df is not None and len(df) > 0:
+                provenance = DataProvenance.REAL_ALPACA
 
     if df is None or len(df) == 0:
         if not cfg.allow_synthetic:
-            raise RuntimeError(
-                "No underlying data available (no local store, no Alpaca) and "
-                "synthetic data is disabled."
+            raise SyntheticDataError(
+                f"Refusing to run: no real underlying data found for {cfg.symbol} "
+                f"and synthetic data is disabled. Pass --allow-synthetic to enable."
             )
         df = _synthetic(cfg)
-        source = "SYNTHETIC (deterministic GBM — no real data available)"
+        provenance = DataProvenance.SYNTHETIC_GBM
 
     # window filter
     start_ts = pd.Timestamp(cfg.start, tz=ET)
@@ -208,4 +267,14 @@ def load_underlying(cfg, api_key: Optional[str] = None,
     df = df[(df.index >= start_ts) & (df.index < end_ts)]
 
     resampled = resample(_filter_rth(df), cfg.timeframe)
-    return resampled, source
+
+    sd = SourcedData(
+        data=resampled,
+        provenance=provenance,
+        rows=len(resampled),
+        symbol=cfg.symbol
+    )
+
+    enforce_provenance(sd.provenance, allow_synthetic=cfg.allow_synthetic)
+
+    return sd

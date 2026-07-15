@@ -42,3 +42,32 @@ jobs:
           exit 1
         fi
         echo "Security scan passed — no hardcoded secrets found"
+
+    - name: Run unit tests and verify strict mode
+      run: |
+        pip install pytest
+        pytest tests/ -v
+        pytest backtests/tests/ -v
+        
+        # Enforce strict mode validation checks (must fail with SyntheticDataError)
+        echo "Verifying strict mode data provenance enforcement..."
+        if python scripts/run_options_backtest.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
+          echo "✓ Options backtester correctly failed in strict mode"
+        else
+          echo "FAILED: Options backtester did not enforce strict mode!"
+          exit 1
+        fi
+        
+        if PYTHONPATH=. python scripts/backtest_hmm_switching.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
+          echo "✓ HMM backtester correctly failed in strict mode"
+        else
+          echo "FAILED: HMM backtester did not enforce strict mode!"
+          exit 1
+        fi
+        
+        if PYTHONPATH=. python scripts/simulate_decay_recovery.py 2>&1 | grep -q "SyntheticDataError"; then
+          echo "✓ Decay simulator correctly failed in strict mode"
+        else
+          echo "FAILED: Decay simulator did not enforce strict mode!"
+          exit 1
+        fi

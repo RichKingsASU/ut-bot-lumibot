@@ -86,7 +86,9 @@ class BacktestConfig:
     data_store: str = "/mnt/tick-storage/historical/equities"
     cache_dir: str = "backtests/cache"
     results_dir: str = "backtests/results"
-    allow_synthetic: bool = True     # last-resort synthetic underlying
+    allow_synthetic: bool = False     # last-resort synthetic underlying
+    use_questdb: bool = False
+    questdb_url: str = "http://localhost:9000"
 
     # ── Runtime-populated labels (not user input) ──────────────────────
     underlying_source: str = field(default="", compare=False)

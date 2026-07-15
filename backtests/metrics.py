@@ -36,6 +36,8 @@ class Summary:
     max_drawdown: float
     sharpe: float
     bs_priced_pct: float
+    data_provenance: Optional[str] = None
+    data_rows: Optional[int] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

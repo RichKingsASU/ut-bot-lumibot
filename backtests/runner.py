@@ -33,12 +33,16 @@ def _credentials() -> Tuple[Optional[str], Optional[str]]:
 def run_single(cfg: BacktestConfig, verbose: bool = True) -> Tuple[Summary, pd.DataFrame, str, str]:
     """Run one configuration end-to-end. Returns (summary, trades_df, u_src, q_src)."""
     key, secret = _credentials()
-    df, u_src = load_underlying(cfg, key, secret)
+    sd = load_underlying(cfg, key, secret)
+    df = sd.data
+    u_src = sd.provenance.value
     provider, q_src = build_quote_provider(cfg, key, secret)
 
     trades = run_backtest(df, cfg, provider)
     tdf = trades_to_frame(trades)
     summ = summarize(tdf)
+    summ.data_provenance = u_src
+    summ.data_rows = sd.rows
 
     results = Path(cfg.results_dir)
     tag = f"{cfg.symbol}_{cfg.timeframe}_dte{cfg.dte}_{cfg.strike_mode}"
@@ -48,7 +52,7 @@ def run_single(cfg: BacktestConfig, verbose: bool = True) -> Tuple[Summary, pd.D
     png = save_equity_png(trades, png_path, f"UT Bot options — {tag}")
 
     if verbose:
-        print(assumptions_block(cfg, u_src, q_src, summ.bs_priced_pct))
+        print(assumptions_block(cfg, u_src, q_src, summ.bs_priced_pct, rows=sd.rows))
         print(format_summary(summ, cfg))
         print(f"  Per-trade CSV : {csv_path}")
         if png:

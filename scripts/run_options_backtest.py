@@ -35,6 +35,8 @@ def _date(s: str) -> date:
     return date.fromisoformat(s)
 
 
+import os
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="UT Bot IWM options backtest harness")
     p.add_argument("--symbol", default="IWM")
@@ -58,14 +60,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--base-iv", type=float, default=0.20, dest="base_iv")
     p.add_argument("--risk-free-rate", type=float, default=0.04, dest="risk_free_rate")
     # data
-    p.add_argument("--no-synthetic", action="store_true",
-                   help="fail instead of falling back to synthetic underlying data")
+    p.add_argument("--allow-synthetic", action="store_true",
+                   help="allow running on synthetic data explicitly")
+    p.add_argument("--use-questdb", action="store_true",
+                   help="query QuestDB tick table for underlying prices")
+    p.add_argument("--questdb-url", default="http://localhost:9000",
+                   help="QuestDB http endpoint URL")
     p.add_argument("--sweep", action="store_true",
                    help="grid over DTE{3,4,5} x strike{ATM,ITM1,ITM2} x tf{5m,15m}")
     return p
 
 
 def config_from_args(args) -> BacktestConfig:
+    allow_synth = args.allow_synthetic or os.getenv("ALLOW_SYNTHETIC", "").lower() in ("true", "1") or os.getenv("TRADING_MODE", "").lower() == "research"
     return BacktestConfig(
         symbol=args.symbol,
         timeframe=args.timeframe,
@@ -83,7 +90,9 @@ def config_from_args(args) -> BacktestConfig:
         contracts=args.contracts,
         base_iv=args.base_iv,
         risk_free_rate=args.risk_free_rate,
-        allow_synthetic=not args.no_synthetic,
+        allow_synthetic=allow_synth,
+        use_questdb=args.use_questdb,
+        questdb_url=args.questdb_url,
     )
 
 

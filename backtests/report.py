@@ -35,11 +35,30 @@ def save_trades_csv(trades, path: Path) -> pd.DataFrame:
 
 
 def assumptions_block(cfg, underlying_source: str, quote_source: str,
-                      bs_pct: Optional[float] = None) -> str:
+                      bs_pct: Optional[float] = None, rows: Optional[int] = None) -> str:
+    from core.data_provenance import DataProvenance
+    try:
+        prov = DataProvenance(underlying_source)
+    except Exception:
+        if "synthetic" in underlying_source.lower() or "gbm" in underlying_source.lower():
+            prov = DataProvenance.SYNTHETIC_GBM
+        elif "questdb" in underlying_source.lower():
+            prov = DataProvenance.REAL_QUESTDB
+        elif "alpaca" in underlying_source.lower():
+            prov = DataProvenance.REAL_ALPACA
+        else:
+            prov = DataProvenance.REAL_PARQUET
+
+    row_count_str = f"{rows:,}" if rows is not None else "unknown"
+    if prov.is_synthetic:
+        header = f"\n⚠️ DATA PROVENANCE: {prov.value.upper()} — RESULTS DO NOT REFLECT REAL MARKET DATA\n"
+    else:
+        header = f"\nDATA PROVENANCE: {prov.value} | rows={row_count_str} | symbol={cfg.symbol}\n"
+
     bs_line = ""
     if bs_pct is not None:
         bs_line = f"\n  • Black-Scholes-priced trades: {bs_pct:.1f}% of the sample"
-    return f"""
+    return f"""{header}
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║  ASSUMPTIONS & LIMITATIONS                                                 ║
 ╠══════════════════════════════════════════════════════════════════════════╣
