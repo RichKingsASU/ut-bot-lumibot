@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 
 export type TradingMode = 'paper' | 'live' | 'unknown'
 
-function parsePaperMode(value: unknown): boolean | null {
+export function parsePaperMode(value: unknown): boolean | null {
   if (value === null || value === undefined) return null
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
