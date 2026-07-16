@@ -1,30 +1,38 @@
 import type { Handler } from '@netlify/functions'
+import { requireAdmin, isAllowedAlpacaBaseUrl, ALPACA_PAPER_URL } from "./lib/auth"
 
 const handler: Handler = async (event) => {
+  // Require admin auth for ALL callers, including those supplying credentials
+  // in the body (DA-03): this proxy must not be an open credential/base-URL
+  // relay. Fails closed when ADMIN_API_KEY is unset in a deployed context.
+  const auth = requireAdmin(event);
+  if (!auth.ok) {
+    return { statusCode: auth.statusCode, body: auth.body };
+  }
+
   let apiKey = process.env.ALPACA_API_KEY || ''
   let apiSecret = process.env.ALPACA_API_SECRET || ''
-  let baseUrl = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets'
-  let bodyHasCredentials = false
+  let baseUrl = process.env.ALPACA_BASE_URL || ALPACA_PAPER_URL
 
   // Allow overriding for testing (Settings → Test Connection sends user-typed creds)
   if (event.httpMethod === 'POST' && event.body) {
     try {
       const body = JSON.parse(event.body);
-      if (body.apiKey) { apiKey = body.apiKey; bodyHasCredentials = true; }
-      if (body.apiSecret) { apiSecret = body.apiSecret; bodyHasCredentials = true; }
+      if (body.apiKey) apiKey = body.apiKey;
+      if (body.apiSecret) apiSecret = body.apiSecret;
       if (body.baseUrl) baseUrl = body.baseUrl;
     } catch (e) {
       return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
     }
   }
 
-  // Admin auth only gates env-credential reads. Requests that supply their
-  // own Alpaca credentials in the body are implicitly authorized by knowing
-  // them (the response only echoes data Alpaca returns for those keys).
-  const adminKey = process.env.ADMIN_API_KEY;
-  const requestKey = event.headers['x-admin-api-key'];
-  if (!bodyHasCredentials && adminKey && requestKey !== adminKey) {
-    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  // Whitelist the base URL (DA-03): never let a caller-supplied value point
+  // this proxy at an arbitrary host.
+  if (!isAllowedAlpacaBaseUrl(baseUrl)) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: "Invalid baseUrl. Must be an Alpaca REST endpoint." }),
+    };
   }
 
   console.log('[alpaca-account] key present:', !!process.env.ALPACA_API_KEY)

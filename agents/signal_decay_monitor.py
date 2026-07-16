@@ -113,6 +113,26 @@ class SignalDecayMonitor(BaseAgent):
         )
         return rows
 
+    @staticmethod
+    def _normalize_signal_family(signal_type) -> str:
+        """Collapse the divergent signal_type vocabularies to a common family token.
+
+        signal_log writes directional codes (e.g. 'UT_BUY', 'UT_SELL') while
+        trade_performance writes the strategy family (e.g. 'ut_bot'). The raw
+        strings never compare equal, so the IC join below always produced zero
+        matched pairs → permanent INSUFFICIENT_DATA (P0-9). Reducing both sides
+        to their leading family token ('ut') lets the join match by strategy
+        while sig_score still carries direction.
+
+        NOTE: heuristic (leading token before first '_'). Validate against the
+        real signal_log / trade_performance values once the equity bot is
+        actually writing rows — both tables are currently empty in production.
+        """
+        if not signal_type:
+            return None
+        token = str(signal_type).strip().lower().split('_')[0]
+        return token or None
+
     def calculate_ic(
         self,
         signals: list,
@@ -143,10 +163,14 @@ class SignalDecayMonitor(BaseAgent):
             sell_sig_bool = sell_sig in (True, 1, "true", "True", "1") if not isinstance(sell_sig, bool) else sell_sig
             
             sig_score = 1 if buy_sig_bool else (-1 if sell_sig_bool else 0)
-            sig_type = sig.get('signal_type')
-            
-            # Find the closest trade outcome of the same signal_type
-            matching_outcomes = [o for o in outcomes if o.get('signal_type') == sig_type]
+            sig_family = self._normalize_signal_family(sig.get('signal_type'))
+
+            # Find the closest trade outcome of the same signal family (P0-9:
+            # normalize both vocabularies so 'UT_BUY' matches 'ut_bot').
+            matching_outcomes = [
+                o for o in outcomes
+                if self._normalize_signal_family(o.get('signal_type')) == sig_family
+            ]
             if not matching_outcomes:
                 continue
                 

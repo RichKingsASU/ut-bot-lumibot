@@ -22,3 +22,69 @@ export function unauthorizedResponse() {
     headers: JSON_HEADERS,
   });
 }
+
+// ── Broker-safety helpers (P0 hardening — DA-02/DA-03/DA-05/DA-06) ──────────
+// These are used by the privileged alpaca-* Netlify functions. Unlike the
+// legacy isAuthorized() above (which fails OPEN for local-dev convenience),
+// requireAdmin() fails CLOSED: a production request with no configured
+// ADMIN_API_KEY is refused rather than run unauthenticated.
+
+export const ALPACA_PAPER_URL = "https://paper-api.alpaca.markets";
+export const ALPACA_LIVE_URL = "https://api.alpaca.markets";
+
+// Only genuinely local Netlify dev is allowed to skip admin auth. Every
+// deployed context (production, deploy-preview, branch-deploy) requires a key.
+function isLocalDev(): boolean {
+  return process.env.NETLIFY_DEV === "true" || process.env.CONTEXT === "dev";
+}
+
+type HeaderBag = { [name: string]: string | undefined };
+type EventLike = { headers: HeaderBag };
+
+export type AdminAuthResult =
+  | { ok: true }
+  | { ok: false; statusCode: number; body: string };
+
+// Fail-CLOSED admin authorization for privileged endpoints.
+export function requireAdmin(event: EventLike): AdminAuthResult {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) {
+    if (isLocalDev()) return { ok: true };
+    // Misconfiguration in a deployed context: refuse rather than run open.
+    return {
+      ok: false,
+      statusCode: 503,
+      body: JSON.stringify({
+        error:
+          "Server authentication is not configured (ADMIN_API_KEY unset). Refusing privileged request.",
+      }),
+    };
+  }
+  const headers = event.headers || {};
+  const requestKey =
+    headers["x-admin-api-key"] ?? headers["X-Admin-API-Key"];
+  if (requestKey !== adminKey) {
+    return {
+      ok: false,
+      statusCode: 401,
+      body: JSON.stringify({ error: "Unauthorized" }),
+    };
+  }
+  return { ok: true };
+}
+
+// Safe default: treat trading as PAPER unless ALPACA_IS_PAPER is *explicitly*
+// the string "false". An unset/blank var must never silently mean LIVE.
+export function resolveIsPaper(): boolean {
+  return process.env.ALPACA_IS_PAPER !== "false";
+}
+
+export function alpacaBaseUrl(isPaper: boolean): string {
+  return isPaper ? ALPACA_PAPER_URL : ALPACA_LIVE_URL;
+}
+
+// Reject any base URL that is not one of the two known Alpaca REST endpoints,
+// so a caller-supplied baseUrl can never point the proxy at an arbitrary host.
+export function isAllowedAlpacaBaseUrl(url: string): boolean {
+  return url === ALPACA_PAPER_URL || url === ALPACA_LIVE_URL;
+}

@@ -18,6 +18,13 @@ class KellySizer:
   MAX_POSITION_PCT = 0.20  # Never more than 20% of portfolio
   MIN_POSITION_PCT = 0.02  # Never less than 2% of portfolio
   BASE_PORTFOLIO = 107879  # Starting portfolio value (update from Alpaca)
+  # Fail-CLOSED size multiplier used when signal edge cannot be measured
+  # (status INSUFFICIENT_DATA or IC unavailable). This path previously used
+  # 1.0 (full size) — a fail-OPEN that let an unverified signal trade at full
+  # conviction (P0-9; live signal_performance is 100% INSUFFICIENT_DATA).
+  # Default 0.5 = treat unknown edge like a "weak" signal; set env
+  # IC_INSUFFICIENT_DATA_SCALAR=0.0 to hard-halt sizing until IC can compute.
+  IC_INSUFFICIENT_DATA_SCALAR = float(os.getenv("IC_INSUFFICIENT_DATA_SCALAR", "0.5"))
 
   def __init__(self):
     self.supabase_url = os.getenv('SUPABASE_URL')
@@ -252,8 +259,13 @@ class KellySizer:
     ic_adjustment = "No adjustment (healthy signal or no performance data)"
     
     if ic_status is None or ic_status == 'INSUFFICIENT_DATA' or ic_score is None:
-        ic_scalar = 1.0
-        ic_adjustment = f"IC UNRELIABLE (status={ic_status}): neutral, surfaced as NO_DATA"
+        # FAIL CLOSED (P0-9): edge is unverified — do NOT grant full size.
+        ic_scalar = self.IC_INSUFFICIENT_DATA_SCALAR
+        ic_adjustment = (
+            f"IC UNRELIABLE (status={ic_status}, ic={ic_score}): failing closed "
+            f"to ic_scalar={ic_scalar} (was 1.0 fail-open)"
+        )
+        logger.warning(ic_adjustment)
     else:
         if ic_score >= 0.02:
             ic_scalar = 1.0
