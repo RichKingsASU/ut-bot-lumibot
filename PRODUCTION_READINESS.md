@@ -80,14 +80,14 @@ Source docs: `DISRUPTING_ALPHA_SETTINGS_AUDIT.md`, `docs/fleet_signal_audit.md`,
 > This later forensic audit (5 CRITICAL / 15 HIGH / 5 MEDIUM) surfaced items not in the earlier synthesis. Not yet fixed.
 - [ ] **RR-worst** Configured Alpaca creds authenticate to a **different paper account** than the required `PA3ZBZQM5K7H` (which holds open crypto positions) → system can look alive while sizing/monitoring/execution are attached to the wrong account identity. **Verify account identity before anything else.**
 - [ ] **RR A-02 (CRITICAL)** `kelly_sizer.get_portfolio_value()` silently substitutes hardcoded `BASE_PORTFOLIO=107879` on Alpaca fetch failure → wrong position dollars on any broker/API outage (fail-open, no degraded heartbeat/halt). `kelly_sizer.py:20,146-168`.
-- [~] **RR B-05 (CRITICAL — PARTIAL FIX 2026-07-16)** Kill switch inconsistent / not end-to-end: `run_agents.py` and `agents/orchestrator.py` now poll `bot_status.target_status` at each cycle start and halt cleanly on `'stopped'` (fail-open on network error). **Remaining gap:** dashboard writes `target_status='shutdown'` (different value), Telegram `/stop` also writes `'stopped'` — the `'shutdown'` path is not yet caught by the new poll. Recommend standardizing on `'stopped'` across all writers. See Kill Switch Operating Procedure below.
+- [x] **RR B-05 (RESOLVED 2026-07-16)** Kill switch now accepts `stopped`, `shutdown`, and `stop` — catching the Netlify dashboard's `shutdown` write and any legacy variants. Polled at every orchestrator cycle start (fail-open on network error). See Kill Switch Operating Procedure below.
 - [ ] **RR B-06 (CRITICAL)** Orders have no `client_order_id`/idempotency key; `open_position` set only after confirmed fill → disconnect-after-acceptance can duplicate orders; partial fills treated as "not filled." `options_executor.py`.
 - [ ] **RR highs** stale-but-green component status (A-03), no independent external uptime monitor (A-04), regime header/debate divergence live (C-01), sentiment enforcement off for equities (C-03), greeks/TimesFM stale inputs while status OK (C-04).
 - Note: risk register rates IC/decay sequencing (B-03) and UT-bot daily-bar freshness (B-04) as **PASS** — reconcile B-03's "Kelly checks status" view with the fail-open I fixed in P0-9 (it defaulted to `1.0`, which is what changed).
 
 ## Kill Switch — Operating Procedure
 
-**Wired as of 2026-07-16 (B-05 partial fix).** Requires `da-agents` restart to activate.
+**Fully wired as of 2026-07-16 (B-05 RESOLVED).** Accepts `stopped`, `shutdown`, or `stop`. `da-agents` restarted and active on main branch.
 
 ### To halt the da-agents orchestrator loop
 1. Go to Supabase dashboard → Table Editor → `bot_status`
