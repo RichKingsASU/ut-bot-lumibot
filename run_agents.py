@@ -245,7 +245,7 @@ Recommendation:
 async def main() -> None:
     """Send startup notification, then run the orchestrator pipeline every 15 min."""
     # Import after load_dotenv so agents pick up env vars
-    from agents.orchestrator import run_cycle
+    from agents.orchestrator import run_cycle, _poll_kill_switch
 
     startup_message = (
         "🤖 Agent orchestrator started — LangGraph pipeline every 15min"
@@ -258,6 +258,12 @@ async def main() -> None:
     afternoon_sent = False
     
     while True:
+        # Kill switch: poll Supabase bot_status at the start of every cycle
+        if _poll_kill_switch():
+            logger.warning("[RunAgents] Kill switch activated — exiting agent loop cleanly.")
+            await _send_telegram("🛑 Kill switch activated — da-agents halting cleanly.")
+            break
+
         now_et = datetime.now(pytz.timezone('America/New_York'))
         
         # Reset daily flags at midnight
