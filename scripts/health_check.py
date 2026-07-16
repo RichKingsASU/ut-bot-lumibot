@@ -394,10 +394,27 @@ def check_heartbeat():
 
 # ── 11. Historical data coverage ─────────────────────────────────────────────
 def _date_range_from_1d(symbol_dir: str, symbol: str):
-    """Parse date range from the 1D filename, e.g. SYM_1D_2010-01-01_2026-05-23.parquet."""
+    """Read actual min/max timestamp from parquet row-group statistics."""
     files = glob.glob(os.path.join(symbol_dir, f"{symbol}_1D_*.parquet"))
     if not files:
         return None
+    try:
+        import pyarrow.parquet as pq
+        meta = pq.read_metadata(files[0])
+        for rg_idx in range(meta.num_row_groups):
+            rg = meta.row_group(rg_idx)
+            for col_idx in range(rg.num_columns):
+                col = rg.column(col_idx)
+                if col.path_in_schema == "timestamp" and col.statistics and col.statistics.has_min_max:
+                    ts_min = col.statistics.min
+                    ts_max = col.statistics.max
+                    fmt = "%Y-%m-%d"
+                    d_min = ts_min.strftime(fmt) if hasattr(ts_min, "strftime") else str(ts_min)[:10]
+                    d_max = ts_max.strftime(fmt) if hasattr(ts_max, "strftime") else str(ts_max)[:10]
+                    return d_min, d_max
+    except Exception:
+        pass
+    # Fallback: parse filename so we always return something
     m = re.search(r"_1D_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})", os.path.basename(files[0]))
     if m:
         return m.group(1), m.group(2)
