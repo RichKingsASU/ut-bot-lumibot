@@ -76,6 +76,30 @@ def _send_daily_stop_alert(loss: float, limit: float, equity: float) -> None:
         logger.warning(f"Daily stop alert failed: {e}")
 
 
+def _poll_kill_switch() -> bool:
+    """Poll Supabase bot_status.target_status; return True if 'stopped'. Fail-open on error."""
+    import requests as _req
+    try:
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not url or not key:
+            return False
+        resp = _req.get(
+            f"{url}/rest/v1/bot_status",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            params={"id": "eq.1", "select": "target_status"},
+            timeout=2.0,
+        )
+        if resp.status_code == 200 and resp.json():
+            status = resp.json()[0].get("target_status", "running")
+            if status.lower() == "stopped":
+                logger.warning("Kill switch activated — target_status=stopped. Halting.")
+                return True
+    except Exception as exc:
+        logger.warning(f"Kill switch poll failed — continuing (fail-open): {exc}")
+    return False
+
+
 def _check_daily_stop() -> bool:
     """Query Alpaca paper account equity and set/clear _DAILY_STOP_ACTIVE.
 
@@ -1012,6 +1036,8 @@ async def run_equities_cycle() -> dict:
 
 async def run_cycle() -> dict:
     """Invoke both crypto and equities pipelines in parallel, then send a combined report."""
+    if _poll_kill_switch():
+        return {"halted": True, "reason": "kill_switch"}
     logger.info("[Orchestrator] Starting dual-pipeline cycle...")
     
     crypto_result, equities_result = await asyncio.gather(
