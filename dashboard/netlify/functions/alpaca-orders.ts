@@ -1,14 +1,14 @@
 import type { Handler } from '@netlify/functions'
+import { requireAdmin, ALPACA_PAPER_URL } from "./lib/auth"
 
 const handler: Handler = async (event) => {
-  // ── [SECURITY FIX] Admin Auth ──────────────────────────────────────
-  const adminKey = process.env.ADMIN_API_KEY;
-  const requestKey = event.headers['x-admin-api-key'];
-  if (adminKey && requestKey !== adminKey) {
-    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  // Fail-CLOSED admin auth (DA-06).
+  const auth = requireAdmin(event);
+  if (!auth.ok) {
+    return { statusCode: auth.statusCode, body: auth.body };
   }
 
-  const baseUrl = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets'
+  const baseUrl = process.env.ALPACA_BASE_URL || ALPACA_PAPER_URL
   const apiKey = process.env.ALPACA_API_KEY || ''
   const apiSecret = process.env.ALPACA_API_SECRET || ''
 
