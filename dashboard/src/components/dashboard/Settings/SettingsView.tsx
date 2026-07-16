@@ -322,6 +322,20 @@ export function SettingsView() {
 
   const handleTestAdminKey = async () => {
     if (adminKeyTestLoading) return
+    // If the user has typed a key but hasn't saved it yet, save it first so the
+    // test uses the current input value rather than a stale/empty stored value.
+    const pendingInput = adminKeyInput.trim()
+    if (pendingInput) {
+      setAdminKey(pendingInput)
+      setAdminKeyHasValue(true)
+      setAdminKeyMasked(pendingInput.slice(0, 4) + '•'.repeat(Math.max(0, pendingInput.length - 4)))
+      setAdminKeyInput('')
+    }
+    if (!getAdminKey() && !pendingInput) {
+      setAdminKeyTestStatus('error')
+      setAdminKeyTestMsg('Enter an Admin API Key before testing.')
+      return
+    }
     setAdminKeyTestLoading(true)
     setAdminKeyTestStatus(null)
     try {
