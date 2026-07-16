@@ -17,7 +17,7 @@ class KellySizer:
   DEFAULT_PAYOUT = 1.5     # Default avg win/loss ratio
   MAX_POSITION_PCT = 0.20  # Never more than 20% of portfolio
   MIN_POSITION_PCT = 0.02  # Never less than 2% of portfolio
-  BASE_PORTFOLIO = 107879  # Starting portfolio value (update from Alpaca)
+  _BASE_PORTFOLIO_DEFAULT = 100_000
   # Fail-CLOSED size multiplier used when signal edge cannot be measured
   # (status INSUFFICIENT_DATA or IC unavailable). This path previously used
   # 1.0 (full size) — a fail-OPEN that let an unverified signal trade at full
@@ -32,6 +32,15 @@ class KellySizer:
     self.alpaca_api_key = os.getenv('ALPACA_API_KEY')
     self.alpaca_api_secret = os.getenv('ALPACA_API_SECRET')
     self.alpaca_base_url = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+    _env_val = os.getenv('BASE_PORTFOLIO')
+    if _env_val:
+      self.BASE_PORTFOLIO = float(_env_val)
+    else:
+      logger.warning(
+        "BASE_PORTFOLIO not set, defaulting to $%s — set BASE_PORTFOLIO in .env",
+        f"{self._BASE_PORTFOLIO_DEFAULT:,}"
+      )
+      self.BASE_PORTFOLIO = float(self._BASE_PORTFOLIO_DEFAULT)
 
   async def get_historical_performance(
     self,
