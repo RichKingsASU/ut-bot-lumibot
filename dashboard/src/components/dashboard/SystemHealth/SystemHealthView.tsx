@@ -3,6 +3,7 @@ import { Activity, Shield, Zap, AlertCircle, CheckCircle, Server, Globe, Lock } 
 import { supabase } from '../../../lib/supabaseClient'
 import { PageHeader } from '../../ui/PageHeader'
 import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
+import { netlifyFetch, setAdminKey as persistAdminKey } from '../../../lib/apiClient'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -50,10 +51,7 @@ export default function SystemHealthView() {
           // Expected in cloud environment unless tunneled
           // Try to load from Netlify bot-status function
           try {
-            const adminKeyVal = localStorage.getItem('ADMIN_API_KEY') || ''
-            const resp = await fetch('/.netlify/functions/bot-status', {
-              headers: { 'X-Admin-API-Key': adminKeyVal }
-            })
+            const resp = await netlifyFetch('bot-status')
             if (resp.ok) {
               const statusData = await resp.json()
               health = {
@@ -181,8 +179,7 @@ export default function SystemHealthView() {
                   onChange={async (e) => {
                     const val = e.target.value
                     setAdminKey(val)
-                    localStorage.setItem('ADMIN_API_KEY', val)
-                    localStorage.setItem('admin_api_key', val)
+                    persistAdminKey(val)
                     try {
                       await supabase.auth.updateUser({
                         data: { ADMIN_API_KEY: val }

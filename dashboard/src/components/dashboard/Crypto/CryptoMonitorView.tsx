@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, RefreshCw, Zap, TrendingUp, TrendingDown, Activity, Globe, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '../../ui/PageHeader';
 import { MetricTile } from '../common/MetricTile';
+import { netlifyFetch } from '../../../lib/apiClient';
 
 interface CryptoQuote {
     symbol: string;
@@ -20,7 +21,7 @@ export default function CryptoMonitorView() {
 
     const fetchPrices = useCallback(async () => {
         try {
-            const res = await fetch(`/.netlify/functions/crypto-prices?symbols=${CRYPTO_SYMBOLS.map(encodeURIComponent).join(',')}`);
+            const res = await netlifyFetch(`crypto-prices?symbols=${CRYPTO_SYMBOLS.map(encodeURIComponent).join(',')}`);
             const data = await res.json();
             
             const parsed = CRYPTO_SYMBOLS.map(sym => {

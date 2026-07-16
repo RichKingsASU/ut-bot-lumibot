@@ -112,12 +112,19 @@ function ConnectionDot({ online }: { online: boolean }) {
   )
 }
 
-function StaleIndicator({ stale }: { stale: boolean }) {
+function StaleIndicator({ stale, lastUpdated }: { stale: boolean; lastUpdated?: Date | null }) {
   if (!stale) return null
+  const ageLabel = (() => {
+    if (!lastUpdated) return null
+    const mins = Math.floor((Date.now() - lastUpdated.getTime()) / 60_000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    return `${Math.floor(mins / 60)}h ago`
+  })()
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Alpaca broker disconnected — data may be stale">
       <AlertTriangle size={9} />
-      STALE
+      STALE{ageLabel ? ` • ${ageLabel}` : ''}
     </span>
   )
 }
@@ -126,6 +133,7 @@ function StaleIndicator({ stale }: { stale: boolean }) {
 
 export default function OverviewView() {
   const {
+    symbol,
     account,
     positions,
     signals,
@@ -181,10 +189,11 @@ export default function OverviewView() {
           })))
         }
 
-        // 3. Fetch live agent signals
+        // 3. Fetch live agent signals filtered by selected symbol
         const { data: agentSignalsData } = await supabase
           .from('agent_signals')
           .select('symbol, action, confidence, created_at, reasoning')
+          .eq('symbol', symbol)
           .order('created_at', { ascending: false })
           .limit(10)
 
@@ -225,7 +234,7 @@ export default function OverviewView() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [symbol])
 
   const { winRate: liveWinRate } = useMetrics()
 
@@ -314,7 +323,7 @@ export default function OverviewView() {
         <BentoTile colSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40">
           <TileHeader>
             <TileTitle icon={DollarSign}>Portfolio</TileTitle>
-            <StaleIndicator stale={!connected} />
+            <StaleIndicator stale={!connected} lastUpdated={lastUpdated} />
           </TileHeader>
           <div className="px-4 pb-4 flex items-end justify-between gap-6">
             <StatBlock

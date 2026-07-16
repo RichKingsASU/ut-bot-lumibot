@@ -124,8 +124,9 @@ export function Sidebar() {
             )}
           </AnimatePresence>
         </div>
-        <button 
+        <button
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? 'Expand sidebar navigation' : 'Collapse sidebar navigation'}
           className="p-2 hover:bg-surface-2 rounded-xl transition-smooth text-dim hover:text-vibrant"
         >
           {collapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}

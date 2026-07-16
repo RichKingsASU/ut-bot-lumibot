@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder } from '../types/alpaca'
+import { netlifyFetch } from '../lib/apiClient'
 
 interface AlpacaAccountState {
   account: AlpacaAccount | null
@@ -12,12 +13,10 @@ interface AlpacaAccountState {
   accountUpdatedAt: Date | null
 }
 
-// Account is a relatively stable snapshot — refreshing every 60s gives the
-// header a stable P&L value that doesn't visibly tick on every navigation.
-// Positions / orders need to feel live so they stay on shorter intervals.
 const ACCOUNT_INTERVAL = 60000
 const POSITIONS_INTERVAL = 5000
 const ORDERS_INTERVAL = 10000
+const MAX_AUTH_FAILURES = 3
 
 export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   const [account, setAccount] = useState<AlpacaAccount | null>(null)
@@ -26,14 +25,21 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [accountUpdatedAt, setAccountUpdatedAt] = useState<Date | null>(null)
+  const authFailures = useRef(0)
+  const stoppedRef = useRef(false)
 
   const fetchAccount = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-      const res = await fetch('/.netlify/functions/alpaca-account', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const res = await netlifyFetch('alpaca-account')
+      if (res.status === 401) {
+        authFailures.current += 1
+        if (authFailures.current >= MAX_AUTH_FAILURES) stoppedRef.current = true
+        setError('Unauthorized — set Admin API Key in Settings.')
+        return
+      }
       if (!res.ok) throw new Error(`Account fetch failed: ${res.status}`)
+      authFailures.current = 0
       const data = await res.json()
       setAccount(data)
       setAccountUpdatedAt(new Date())
@@ -43,11 +49,10 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   }, [])
 
   const fetchPositions = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-      const res = await fetch('/.netlify/functions/alpaca-positions', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const res = await netlifyFetch('alpaca-positions')
+      if (res.status === 401) return
       if (!res.ok) throw new Error(`Positions fetch failed: ${res.status}`)
       const data = await res.json()
       setPositions(Array.isArray(data) ? data : [])
@@ -57,11 +62,10 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   }, [])
 
   const fetchOrders = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-      const res = await fetch('/.netlify/functions/alpaca-orders', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const res = await netlifyFetch('alpaca-orders')
+      if (res.status === 401) return
       if (!res.ok) throw new Error(`Orders fetch failed: ${res.status}`)
       const data = await res.json()
       setOrders(Array.isArray(data) ? data : [])
@@ -71,6 +75,8 @@ export function useAlpacaAccount(symbol: string): AlpacaAccountState {
   }, [])
 
   useEffect(() => {
+    stoppedRef.current = false
+    authFailures.current = 0
     const init = async () => {
       setLoading(true)
       await Promise.all([fetchAccount(), fetchPositions(), fetchOrders()])

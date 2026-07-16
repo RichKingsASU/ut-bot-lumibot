@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { ShieldAlert, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { netlifyFetch } from '../../../lib/apiClient';
 
 /**
  * Emergency Shutdown — double-action safety control.
@@ -34,14 +35,7 @@ export function EmergencyShutdown() {
     clearHold();
     setLoading(true);
     try {
-      const adminKey = localStorage.getItem('ADMIN_API_KEY') || localStorage.getItem('admin_api_key') || '';
-      const response = await fetch('/.netlify/functions/alpaca-flatten', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-API-Key': adminKey
-        }
-      });
+      const response = await netlifyFetch('alpaca-flatten', { method: 'POST' });
 
       if (response.ok) {
         alert('Emergency shutdown initiated. All orders cancelled, positions flattened.');

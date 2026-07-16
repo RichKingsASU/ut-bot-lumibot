@@ -150,18 +150,25 @@ export function TopBar() {
           </button>
         )}
 
-        {currentPrice != null && (
+        {currentPrice != null && currentPrice !== 0 ? (
           <div className="flex flex-col">
             <span style={{ color: priceColor }} className="font-bold text-base leading-none transition-smooth">
               {fmtPrice(currentPrice)}
             </span>
-            {prevClose != null && (
+            {prevClose != null && prevClose !== 0 ? (
               <span className="text-[9px] text-dim font-bold tracking-tight mt-0.5">
                 {priceUp ? '▲' : '▼'} {(((currentPrice - prevClose) / prevClose) * 100).toFixed(2)}%
               </span>
+            ) : (
+              <span className="text-[9px] text-dim font-bold tracking-tight mt-0.5">--</span>
             )}
           </div>
-        )}
+        ) : currentPrice === 0 ? (
+          <div className="flex flex-col">
+            <span className="font-bold text-base leading-none text-muted-foreground">--</span>
+            <span className="text-[9px] text-dim font-bold tracking-tight mt-0.5">--</span>
+          </div>
+        ) : null}
 
         <div className="w-px h-6 bg-border-muted/50 hidden sm:block" />
 

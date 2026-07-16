@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface UseSupabaseDataProps {
   symbol: string;
@@ -19,10 +20,9 @@ export const useSupabaseData = ({ symbol, timeframe = '15m', limit = 100, mode }
       setLoading(true);
       setError(null);
       try {
-        const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-        const response = await fetch(`/.netlify/functions/supabase-query?type=bars&symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`, {
-          headers: { 'X-Admin-API-Key': adminKey }
-        });
+        const response = await netlifyFetch(
+          `supabase-query?type=bars&symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`
+        );
         if (!response.ok) throw new Error('Failed to fetch historical bars');
         const data = await response.json();
         setBars(data);

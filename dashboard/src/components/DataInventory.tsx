@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toUserMessage } from '../lib/apiError';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface InventoryItem {
   symbol: string;
@@ -29,7 +30,7 @@ export const DataInventory: React.FC = () => {
 
   const fetchInventory = async () => {
     try {
-      const res = await fetch('/.netlify/functions/supabase-query?type=inventory');
+      const res = await netlifyFetch('supabase-query?type=inventory');
       if (!res.ok) throw new Error('Failed to fetch inventory');
       const json = await res.json();
       setData(json);
@@ -49,9 +50,8 @@ export const DataInventory: React.FC = () => {
   const runBacktest = async () => {
     setBtStatus('Running...');
     try {
-      const res = await fetch('/.netlify/functions/run-backtest', {
+      const res = await netlifyFetch('run-backtest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           symbol: 'IWM',
           timeframe: '15m',

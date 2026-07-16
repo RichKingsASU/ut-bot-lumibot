@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Bitcoin, Coins, TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, RefreshCw, Terminal } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { parseConfidence } from '../../../lib/confidence'
+import { netlifyFetch } from '../../../lib/apiClient'
 
 interface CryptoAsset {
   name: string
@@ -44,10 +45,7 @@ export function CryptoView() {
     setError(null)
     try {
       // 1. Fetch Alpaca live prices
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || ''
-      const priceRes = await fetch('/.netlify/functions/crypto-prices?symbols=BTC/USD,ETH/USD,SOL/USD', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const priceRes = await netlifyFetch('crypto-prices?symbols=BTC/USD,ETH/USD,SOL/USD')
 
       let liveQuotes: Record<string, any> = {}
       if (priceRes.ok) {

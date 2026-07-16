@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Activity, Shield, RefreshCw, AlertTriangle, Cpu } from 'lucide-react'
+import { netlifyFetch } from '../../../lib/apiClient'
 
 interface GreekData {
   symbol: string
@@ -24,10 +25,7 @@ export function OptionsView() {
     setLoading(true)
     setError(null)
     try {
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || ''
-      const res = await fetch('/.netlify/functions/get-greeks', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const res = await netlifyFetch('get-greeks')
 
       if (!res.ok) throw new Error(`Netlify function status: ${res.status}`)
 

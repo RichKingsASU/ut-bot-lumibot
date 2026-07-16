@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send, CheckCircle2, XCircle, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, ChevronDown, ChevronUp, Save, Eye, EyeOff, Send, CheckCircle2, XCircle, Loader2, AlertTriangle, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
 import { API } from '../../../lib/api'
 import { PageHeader } from '../../ui/PageHeader'
 import { tradingModeBadgeStyle, parsePaperMode } from '../../../hooks/useTradingMode'
+import { getAdminKey, setAdminKey, netlifyFetch } from '../../../lib/apiClient'
 
 const PAPER_URL = 'https://paper-api.alpaca.markets'
 const LIVE_URL = 'https://api.alpaca.markets'
@@ -215,7 +216,7 @@ const styles = {
   }),
 }
 
-type Section = 'broker' | 'database' | 'notifications' | 'strategy'
+type Section = 'admin' | 'broker' | 'database' | 'notifications' | 'strategy'
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -251,7 +252,16 @@ function MaskedInput({ label, value, onChange, placeholder }: { label: string; v
 }
 
 export function SettingsView() {
-  const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['broker']))
+  const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['admin']))
+  // Admin API Key
+  const [adminKeyInput, setAdminKeyInput] = useState('')
+  const [adminKeyMasked, setAdminKeyMasked] = useState('')
+  const [adminKeyHasValue, setAdminKeyHasValue] = useState(false)
+  const [adminKeyTestLoading, setAdminKeyTestLoading] = useState(false)
+  const [adminKeySaveStatus, setAdminKeySaveStatus] = useState<SaveStatus>(null)
+  const [adminKeyTestStatus, setAdminKeyTestStatus] = useState<null | 'success' | 'error'>(null)
+  const [adminKeyTestMsg, setAdminKeyTestMsg] = useState('')
+
   const [alpacaKey, setAlpacaKey] = useState('')
   const [alpacaSecret, setAlpacaSecret] = useState('')
   const [paperMode, setPaperMode] = useState(true)
@@ -286,6 +296,63 @@ export function SettingsView() {
   const [testLatency, setTestLatency] = useState<number | null>(null)
   const [lastVerified, setLastVerified] = useState<string | null>(null)
   const [accountData, setAccountData] = useState<any>(null)
+
+  useEffect(() => {
+    const existing = getAdminKey()
+    if (existing) {
+      setAdminKeyHasValue(true)
+      setAdminKeyMasked(existing.slice(0, 4) + '•'.repeat(Math.max(0, existing.length - 4)))
+    }
+  }, [])
+
+  const handleSaveAdminKey = () => {
+    const val = adminKeyInput.trim()
+    if (!val) {
+      setAdminKeySaveStatus({ ok: false, msg: 'Enter a key value before saving.' })
+      setTimeout(() => setAdminKeySaveStatus(null), 4000)
+      return
+    }
+    setAdminKey(val)
+    setAdminKeyHasValue(true)
+    setAdminKeyMasked(val.slice(0, 4) + '•'.repeat(Math.max(0, val.length - 4)))
+    setAdminKeyInput('')
+    setAdminKeySaveStatus({ ok: true, msg: 'Admin API Key saved.' })
+    setTimeout(() => setAdminKeySaveStatus(null), 4000)
+  }
+
+  const handleTestAdminKey = async () => {
+    if (adminKeyTestLoading) return
+    setAdminKeyTestLoading(true)
+    setAdminKeyTestStatus(null)
+    try {
+      const res = await netlifyFetch('alpaca-account')
+      if (res.ok) {
+        setAdminKeyTestStatus('success')
+        setAdminKeyTestMsg('Connection verified — admin key is valid.')
+      } else if (res.status === 401) {
+        setAdminKeyTestStatus('error')
+        setAdminKeyTestMsg('Invalid or missing admin key — check the value and try again.')
+      } else {
+        setAdminKeyTestStatus('error')
+        setAdminKeyTestMsg(`Unexpected response: ${res.status}`)
+      }
+    } catch (e) {
+      setAdminKeyTestStatus('error')
+      setAdminKeyTestMsg('Network error — check connection.')
+    } finally {
+      setAdminKeyTestLoading(false)
+    }
+  }
+
+  const handleClearAdminKey = () => {
+    localStorage.removeItem('ADMIN_API_KEY')
+    localStorage.removeItem('admin_api_key')
+    setAdminKeyHasValue(false)
+    setAdminKeyMasked('')
+    setAdminKeyInput('')
+    setAdminKeySaveStatus({ ok: true, msg: 'Admin API Key cleared.' })
+    setTimeout(() => setAdminKeySaveStatus(null), 4000)
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem('alpaca_last_verified')
@@ -475,13 +542,8 @@ export function SettingsView() {
 
     try {
       console.log(`[CONN_TEST] Attempting connection to ${baseUrl}...`)
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || ''
-      const response = await fetch(API.alpacaAccount(), {
+      const response = await netlifyFetch('alpaca-account', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-api-key': adminKey
-        },
         body: JSON.stringify({
           apiKey: alpacaKey,
           apiSecret: alpacaSecret,
@@ -551,6 +613,74 @@ export function SettingsView() {
   return (
     <div style={styles.container}>
       <PageHeader title="Settings" subtitle="Broker · Database · Bot" />
+
+      {/* ADMIN API KEY */}
+      <div style={styles.accordion}>
+        <div style={styles.accordionHeader} onClick={() => toggleSection('admin')}>
+          <div style={styles.accordionTitle}>
+            <ShieldAlert size={18} /> Admin API Key
+          </div>
+          {isOpen('admin') ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+        <div style={styles.accordionBody(isOpen('admin'))}>
+          <div style={styles.accordionContent}>
+            <p style={{ ...styles.muted, marginBottom: '14px' }}>
+              Required for all Netlify function calls (market data, pipeline status, live alerts).
+              {adminKeyHasValue && (
+                <span style={{ color: 'var(--green, #3fb950)', marginLeft: '8px' }}>
+                  <CheckCircle2 size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+                  Key configured: {adminKeyMasked}
+                </span>
+              )}
+            </p>
+            <div style={styles.inputRow}>
+              <label style={styles.label}>Admin API Key</label>
+              <MaskedInput
+                label=""
+                value={adminKeyInput}
+                onChange={setAdminKeyInput}
+                placeholder={adminKeyHasValue ? 'Leave blank to keep existing key' : 'Enter admin API key'}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const, marginTop: '8px' }}>
+              <button style={styles.btnPrimary} onClick={handleSaveAdminKey}>
+                <Save size={14} /> Save Key
+              </button>
+              <button
+                style={{ ...styles.btn, opacity: adminKeyTestLoading ? 0.6 : 1 }}
+                onClick={handleTestAdminKey}
+                disabled={adminKeyTestLoading}
+              >
+                {adminKeyTestLoading ? <Loader2 size={14} /> : null}
+                {adminKeyTestLoading ? 'Testing...' : 'Test Connection'}
+              </button>
+              {adminKeyHasValue && (
+                <button
+                  style={{ ...styles.btn, color: 'var(--red, #f85149)', borderColor: 'rgba(248,81,73,0.3)' }}
+                  onClick={handleClearAdminKey}
+                >
+                  Clear Key
+                </button>
+              )}
+              {adminKeySaveStatus && (
+                <span style={{ fontSize: '13px', color: adminKeySaveStatus.ok ? 'var(--green, #3fb950)' : 'var(--red, #f85149)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  {adminKeySaveStatus.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  {adminKeySaveStatus.msg}
+                </span>
+              )}
+            </div>
+            {adminKeyTestStatus && (
+              <div style={{ ...styles.testResult, ...(adminKeyTestStatus === 'success' ? styles.successBox : styles.errorBox), marginTop: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                  {adminKeyTestStatus === 'success' ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+                  {adminKeyTestStatus === 'success' ? 'Key Valid' : 'Key Invalid'}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>{adminKeyTestMsg}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* BROKER */}
       <div style={styles.accordion}>

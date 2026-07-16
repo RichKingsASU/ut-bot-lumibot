@@ -1,5 +1,6 @@
 import React, { Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+const NotFound = React.lazy(() => import('./pages/NotFound'))
 import { LoginPage } from './components/LoginPage'
 import { MainLayout } from './components/dashboard/layout/MainLayout'
 import { supabase, supabaseMisconfigured } from './lib/supabaseClient'
@@ -170,7 +171,7 @@ export default function App() {
             <Route path="/admin/health" element={<Suspense fallback={<RouteFallback />}><SystemHealthPage /></Suspense>} />
             <Route path="/admin/pipeline" element={<Suspense fallback={<RouteFallback />}><AgentPipelinePage /></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<RouteFallback />}><SettingsView /></Suspense>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Suspense fallback={<RouteFallback />}><NotFound /></Suspense>} />
           </Route>
         </Routes>
         </ErrorBoundary>

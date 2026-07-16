@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
 import { useAlpacaAccount } from '../hooks/useAlpacaAccount'
 import { useAlpacaStream } from '../hooks/useAlpacaStream'
 import { useUTBot } from '../hooks/useUTBot'
@@ -66,6 +66,36 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     atrPeriod: 10,
     sensitivity: 1.0,
   })
+
+  // Track connect/disconnect transitions and log them as alerts (F-5)
+  const prevConnectedRef = useRef<boolean | null>(null)
+  const latestConnectedRef = useRef(connected)
+  useEffect(() => { latestConnectedRef.current = connected }, [connected])
+
+  useEffect(() => {
+    if (prevConnectedRef.current === null) {
+      prevConnectedRef.current = connected
+      return
+    }
+    if (prevConnectedRef.current === connected) return
+    if (!connected) {
+      addLog('🔴 Alpaca Markets disconnected', 'error')
+    } else {
+      addLog('Alpaca Markets reconnected', 'info')
+    }
+    prevConnectedRef.current = connected
+  }, [connected, addLog])
+
+  // After 10 s on page load, if still not connected, show failure banner in alerts (F-5)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!latestConnectedRef.current) {
+        addLog('⚠ Alpaca Markets connection failed — broker offline or key not set', 'error')
+      }
+    }, 10_000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSymbolChange = (s: string) => {
     setSymbol(s)

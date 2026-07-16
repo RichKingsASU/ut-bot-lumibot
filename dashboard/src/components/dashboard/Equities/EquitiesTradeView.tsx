@@ -4,6 +4,7 @@ import { formatTimestamp } from '../../../lib/time'
 import { PageHeader } from '../../ui/PageHeader'
 import { PriceChart } from '../../ui/PriceChart'
 import { useAlpacaBars } from '../../../hooks/useAlpacaBars'
+import { netlifyFetch } from '../../../lib/apiClient'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -265,17 +266,8 @@ export default function EquitiesTradeView() {
               <button
                 onClick={async () => {
                   if (window.confirm('EMERGENCY: Are you sure you want to CANCEL all orders and CLOSE all positions?')) {
-                    const storedKey = localStorage.getItem('ADMIN_API_KEY');
-                    if (!storedKey) {
-                      alert('Error: Admin API Key not found in local storage. Please set it in System Settings.');
-                      return;
-                    }
-
                     try {
-                      const res = await fetch('/.netlify/functions/alpaca-flatten', {
-                        method: 'POST',
-                        headers: { 'x-admin-api-key': storedKey }
-                      });
+                      const res = await netlifyFetch('alpaca-flatten', { method: 'POST' });
                       if (res.ok) {
                         alert('Emergency flatten initiated successfully.');
                       } else {

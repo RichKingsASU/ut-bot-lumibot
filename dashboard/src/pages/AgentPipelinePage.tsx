@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Cpu,
   RefreshCw,
@@ -7,12 +8,13 @@ import {
   TrendingUp,
   Info,
   Clock,
-  Loader2,
+  Settings,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BentoGrid, BentoTile } from '../components/ui/BentoLayouts';
 import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface LastCycleInfo {
   ran_at: string | null;
@@ -136,28 +138,27 @@ function SignalTable({ signals, emptyMessage }: { signals: SignalItem[]; emptyMe
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
+const MAX_AUTH_FAILURES = 3
+
 export default function AgentPipelinePage() {
   const [data, setData] = useState<PipelineResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
-
-  const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
+  const authFailures = useRef(0);
+  const stoppedRef = useRef(false);
 
   const fetchData = async () => {
+    if (stoppedRef.current) return;
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (adminKey) {
-        headers['X-Admin-API-Key'] = adminKey;
+      const res = await netlifyFetch('get-pipeline-status');
+      if (res.status === 401) {
+        authFailures.current += 1;
+        if (authFailures.current >= MAX_AUTH_FAILURES) stoppedRef.current = true;
+        setError('Unauthorized — set Admin API Key in Settings.');
+        return;
       }
-
-      const res = await fetch('/.netlify/functions/get-pipeline-status', { headers });
       if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error('Unauthorized. Please set your Admin API Key in Settings.');
-        }
         throw new Error(`HTTP error ${res.status}`);
       }
 
@@ -165,6 +166,7 @@ export default function AgentPipelinePage() {
       setData(json);
       setError(null);
       setSecondsAgo(0);
+      authFailures.current = 0;
     } catch (err: any) {
       console.error('Failed to fetch pipeline status:', err);
       setError(err.message);
@@ -174,8 +176,10 @@ export default function AgentPipelinePage() {
   };
 
   useEffect(() => {
+    stoppedRef.current = false;
+    authFailures.current = 0;
     fetchData();
-    const interval = setInterval(fetchData, 60000);
+    const interval = setInterval(() => { if (!stoppedRef.current) fetchData(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -218,15 +222,26 @@ export default function AgentPipelinePage() {
             <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Pipeline Connection Failure</h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">{error}</p>
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchData();
-            }}
-            className="w-full py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive font-semibold text-xs rounded-lg transition-all"
-          >
-            Retry Connection
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                stoppedRef.current = false;
+                authFailures.current = 0;
+                setLoading(true);
+                fetchData();
+              }}
+              className="flex-1 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive font-semibold text-xs rounded-lg transition-all"
+            >
+              Retry
+            </button>
+            <Link
+              to="/settings"
+              className="flex items-center justify-center gap-1.5 flex-1 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-semibold text-xs rounded-lg transition-all"
+            >
+              <Settings size={12} />
+              Settings
+            </Link>
+          </div>
         </div>
       </div>
     );
