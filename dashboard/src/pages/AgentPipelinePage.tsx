@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Cpu,
   RefreshCw,
@@ -7,7 +8,7 @@ import {
   TrendingUp,
   Info,
   Clock,
-  Loader2,
+  Settings,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BentoGrid, BentoTile } from '../components/ui/BentoLayouts';
@@ -221,15 +222,26 @@ export default function AgentPipelinePage() {
             <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Pipeline Connection Failure</h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">{error}</p>
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchData();
-            }}
-            className="w-full py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive font-semibold text-xs rounded-lg transition-all"
-          >
-            Retry Connection
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                stoppedRef.current = false;
+                authFailures.current = 0;
+                setLoading(true);
+                fetchData();
+              }}
+              className="flex-1 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive font-semibold text-xs rounded-lg transition-all"
+            >
+              Retry
+            </button>
+            <Link
+              to="/settings"
+              className="flex items-center justify-center gap-1.5 flex-1 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-semibold text-xs rounded-lg transition-all"
+            >
+              <Settings size={12} />
+              Settings
+            </Link>
+          </div>
         </div>
       </div>
     );
