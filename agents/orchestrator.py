@@ -77,7 +77,7 @@ def _send_daily_stop_alert(loss: float, limit: float, equity: float) -> None:
 
 
 def _poll_kill_switch() -> bool:
-    """Poll Supabase bot_status.target_status; return True if 'stopped'. Fail-open on error."""
+    """Poll Supabase bot_status.target_status; return True if stopped/shutdown/stop. Fail-open on error."""
     import requests as _req
     try:
         url = os.getenv("SUPABASE_URL")
@@ -92,8 +92,8 @@ def _poll_kill_switch() -> bool:
         )
         if resp.status_code == 200 and resp.json():
             status = resp.json()[0].get("target_status", "running")
-            if status.lower() == "stopped":
-                logger.warning("Kill switch activated — target_status=stopped. Halting.")
+            if status.lower() in ("stopped", "shutdown", "stop"):
+                logger.warning(f"Kill switch activated — target_status={status}. Halting.")
                 return True
     except Exception as exc:
         logger.warning(f"Kill switch poll failed — continuing (fail-open): {exc}")
