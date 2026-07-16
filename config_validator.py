@@ -37,8 +37,17 @@ def validate_production_env():
     else:
         logger.info("Trading Mode: PAPER (Verified)")
         if "paper-api" not in ALPACA_BASE_URL:
-            logger.warning("WARNING: ALPACA_IS_PAPER is True but BASE_URL points to live API. Fixing...")
-            # This is handled in config.py but good to log here
+            paper_endpoint = "https://paper-api.alpaca.markets"
+            logger.warning(
+                "ALPACA_IS_PAPER is True but ALPACA_BASE_URL=%s points to the live API. "
+                "Overriding ALPACA_BASE_URL to the paper endpoint (%s) so no live "
+                "orders can be placed while in paper mode.",
+                ALPACA_BASE_URL, paper_endpoint,
+            )
+            # Actually correct the process environment so every downstream
+            # os.getenv("ALPACA_BASE_URL") reader (run_agents, kelly_sizer,
+            # macro_filter, watchdogs, …) resolves to the safe paper endpoint.
+            os.environ["ALPACA_BASE_URL"] = paper_endpoint
             
     # 3. Risk Limit Validation
     if MAX_DAILY_LOSS <= 0:

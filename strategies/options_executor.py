@@ -139,7 +139,18 @@ def _headers() -> dict:
 
 
 def _base_url() -> str:
-    return os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    """Resolve the Alpaca REST endpoint from the trading-mode gate.
+
+    ALPACA_IS_PAPER is authoritative for the order path. When paper mode is
+    on we ALWAYS return the paper endpoint, regardless of what ALPACA_BASE_URL
+    is set to — a stale or misconfigured ALPACA_BASE_URL can never route real
+    orders to the live exchange while the system believes it is on paper.
+    """
+    is_paper = os.getenv("ALPACA_IS_PAPER", "true").strip().lower() == "true"
+    if is_paper:
+        return "https://paper-api.alpaca.markets"
+    # Live mode: honor an explicit override, else the live default.
+    return os.getenv("ALPACA_BASE_URL", "https://api.alpaca.markets")
 
 
 def _data_url() -> str:

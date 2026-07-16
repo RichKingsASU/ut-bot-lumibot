@@ -3,7 +3,20 @@ import { Settings as SettingsIcon, Key, Database, Bell, SlidersHorizontal, Chevr
 import { supabase } from '../../../lib/supabaseClient'
 import { API } from '../../../lib/api'
 import { PageHeader } from '../../ui/PageHeader'
-import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
+import { tradingModeBadgeStyle, parsePaperMode } from '../../../hooks/useTradingMode'
+
+const PAPER_URL = 'https://paper-api.alpaca.markets'
+const LIVE_URL = 'https://api.alpaca.markets'
+
+/** Mask a broker key for display on reload — never render the full value. */
+function maskKey(k: string): string {
+  if (!k) return ''
+  const trimmed = k.trim()
+  if (trimmed.length <= 6) return trimmed.slice(0, 2) + '•••••'
+  return trimmed.slice(0, 2) + '•'.repeat(6) + trimmed.slice(-4)
+}
+
+type SaveStatus = { ok: boolean; msg: string } | null
 
 const styles = {
   container: {
@@ -238,19 +251,24 @@ function MaskedInput({ label, value, onChange, placeholder }: { label: string; v
 }
 
 export function SettingsView() {
-  const tradingMode = useTradingMode()
-  const modeBadge = tradingModeBadgeStyle(tradingMode)
   const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['broker']))
   const [alpacaKey, setAlpacaKey] = useState('')
   const [alpacaSecret, setAlpacaSecret] = useState('')
   const [paperMode, setPaperMode] = useState(true)
+  // Badge/toggle both reflect the persisted-then-local paperMode so they never disagree.
+  const modeBadge = tradingModeBadgeStyle(paperMode ? 'paper' : 'live')
+  const [hasStoredKey, setHasStoredKey] = useState(false)
+  const [hasStoredSecret, setHasStoredSecret] = useState(false)
+  const [storedKeyMask, setStoredKeyMask] = useState('')
+  const [savingBroker, setSavingBroker] = useState(false)
+  const [brokerSaveStatus, setBrokerSaveStatus] = useState<SaveStatus>(null)
   const [supabaseUrl] = useState('https://supabase.com/dashboard/project/wnigkahkamoizjpmpuxs')
   const [supabaseKey, setSupabaseKey] = useState('')
   const [dbConnected, setDbConnected] = useState<boolean | null>(null)
   const [testingDb, setTestingDb] = useState(false)
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramChatId, setTelegramChatId] = useState('')
-  const [telegramSaveStatus, setTelegramSaveStatus] = useState<'saved' | 'error' | null>(null)
+  const [telegramSaveStatus, setTelegramSaveStatus] = useState<SaveStatus>(null)
   const [emailNotifs, setEmailNotifs] = useState(false)
   const [pushNotifs, setPushNotifs] = useState(true)
   const [quietStart, setQuietStart] = useState('22:00')
@@ -273,11 +291,12 @@ export function SettingsView() {
     const saved = localStorage.getItem('alpaca_last_verified')
     if (saved) setLastVerified(saved)
 
+    // Telegram config
     supabase
       .from('user_settings')
       .select('value')
       .eq('key', 'telegram_config')
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
         if (data?.value) {
           try {
@@ -287,17 +306,135 @@ export function SettingsView() {
           } catch { /* ignore parse errors */ }
         }
       })
+
+    // Trading mode — the toggle's source of truth is Supabase, not React state.
+    supabase
+      .from('user_settings')
+      .select('value')
+      .eq('key', 'paper_mode')
+      .maybeSingle()
+      .then(({ data }) => {
+        const paper = parsePaperMode(data?.value)
+        // Default to the safe (paper) mode when unset or unparseable.
+        setPaperMode(paper !== false)
+      })
+
+    // Broker credentials — load masked. Never populate the inputs with the
+    // real secret; only record that a value exists so blank = "unchanged".
+    supabase
+      .from('user_settings')
+      .select('value')
+      .eq('key', 'broker_credentials')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.value) return
+        try {
+          const cfg = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+          if (cfg?.api_key) {
+            setHasStoredKey(true)
+            setStoredKeyMask(maskKey(String(cfg.api_key)))
+          }
+          if (cfg?.api_secret) setHasStoredSecret(true)
+        } catch { /* ignore parse errors */ }
+      })
   }, [])
 
   const handleSaveTelegram = async () => {
     const { error } = await supabase
       .from('user_settings')
-      .upsert({
-        key: 'telegram_config',
-        value: JSON.stringify({ token: telegramToken, chatId: telegramChatId })
-      })
-    setTelegramSaveStatus(error ? 'error' : 'saved')
-    setTimeout(() => setTelegramSaveStatus(null), 3000)
+      .upsert(
+        {
+          key: 'telegram_config',
+          value: JSON.stringify({ token: telegramToken, chatId: telegramChatId }),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      )
+    if (error) {
+      setTelegramSaveStatus({ ok: false, msg: error.message || 'Save failed — check connection/permissions.' })
+    } else {
+      setTelegramSaveStatus({ ok: true, msg: 'Telegram config saved.' })
+    }
+    setTimeout(() => setTelegramSaveStatus(null), 5000)
+  }
+
+  const handleSaveBroker = async () => {
+    if (savingBroker) return
+    setBrokerSaveStatus(null)
+
+    const keyProvided = alpacaKey.trim().length > 0
+    const secretProvided = alpacaSecret.trim().length > 0
+
+    // Blank means "unchanged" only if a value is already stored; otherwise required.
+    if (!keyProvided && !hasStoredKey) {
+      setBrokerSaveStatus({ ok: false, msg: 'Alpaca API Key is required.' })
+      return
+    }
+    if (!secretProvided && !hasStoredSecret) {
+      setBrokerSaveStatus({ ok: false, msg: 'Alpaca Secret Key is required.' })
+      return
+    }
+
+    setSavingBroker(true)
+    const baseUrl = paperMode ? PAPER_URL : LIVE_URL
+
+    try {
+      // 1. Persist trading mode + base URL (the running fleet consumes these via
+      //    env/runtime_config at startup; this store keeps the dashboard coherent
+      //    and refresh-safe, and the useTradingMode badge in sync).
+      const { error: modeError } = await supabase
+        .from('user_settings')
+        .upsert(
+          {
+            key: 'paper_mode',
+            value: { paper_mode: paperMode, base_url: baseUrl },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'key' }
+        )
+      if (modeError) throw modeError
+
+      // 2. Persist credentials — only overwrite the field the user actually
+      //    changed. A blank field preserves the previously stored value.
+      if (keyProvided || secretProvided) {
+        const { data: existing } = await supabase
+          .from('user_settings')
+          .select('value')
+          .eq('key', 'broker_credentials')
+          .maybeSingle()
+        const prev = (existing?.value && typeof existing.value === 'object' ? existing.value : {}) as {
+          api_key?: string
+          api_secret?: string
+        }
+        const creds = {
+          api_key: keyProvided ? alpacaKey.trim() : prev.api_key,
+          api_secret: secretProvided ? alpacaSecret.trim() : prev.api_secret,
+        }
+        const { error: credError } = await supabase
+          .from('user_settings')
+          .upsert(
+            { key: 'broker_credentials', value: creds, updated_at: new Date().toISOString() },
+            { onConflict: 'key' }
+          )
+        if (credError) throw credError
+
+        // Reflect stored state as masked; clear the plaintext inputs.
+        if (creds.api_key) {
+          setHasStoredKey(true)
+          setStoredKeyMask(maskKey(creds.api_key))
+        }
+        if (creds.api_secret) setHasStoredSecret(true)
+        setAlpacaKey('')
+        setAlpacaSecret('')
+      }
+
+      setBrokerSaveStatus({ ok: true, msg: `Broker config saved — ${paperMode ? 'Paper' : 'Live'} mode.` })
+    } catch (err: any) {
+      setBrokerSaveStatus({ ok: false, msg: err?.message || 'Save failed — check connection/permissions.' })
+    } finally {
+      setSavingBroker(false)
+      setTimeout(() => setBrokerSaveStatus(null), 6000)
+    }
   }
 
   const handleTestDb = async () => {
@@ -426,15 +563,25 @@ export function SettingsView() {
         <div style={styles.accordionBody(isOpen('broker'))}>
           <div style={styles.accordionContent}>
             <div style={styles.grid2}>
-              <MaskedInput label="Alpaca API Key" value={alpacaKey} onChange={setAlpacaKey} placeholder="AKXXXXXXXXXXXXXXXXXX" />
-              <MaskedInput label="Alpaca Secret Key" value={alpacaSecret} onChange={setAlpacaSecret} placeholder="Enter secret key" />
+              <MaskedInput
+                label="Alpaca API Key"
+                value={alpacaKey}
+                onChange={setAlpacaKey}
+                placeholder={hasStoredKey ? `Stored: ${storedKeyMask} — leave blank to keep` : 'AKXXXXXXXXXXXXXXXXXX'}
+              />
+              <MaskedInput
+                label="Alpaca Secret Key"
+                value={alpacaSecret}
+                onChange={setAlpacaSecret}
+                placeholder={hasStoredSecret ? 'Stored — leave blank to keep' : 'Enter secret key'}
+              />
             </div>
             <div style={styles.inputRow}>
               <label style={styles.label}>Base URL</label>
               <input
                 type="text"
                 style={{ ...styles.input, opacity: 0.7 }}
-                value={paperMode ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'}
+                value={paperMode ? PAPER_URL : LIVE_URL}
                 readOnly
               />
             </div>
@@ -487,6 +634,35 @@ export function SettingsView() {
                   setTestStatus(null) // Reset test status on mode change
                 }} />
               </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
+              <button
+                style={{
+                  ...styles.btnPrimary,
+                  opacity: savingBroker ? 0.6 : 1,
+                  cursor: savingBroker ? 'not-allowed' : 'pointer',
+                }}
+                onClick={handleSaveBroker}
+                disabled={savingBroker}
+              >
+                {savingBroker ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {savingBroker ? 'Saving...' : 'Save Broker Config'}
+              </button>
+              {brokerSaveStatus && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '13px',
+                    color: brokerSaveStatus.ok ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
+                  }}
+                >
+                  {brokerSaveStatus.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                  {brokerSaveStatus.msg}
+                </span>
+              )}
             </div>
 
             {testStatus && (
@@ -664,10 +840,14 @@ export function SettingsView() {
                 </button>
                 {telegramSaveStatus && (
                   <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     fontSize: '12px',
-                    color: telegramSaveStatus === 'saved' ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
+                    color: telegramSaveStatus.ok ? 'var(--green, #3fb950)' : 'var(--red, #f85149)',
                   }}>
-                    {telegramSaveStatus === 'saved' ? 'Saved' : 'Failed'}
+                    {telegramSaveStatus.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                    {telegramSaveStatus.msg}
                   </span>
                 )}
               </div>
