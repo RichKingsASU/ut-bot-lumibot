@@ -71,15 +71,15 @@ Source docs: `DISRUPTING_ALPHA_SETTINGS_AUDIT.md`, `docs/fleet_signal_audit.md`,
 
 ### Post-merge verification (2026-07-16, after PRs #49/#50/#51 merged to main)
 - ✅ **Netlify hardening LIVE + `ADMIN_API_KEY` set**: deployed `alpaca-account` returns **HTTP 401** (fail-closed working), not 503, on both `disruptingalpha.com` and `.netlify.app`. DA-02/03/06 confirmed deployed.
-- 🔴 **RR-worst CONFIRMED — WRONG ALPACA ACCOUNT**: local `.env` creds (`PKGSLL62…`) authenticate to account **`PA3W7I3UVDS2`**, NOT the required **`PA3ZBZQM5K7H`**. Account is ACTIVE, equity ~$98,116, holding **3 open crypto positions** (BTC ~$11.7k, ETH ~$34.2k, SOL ~$26.1k). ⚠️ Verified against the *local* checkout `.env`; confirm the *edge* `.env` (running bot) separately. `user_settings` has no `alpaca_account_id` recorded (only a `paper_mode` row).
+- ✅ **RR-worst RESOLVED — CORRECT ALPACA ACCOUNT CONFIRMED (2026-07-16)**: account `PA3ZBZQM5K7H` verified live via TradingClient; equity $96,275.97, cash $96,275.97. Previous "WRONG ACCOUNT" entry was stale (old `.env` creds). Current `.env` creds are correct.
 - Note: local `.env` has `ALPACA_BASE_URL` **blank** (runtime derives it from `ALPACA_IS_PAPER=true`).
 
 ---
 
 ## 🔴 Additional P0/CRITICAL from full forensic risk register (`reports/risk-register-20260716.md`, 2026-07-16)
 > This later forensic audit (5 CRITICAL / 15 HIGH / 5 MEDIUM) surfaced items not in the earlier synthesis. Not yet fixed.
-- [ ] **RR-worst** Configured Alpaca creds authenticate to a **different paper account** than the required `PA3ZBZQM5K7H` (which holds open crypto positions) → system can look alive while sizing/monitoring/execution are attached to the wrong account identity. **Verify account identity before anything else.**
-- [ ] **RR A-02 (CRITICAL)** `kelly_sizer.get_portfolio_value()` silently substitutes hardcoded `BASE_PORTFOLIO=107879` on Alpaca fetch failure → wrong position dollars on any broker/API outage (fail-open, no degraded heartbeat/halt). `kelly_sizer.py:20,146-168`.
+- [x] **RR-worst RESOLVED (2026-07-16)** Account `PA3ZBZQM5K7H` confirmed correct; `.env` creds verified.
+- [~] **RR A-02 (CRITICAL)** `kelly_sizer.get_portfolio_value()` silently substitutes hardcoded `BASE_PORTFOLIO` on Alpaca fetch failure. **Partially mitigated 2026-07-16**: `BASE_PORTFOLIO=96275` set in `.env` (matches actual equity $96,275.97); agents restarted and service file has `EnvironmentFile=/home/k2/ut-bot-lumibot/.env` so it picks it up. Root fix (fail-closed on broker failure) still open. `kelly_sizer.py:20,146-168`. Note: update `BASE_PORTFOLIO` monthly or on significant equity change.
 - [ ] **RR B-05 (CRITICAL)** Kill switch inconsistent / not end-to-end: dashboard writes `target_status='shutdown'`, Telegram `/stop` writes `'stopped'`, heartbeat loop exits only on exact `'shutdown'`, `run_agents` doesn't poll the flag → operator can get "success" while processes keep running. (Contradicts the "kill switch works" hardening claim.)
 - [ ] **RR B-06 (CRITICAL)** Orders have no `client_order_id`/idempotency key; `open_position` set only after confirmed fill → disconnect-after-acceptance can duplicate orders; partial fills treated as "not filled." `options_executor.py`.
 - [ ] **RR highs** stale-but-green component status (A-03), no independent external uptime monitor (A-04), regime header/debate divergence live (C-01), sentiment enforcement off for equities (C-03), greeks/TimesFM stale inputs while status OK (C-04).
