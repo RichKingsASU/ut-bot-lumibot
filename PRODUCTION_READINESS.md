@@ -71,7 +71,12 @@ Source docs: `DISRUPTING_ALPHA_SETTINGS_AUDIT.md`, `docs/fleet_signal_audit.md`,
 
 ### Post-merge verification (2026-07-16, after PRs #49/#50/#51 merged to main)
 - ✅ **Netlify hardening LIVE + `ADMIN_API_KEY` set**: deployed `alpaca-account` returns **HTTP 401** (fail-closed working), not 503, on both `disruptingalpha.com` and `.netlify.app`. DA-02/03/06 confirmed deployed.
-- 🔴 **RR-worst CONFIRMED — WRONG ALPACA ACCOUNT**: local `.env` creds (`PKGSLL62…`) authenticate to account **`PA3W7I3UVDS2`**, NOT the required **`PA3ZBZQM5K7H`**. Account is ACTIVE, equity ~$98,116, holding **3 open crypto positions** (BTC ~$11.7k, ETH ~$34.2k, SOL ~$26.1k). ⚠️ Verified against the *local* checkout `.env`; confirm the *edge* `.env` (running bot) separately. `user_settings` has no `alpaca_account_id` recorded (only a `paper_mode` row).
+- 🔴 **RR-worst — WRONG ALPACA ACCOUNT** *(original finding)*: earlier this day the referenced creds (`PKGSLL62…`) authenticated to account **`PA3W7I3UVDS2`**, NOT the required **`PA3ZBZQM5K7H`**. That account held **3 open crypto positions** (BTC/ETH/SOL). `user_settings` has no `alpaca_account_id` recorded (only a `paper_mode` row).
+- ✅ **RESOLVED (2026-07-16 ~06:23 MST)** — verified read-only, no credential edit was needed:
+  - The live `/home/k2/ut-bot-lumibot/.env` (the **only** `.env` in the repo; the `EnvironmentFile` for all four `da-*` systemd units) authenticates to **`PA3ZBZQM5K7H`** — the required account. Confirmed via `account.account_number` (the earlier check used `account.id`, which is a **UUID**, not the `PA…` number — that comparison never matched). Equity **$96,275.97, all cash, 0 open positions**. Bots verified on it post-restart (logs: "Trading Mode: PAPER (Verified)", portfolio snapshot equity $96,275.97, no errors).
+  - The `PKGS…` → `PA3W7I3UVDS2` credentials now exist **only** in the June `.env.bak.*` backups; the live `.env` (mtime 2026-06-04) was already the correct `PKBR…` creds. No swap performed today.
+  - ⚠️ **Left intact, out of scope:** the **3 crypto positions (~$72k)** remain **open on the wrong account `PA3W7I3UVDS2`** (reachable only via the backup creds; equity $97,764.49 / cash $26,073.61). Deliberately not closed — pending a separate decision.
+  - Bots were cleanly stopped 06:04 MST (deliberate `systemctl stop`, graceful SIGTERM — not a crash, not the watchdog) and restarted 06:23 MST on the verified-correct account.
 - Note: local `.env` has `ALPACA_BASE_URL` **blank** (runtime derives it from `ALPACA_IS_PAPER=true`).
 
 ---
