@@ -60,6 +60,46 @@ async def _send_telegram(text: str, chat_id: str = _TELEGRAM_CHAT_ID) -> None:
 
 # ── Daily health check helper ──────────────────────────────────────────────────
 
+async def run_dma_daily_evaluation() -> None:
+    """Evaluate DMA 20/200 crossover after market close. Logs to signal_log + Telegram alert on crossover."""
+    logger.info("[RunAgents] Running DMA 20/200 daily evaluation...")
+    try:
+        from pathlib import Path
+        import pandas as pd
+        from strategies.dma_crossover import DmaCrossoverStrategy
+
+        storage = Path("/mnt/tick-storage/historical/equities/SPY")
+        files = sorted(storage.glob("SPY_1D_*.parquet"))
+        if not files:
+            logger.warning("[RunAgents] No SPY daily parquet data found for DMA evaluation")
+            return
+
+        dfs = [pd.read_parquet(f) for f in files]
+        df = pd.concat(dfs, ignore_index=True)
+        if "ts" in df.columns and "timestamp" not in df.columns:
+            df = df.rename(columns={"ts": "timestamp"})
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+        for c in ["open", "high", "low", "close"]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df = df.dropna(subset=["open", "high", "low", "close"])
+        df = df[["timestamp", "open", "high", "low", "close", "volume"]].copy()
+
+        strat = DmaCrossoverStrategy(fast_period=20, slow_period=200)
+        result = strat.evaluate(df)
+
+        strat.log_signal_sync(result)
+
+        if result.get("is_crossover"):
+            strat.send_crossover_alert_sync(result)
+            logger.info(f"[RunAgents] DMA CROSSOVER: {result['action']} signal on {result.get('bar_time')}")
+        else:
+            logger.info(f"[RunAgents] DMA evaluation: HOLD (fast_ma={result.get('fast_ma')}, slow_ma={result.get('slow_ma')})")
+
+    except Exception as exc:
+        logger.error(f"[RunAgents] DMA evaluation error: {exc}", exc_info=True)
+
+
 async def run_daily_signal_health() -> dict:
     """Run once per day at 8:00 PM ET to analyze signal performance and send Telegram report."""
     logger.info("[RunAgents] Running daily signal health check...")
@@ -256,6 +296,7 @@ async def main() -> None:
     cycle_count = 0
     morning_sent = False
     afternoon_sent = False
+    dma_evaluated = False
     
     while True:
         # Kill switch: poll Supabase bot_status at the start of every cycle
@@ -270,6 +311,7 @@ async def main() -> None:
         if now_et.hour == 0 and now_et.minute == 0:
             morning_sent = False
             afternoon_sent = False
+            dma_evaluated = False
             
         # Morning briefing at 9:15 AM ET
         if now_et.hour == 9 and now_et.minute == 15 and not morning_sent:
@@ -303,6 +345,11 @@ async def main() -> None:
             logger.error(f"Cycle error: {e} — retrying in 30s")
             await asyncio.sleep(30)
             continue
+
+        # Daily at 4:30 PM ET: DMA 20/200 crossover evaluation (after market close)
+        if now_et.hour == 16 and now_et.minute >= 30 and not dma_evaluated:
+            await run_dma_daily_evaluation()
+            dma_evaluated = True
 
         # Daily at 8:00 PM ET: signal health check
         if now_et.hour == 20 and now_et.minute < 15:
