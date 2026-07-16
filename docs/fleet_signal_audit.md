@@ -1,9 +1,24 @@
 # Live Fleet Signal Audit
 
 **Date:** 2026-07-15
-**Branch:** `audit/fleet-signal-dependencies`
+**Branch:** `audit/fleet-signal-dependencies` (merged to `main` in `f7bf1d9`)
 **Mode:** READ-ONLY. No agent code, config, or schedule was modified.
 **Question:** How much of the running fleet depends on what `docs/hmm_signal_diagnosis.md` just falsified?
+
+> **REVISION 2026-07-15 (post-merge).** The original audit was written against a local
+> `main` that was 8 commits stale. On re-verification against `origin/main` at `0536e91`:
+>
+> - **Finding #1 (paper/live gate) is RESOLVED** by `e72c643` — `_base_url()` now derives from
+>   `ALPACA_IS_PAPER` and the validator actually overrides the env var. §4.4 and risk-rank #1
+>   are struck through below and retained for history. **Do not re-fix it.**
+> - Findings #2 (HITL), #3 (live params `14/3.0`), and #4 (`signal_type` mismatch,
+>   `ic_scalar` fail-open) were re-verified and **still hold**. Line numbers in
+>   `options_executor.py` shifted by ~11 (`695`→`706`, `768`→`779`).
+> - `db4f22a` fixes the IC sign convention (`sig_score * pnl_pct`, aligning winning shorts)
+>   but does **not** fix the join, and despite its commit message does **not** make
+>   `ic_scalar` fail-safe — it still returns `1.0` on `INSUFFICIENT_DATA`.
+>
+> **The top remaining risks are now #2 and #3**, not #1.
 
 ---
 
@@ -24,7 +39,8 @@ tests, with no human approval gate, and a decay monitor that is structurally inc
 flagging it.** The fleet is not exposed to the falsified research because the fleet is barely
 connected to the research at all.
 
-Three findings are ranked CRITICAL below. The most urgent is not the HMM.
+Three findings were ranked CRITICAL below; **#1 has since been resolved by `e72c643`**, leaving
+two. The most urgent is not the HMM.
 
 **A note on what "edgeless" covers.** The diagnosis proved a 2-branch EWM-ATR signal at
 `10 / 1.0` is edgeless. Production runs a **4-branch SMA-ATR signal at `14 / 3.0`** (§1.2).
@@ -328,7 +344,14 @@ never reads `agent_signals`, `risk_decision`, or `execution_approved`. **The orc
 debate/Kelly/VaR/HITL pipeline (`orchestrator.py:196-230,744-765`) is advisory and structurally
 disconnected from the bots that trade.**
 
-### 4.4 CRITICAL: `ALPACA_IS_PAPER` does not govern the live order path
+### 4.4 ~~CRITICAL: `ALPACA_IS_PAPER` does not govern the live order path~~ — RESOLVED in `e72c643`
+
+> **RESOLVED 2026-07-15.** `_base_url()` (`options_executor.py:141-153`) now reads
+> `ALPACA_IS_PAPER` and hard-returns the paper endpoint when paper mode is on, regardless of
+> `ALPACA_BASE_URL`. `config_validator.py` now actually assigns
+> `os.environ["ALPACA_BASE_URL"] = paper_endpoint` instead of logging "Fixing..." and doing
+> nothing. Both halves of the finding are closed. The section below is retained as history —
+> it describes the pre-`e72c643` state and is **no longer accurate**.
 
 Two variables, not coupled:
 
@@ -363,10 +386,10 @@ Ranked by damage if this runs as-is on paper→live. **Recommendations only — 
 
 | # | Severity | Finding | Evidence | Recommended action |
 |---|---|---|---|---|
-| 1 | **CRITICAL** | Paper/live safety flag doesn't gate the live order path; validator's guard is a no-op whose comment claims otherwise | `options_executor.py:141-142`, `config_validator.py:39-41`, `config.py:70` | Make `_base_url()` derive from `ALPACA_IS_PAPER`, or make the validator `sys.exit(1)` on the paper+live-URL case. **Fix before any live cutover.** |
+| 1 | ~~CRITICAL~~ **RESOLVED** | ~~Paper/live safety flag doesn't gate the live order path~~ — fixed in `e72c643`: `_base_url()` now derives from `ALPACA_IS_PAPER`; validator now actually overrides the env var | `options_executor.py:141-153`, `config_validator.py:39-50` | **None — already done.** Do not re-fix. |
 | 2 | **CRITICAL** | No human approval gate on any order path; HITL queue has no reader, no UI, and is disabled | `hitl_queue.py:42,54` (zero callers), `orchestrator.py:750,763`, §4.1 table | Decide explicitly: either wire `get_approved_signals` into the bots' entry path, or **delete the HITL module and its "execution held" log** so nobody believes a gate exists. The current state is worse than either. |
 | 3 | **CRITICAL** | Live bot trades unbacktested params (`14/3.0`) on an implementation no backtest covers (4-branch SMA vs 2-branch EWM) | `main.py:63-66` vs `ut_bot.py:11,54-55` and `backtests/config.py:34-35`; §1.2 | Reconcile before any further research. Either backtest `14/3.0` on the 4-branch (`backtests/engine.py:89`), or revert `main.py` to `10/1.0`. Revisit the accepted deviation at `diagnose_hmm_signal.py:466-477` — it was accepted in the wrong direction. |
-| 4 | **HIGH** | SignalDecayMonitor cannot ever compute IC for the live strategy; fails **open** to full size | `ut_bot.py:198` vs `options_executor.py:695,768`; join at `signal_decay_monitor.py:149`; `kelly_sizer.py:252-254`; §6 | Normalise `signal_type` vocabulary at both writers. Change `INSUFFICIENT_DATA` to fail **closed** (or alert), not to `ic_scalar = 1.0`. Fix the test fixtures (`tests/test_ic_direction.py:44,49`). |
+| 4 | **HIGH** | SignalDecayMonitor cannot ever compute IC for the live strategy; fails **open** to full size. `db4f22a` fixed the IC *sign convention* but not the join, and did not make `ic_scalar` fail-safe despite its commit message | `ut_bot.py:198` vs `options_executor.py:706,779`; join at `signal_decay_monitor.py:149`; `kelly_sizer.py:254-256`; §6 | Normalise `signal_type` vocabulary at both writers. Change `INSUFFICIENT_DATA` to fail **closed** (or alert), not to `ic_scalar = 1.0`. Fix the test fixtures (`tests/test_ic_direction.py`). |
 | 5 | **HIGH** | Kelly `payout_ratio` carries no commission term; backtest assumes `commission_per_contract = 0.0` | `kelly_sizer.py:321-322`, `backtests/config.py:79` vs `test_costs.py:57` | Add a commission term to both. Until then treat every Kelly-derived size and backtest edge as optimistic. |
 | 6 | **HIGH** | Supabase RLS disabled with `anon` read/write on `signal_log` — the sole path from bot to fleet | `AUDIT.md` (18 P0 findings) | Enable RLS. An unauthenticated writer can currently inject technical signals the fleet reports on. |
 | 7 | **MEDIUM** | Anti-predictive regime map (BULL×1.0 / BEAR×0.4) drives proposed size, debate scores, and an AVOID→HOLD block — but **not** automated order qty | `kelly_sizer.py:193-203`, `orchestrator.py:363-371`, §2.4 | Set `regime_adjustment = 1.0` unconditionally (or remove the param). Must change in lockstep with the dashboard's duplicate copy at `PositionSizingView.tsx:42-46,72,79,256`. Not an active bleed — correctness/reporting. |
@@ -484,7 +507,10 @@ The HMM and UT Bot findings that motivated this audit turn out to be mostly quar
 the advisory half of that split. That is luck, not design — and the same split means the research
 programme has been measuring a signal the fleet does not trade, at parameters it does not use.
 
-**If one thing changes before a live cutover, make it #1** (paper/live flag). **If two, add #3**
-(reconcile live params with what's actually backtested) — because until #3 is resolved, no
-backtest in this repo, including the ones Tracks 1 and 2 are about to run, describes the thing
-that is trading.
+~~**If one thing changes before a live cutover, make it #1** (paper/live flag).~~ #1 is now
+resolved (`e72c643`). **The one thing that matters most before a live cutover is now #3** —
+reconcile the live params (`14/3.0`, 4-branch) with what is actually backtested (`10/1.0`,
+2-branch) — because until #3 is resolved, no backtest in this repo, including the ones Tracks 1
+and 2 are about to run, describes the thing that is trading. **#2** (no HITL gate on any order
+path) is the other open CRITICAL: decide whether to wire it or delete it, but do not leave a
+safety layer that exists only in log messages.
