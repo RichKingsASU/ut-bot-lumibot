@@ -46,7 +46,7 @@ Source docs: `DISRUPTING_ALPHA_SETTINGS_AUDIT.md`, `docs/fleet_signal_audit.md`,
 - [x] **DA-06** Admin auth fails open when `ADMIN_API_KEY` unset → **FIXED**: `requireAdmin` fails closed (503) in deployed contexts; applied to flatten/account/orders/positions.
 
 ### Fleet criticals (audit 2026-07-15, OPEN)
-- [ ] **P0-7 (HITL)** No human-approval gate on any order path; HITL queue has no reader/UI and is disabled → wire `get_approved_signals` into bots OR delete the module + its misleading "execution held" log. **DEFERRED by owner (2026-07-16) — decision pending.**
+- [ ] **P0-7 (HITL)** No human-approval gate on any order path; HITL queue has no reader/UI and is disabled → wire `get_approved_signals` into bots OR delete the module + its misleading "execution held" log. **BACKLOG (owner, 2026-07-16): theoretical while the equity bot is inert; becomes ACTIVE the moment the signal fires. Must-implement before any live-trading consideration — not now, not forgettable.**
 - [ ] **P0-8 (params)** Live bot trades unbacktested `14/3.0` on 4-branch SMA that no backtest covers → backtest `14/3.0` on 4-branch, or revert `main.py` to `10/1.0`. **DEFERRED by owner (2026-07-16) — decision pending.**
 - [x] **P0-9 (decay)** → **FIXED** (branch `harden/p0-broker-safety`), two parts: (A) `signal_decay_monitor.py` now normalizes `signal_type` to a family token so the IC join can match (`UT_BUY`/`ut_bot`→`ut`) — ⚠️ heuristic, validate against real values once tables have data; (B) `kelly_sizer.py` now **fails closed** on INSUFFICIENT_DATA/None IC — `ic_scalar` = `IC_INSUFFICIENT_DATA_SCALAR` (default 0.5, env-tunable to 0.0 for hard-halt) instead of 1.0. Decay unit tests pass (3/3). *Decision knob for you: 0.5 haircut vs 0.0 hard-halt.*
 - [ ] **P0-10 (Kelly)** `payout_ratio` missing commission term → add commission to Kelly + backtest
@@ -68,6 +68,11 @@ Source docs: `DISRUPTING_ALPHA_SETTINGS_AUDIT.md`, `docs/fleet_signal_audit.md`,
 - **RLS reads**: anon BLOCKED on all sensitive tables (signal_log, agent_signals, bot_status, trade_performance, signal_performance, regime_states, user_settings, risk_config, news_articles, portfolio_snapshots) — fleet #6 not borne out for reads. ⚠️ anon WRITE still untested.
 - **P0-9 CONFIRMED**: `signal_performance.status` = 100% INSUFFICIENT_DATA (504/504).
 - Fleet #9/#11 confirmed live: crypto agent writes `signal_type=NONE`, `timesfm_forecast` column populated by a "Linear Baseline" (polyfit), not TimesFM.
+
+### Post-merge verification (2026-07-16, after PRs #49/#50/#51 merged to main)
+- ✅ **Netlify hardening LIVE + `ADMIN_API_KEY` set**: deployed `alpaca-account` returns **HTTP 401** (fail-closed working), not 503, on both `disruptingalpha.com` and `.netlify.app`. DA-02/03/06 confirmed deployed.
+- 🔴 **RR-worst CONFIRMED — WRONG ALPACA ACCOUNT**: local `.env` creds (`PKGSLL62…`) authenticate to account **`PA3W7I3UVDS2`**, NOT the required **`PA3ZBZQM5K7H`**. Account is ACTIVE, equity ~$98,116, holding **3 open crypto positions** (BTC ~$11.7k, ETH ~$34.2k, SOL ~$26.1k). ⚠️ Verified against the *local* checkout `.env`; confirm the *edge* `.env` (running bot) separately. `user_settings` has no `alpaca_account_id` recorded (only a `paper_mode` row).
+- Note: local `.env` has `ALPACA_BASE_URL` **blank** (runtime derives it from `ALPACA_IS_PAPER=true`).
 
 ---
 
