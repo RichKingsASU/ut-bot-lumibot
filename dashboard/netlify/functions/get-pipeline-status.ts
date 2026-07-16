@@ -14,6 +14,20 @@ const JSON_HEADERS = {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// agent_signals.confidence is categorical text ("LOW"|"MEDIUM"|"HIGH"); the UI
+// expects a 0-1 fraction. parseFloat("MEDIUM") is NaN → normalize here.
+function confToNum(raw: any): number {
+  if (typeof raw === "number" && !Number.isNaN(raw)) return raw > 1 ? raw / 100 : raw;
+  if (typeof raw === "string") {
+    const s = raw.trim().toUpperCase();
+    const cat: Record<string, number> = { LOW: 0.34, MEDIUM: 0.67, HIGH: 1.0 };
+    if (s in cat) return cat[s];
+    const n = parseFloat(s);
+    if (!Number.isNaN(n)) return n > 1 ? n / 100 : n;
+  }
+  return 0.5;
+}
+
 export default async (req: Request, _context: Context) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -63,7 +77,7 @@ export default async (req: Request, _context: Context) => {
     const crypto_signals = (cryptoData || []).map((s: any) => ({
       symbol: s.symbol,
       action: s.action || "HOLD",
-      confidence: s.confidence != null ? parseFloat(s.confidence) : 0.5,
+      confidence: confToNum(s.confidence),
       reasoning: s.reasoning || "",
       created_at: s.created_at,
     }));
@@ -79,7 +93,7 @@ export default async (req: Request, _context: Context) => {
     const equity_signals = (equityData || []).map((s: any) => ({
       symbol: s.symbol,
       action: s.action || "HOLD",
-      confidence: s.confidence != null ? parseFloat(s.confidence) : 0.5,
+      confidence: confToNum(s.confidence),
       reasoning: s.reasoning || "",
       created_at: s.created_at,
     }));
@@ -87,7 +101,7 @@ export default async (req: Request, _context: Context) => {
     // 4. Fetch Regime Summary (limit 10)
     const { data: regimesData } = await supabase
       .from("regime_states")
-      .select("symbol, regime, probability, detected_at")
+      .select("symbol, regime, probability:regime_probability, detected_at")
       .order("detected_at", { ascending: false })
       .limit(10);
 

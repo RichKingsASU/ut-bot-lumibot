@@ -9,7 +9,9 @@ import asyncio
 import json
 import logging
 import os
+import datetime as _dt
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import TypedDict
 
 import httpx
@@ -23,6 +25,12 @@ from agents.research_agent import ResearchAgent
 from agents.regime_detector import RegimeDetector
 from agents.kelly_sizer import KellySizer
 from agents.greeks_risk_engine import GreeksRiskEngine
+from agents.gex_calculator import compute_gex
+from agents.pead_signal import get_pead_signal
+from agents.ma_regime_filter import get_spy_200day_ma, apply_ma_filter
+from agents.market_freshness import validate_market_freshness
+from agents.hitl_queue import submit_for_approval
+from agents.kronos_forecaster import compare_with_timesfm as _kronos_compare
 
 load_dotenv()
 
@@ -32,6 +40,83 @@ from agents.node_circuit_breaker import CIRCUIT_BREAKER
 
 _TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 _TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+
+# ── Daily stop module-level state ─────────────────────────────────────────────
+_DAILY_STOP_ACTIVE: bool = False
+_DAILY_STOP_ALERTED: bool = False
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _send_daily_stop_alert(loss: float, limit: float, equity: float) -> None:
+    """Send a one-shot Telegram alert when the soft daily stop is triggered."""
+    global _DAILY_STOP_ALERTED
+    if _DAILY_STOP_ALERTED:
+        return  # Only alert once per day
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        return
+    msg = (
+        f"⚠️ SOFT DAILY STOP TRIGGERED\n"
+        f"Daily loss: ${loss:.2f}\n"
+        f"Limit: ${limit:.2f} (2.5%)\n"
+        f"Current equity: ${equity:,.2f}\n"
+        f"New BUY signals paused for remainder of session.\n"
+        f"Hard stop remains at ${5000:.0f}."
+    )
+    try:
+        httpx.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            data={'chat_id': '8641189809', 'text': msg},
+            timeout=5
+        )
+        _DAILY_STOP_ALERTED = True
+        logger.info("[DAILY STOP] Telegram alert sent.")
+    except Exception as e:
+        logger.warning(f"Daily stop alert failed: {e}")
+
+
+def _check_daily_stop() -> bool:
+    """Query Alpaca paper account equity and set/clear _DAILY_STOP_ACTIVE.
+
+    Returns True if the soft stop is active (daily loss > 2.5%).
+    """
+    global _DAILY_STOP_ACTIVE, _DAILY_STOP_ALERTED
+
+    # Reset alert flag at the start of a new trading day (before market open)
+    now_et = _dt.datetime.now(_ET)
+    if now_et.hour == 9 and now_et.minute < 30:
+        _DAILY_STOP_ALERTED = False
+
+    try:
+        ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+        ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+        acct_r = httpx.get(
+            'https://paper-api.alpaca.markets/v2/account',
+            headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': ask},
+            timeout=5
+        )
+        acct = acct_r.json()
+        current_equity = float(acct.get('equity', 0))
+        last_equity = float(acct.get('last_equity', current_equity))
+
+        SOFT_STOP_PCT = 0.025
+        soft_stop_usd = last_equity * SOFT_STOP_PCT
+        daily_loss = last_equity - current_equity
+
+        if daily_loss > soft_stop_usd:
+            logger.warning(
+                f"[DAILY STOP] Soft stop triggered — lost ${daily_loss:.2f} today "
+                f"(limit: ${soft_stop_usd:.2f}). Pausing new BUY signals."
+            )
+            _send_daily_stop_alert(daily_loss, soft_stop_usd, current_equity)
+            _DAILY_STOP_ACTIVE = True
+        else:
+            _DAILY_STOP_ACTIVE = False
+    except Exception as e:
+        logger.warning(f"[DAILY STOP] Could not check daily P&L: {e}")
+
+    return _DAILY_STOP_ACTIVE
 
 
 # ── Telegram helper ───────────────────────────────────────────────────────────
@@ -174,6 +259,45 @@ def signal_node(state: AgentState) -> AgentState:
             agent.analyze(state["market_context"], greeks_context=greeks_context)
         )
         logger.info(f"[Orchestrator] {asset} signal_recommendation: {signal_recommendation}")
+        if asset == 'equities':
+            ma_data = state.get('ma_data') or {}
+            signal_recommendation = apply_ma_filter(signal_recommendation, ma_data)
+            gex_data = state.get('gex_data') or {}
+            if gex_data.get('available'):
+                kelly_val = signal_recommendation.get('kelly_position_value', 0.0)
+                kelly_val *= gex_data.get('size_modifier', 1.0)
+                signal_recommendation['kelly_position_value'] = min(kelly_val, 2500.0)
+
+            # ── Session filter: block BUY outside active equities windows ──────
+            from agents.session_filter import get_session_context
+            session = state.get('_session_context') or get_session_context()
+            if not session.get('allow_buy') and signal_recommendation.get('action') == 'BUY':
+                signal_recommendation['action'] = 'HOLD'
+                signal_recommendation['reasoning'] = (
+                    signal_recommendation.get('reasoning', '') +
+                    f" | SESSION FILTER: BUY blocked — {session['reason']}"
+                )
+                logger.info(f"[SESSION] BUY converted to HOLD — {session['reason']}")
+
+            # ── Conviction modifier: scale Kelly position size ─────────────────
+            conv_mod = session.get('conviction_modifier', 1.0)
+            if conv_mod < 1.0:
+                kelly_val = signal_recommendation.get('kelly_position_value', 0)
+                signal_recommendation['kelly_position_value'] = kelly_val * conv_mod
+                logger.info(f"[SESSION] Kelly scaled by conviction_modifier={conv_mod}")
+
+        # ── Daily soft stop: block BUY for all asset classes ──────────────────
+        import sys as _sys
+        _orch_mod = _sys.modules.get(__name__, None)
+        if getattr(_orch_mod, '_DAILY_STOP_ACTIVE', False):
+            if signal_recommendation.get('action') == 'BUY':
+                signal_recommendation['action'] = 'HOLD'
+                signal_recommendation['reasoning'] = (
+                    signal_recommendation.get('reasoning', '') +
+                    " | DAILY STOP: Soft 2.5% daily loss limit reached. BUY paused."
+                )
+                logger.info("[DAILY STOP] BUY converted to HOLD — daily stop active.")
+
         return {**state, "signal_recommendation": signal_recommendation}
     except Exception as e:
         logger.error(f"[Signal] Failed: {e}")
@@ -199,6 +323,23 @@ async def _debate_node_async(state: AgentState) -> AgentState:
 
     market['sentiment_trend'] = signal.get('sentiment_trend', market.get('sentiment_trend', 'STABLE'))
     market['sentiment_velocity'] = signal.get('sentiment_velocity', market.get('sentiment_velocity', 0.0))
+
+    if asset_class == 'equities':
+        from agents.pead_signal import get_pead_signal
+        pead_data = get_pead_signal(symbol)
+        state['pead_data'] = pead_data
+        
+        gex_data = state.get('gex_data') or {}
+        ma_data = state.get('ma_data') or {}
+        
+        gex_context = f"GEX Regime: {gex_data.get('gex_regime', 'UNKNOWN')}\nNet GEX: ${gex_data.get('gex_value_millions', 0):.1f}M\nInterpretation: {gex_data.get('interpretation', 'N/A')}"
+        ma_context = f"200-day MA regime: {ma_data.get('regime')} — {ma_data.get('signal')}"
+        pead_context = f"Post-Earnings Signal: {pead_data.get('signal')}\n{pead_data.get('description')}"
+        
+        market['gex_context'] = gex_context
+        market['ma_context'] = ma_context
+        market['pead_context'] = pead_context
+        state['market_context'] = market
 
     try:
         bull = BullAgent(f'{asset_class}-bull')
@@ -288,15 +429,42 @@ async def _greeks_intercept_async(state: AgentState) -> AgentState:
 
     # Only run Greeks for equities during market hours
     if asset_class == 'crypto' or not is_market_hours():
+        iv_rank = 50.0
+        gamma = 0.0
+        trade_mode = 'NEUTRAL'
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and service_role_key:
+                headers = {
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                }
+                url = f"{supabase_url}/rest/v1/greeks_snapshots"
+                params = {
+                    "symbol": f"eq.{symbol}",
+                    "order": "snapshot_at.desc",
+                    "limit": "1"
+                }
+                resp = requests.get(url, headers=headers, params=params, timeout=5.0)
+                if resp.status_code == 200 and resp.json():
+                    greeks_snap = resp.json()[0]
+                    iv_rank = float(greeks_snap.get("iv_rank", 50.0))
+                    gamma = float(greeks_snap.get("gamma", 0.0))
+                    trade_mode = greeks_snap.get("trade_mode", "NEUTRAL")
+                    logger.info(f"[Greeks] Using historical Supabase greeks for outside market hours: iv_rank={iv_rank}, gamma={gamma}")
+        except Exception as e:
+            logger.warning(f"[Greeks] Failed to query Supabase greeks in outside market hours block: {e}")
+
         state['greeks_decision'] = {
             'action': 'APPROVE',
             'reason': 'Crypto or outside market hours — Greeks skipped',
             'trigger': 'SKIPPED',
             'size_scalar': 1.0,
             'position_value': 2500.0,
-            'trade_mode': 'NEUTRAL',
-            'iv_rank': 50.0,
-            'gamma': 0.0,
+            'trade_mode': trade_mode,
+            'iv_rank': iv_rank,
+            'gamma': gamma,
             'delta': 0.0,
             'rvol': 1.0,
             'alerts': []
@@ -305,6 +473,29 @@ async def _greeks_intercept_async(state: AgentState) -> AgentState:
 
     # Get cached Greeks
     greeks = get_cached_greeks(symbol)
+
+    if greeks is None:
+        logger.info(f"[Greeks] No cached data for {symbol} in memory, trying Supabase greeks_snapshots...")
+        try:
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and service_role_key:
+                headers = {
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                }
+                url = f"{supabase_url}/rest/v1/greeks_snapshots"
+                params = {
+                    "symbol": f"eq.{symbol}",
+                    "order": "snapshot_at.desc",
+                    "limit": "1"
+                }
+                resp = requests.get(url, headers=headers, params=params, timeout=5.0)
+                if resp.status_code == 200 and resp.json():
+                    greeks = resp.json()[0]
+                    logger.info(f"[Greeks] Successfully retrieved latest Greeks from Supabase for {symbol}")
+        except Exception as e:
+            logger.warning(f"[Greeks] Failed to query Supabase greeks_snapshots: {e}")
 
     if greeks is None:
         logger.warning(f"[Greeks] No cached data for {symbol} — using safe defaults")
@@ -397,11 +588,23 @@ def kelly_sizing_node(state: AgentState) -> AgentState:
             regime=regime,
             greeks_scalar=greeks.get("size_scalar", 1.0)
         ))
+        
+        gex_data = state.get('gex_data') or {}
+        if asset == 'equities' and gex_data.get('available') and gex_data.get('size_modifier') is not None:
+            orig_val = kelly_result.get('position_value', 2500.0)
+            scaled_val = orig_val * gex_data['size_modifier']
+            scaled_val = min(scaled_val, 2500.0)
+            kelly_result['position_value'] = scaled_val
+            kelly_result['position_value_str'] = f"${scaled_val:.2f}"
+            kelly_result['adjusted_kelly'] = kelly_result.get('adjusted_kelly', 0.0) * gex_data['size_modifier']
+            logger.info(f"[Orchestrator] Scaled Kelly position size by GEX modifier {gex_data['size_modifier']}: {orig_val} -> {scaled_val}")
+
         if state.get('debate_result', {}).get('verdict') == 'PROCEED_CAUTIOUSLY':
             orig_val = kelly_result.get('position_value', 2500.0)
             scaled_val = orig_val * 0.5
             kelly_result['position_value'] = scaled_val
             kelly_result['position_value_str'] = f"${scaled_val:.2f}"
+            kelly_result['adjusted_kelly'] = kelly_result.get('adjusted_kelly', 0.0) * 0.5
             logger.info(f"[Orchestrator] Scaled Kelly position size by 50% due to PROCEED_CAUTIOUSLY debate verdict: {orig_val} -> {scaled_val}")
         logger.info(f"[Orchestrator] {symbol} Kelly sizing resolved: {kelly_result.get('position_value_str')}")
         return {**state, "kelly_sizing": kelly_result}
@@ -538,6 +741,29 @@ def report_node(state: AgentState) -> AgentState:
         )
     logger.info(f"[Orchestrator] {asset} pipeline cycle completed. {greeks_line}")
 
+    # HITL approval gate (GATE 3)
+    try:
+        sig = state.get("signal_recommendation", {})
+        signal_id = sig.get("id")
+        if (sig.get('action') == 'BUY'
+                and state.get('execution_approved', False)
+                and os.getenv('HITL_ENABLED', 'false').lower() == 'true'):
+            # Enrich signal with pipeline context for the queue
+            hitl_signal = dict(sig)
+            debate_res = state.get('debate_result', {})
+            kelly_sz = state.get('kelly_sizing', {})
+            regime_sum = state.get('regime_summary', {})
+            hitl_signal['debate_verdict'] = debate_res.get('verdict')
+            hitl_signal['debate_bull_score'] = debate_res.get('bull_score')
+            hitl_signal['debate_bear_score'] = debate_res.get('bear_score')
+            hitl_signal['regime'] = regime_sum.get('overall_regime')
+            hitl_signal['kelly_position_value'] = kelly_sz.get('position_value', 0)
+            hitl_signal['asset_class'] = state.get('asset_class', 'equities')
+            submit_for_approval(hitl_signal)
+            logger.info(f"[HITL] Signal for {sig.get('symbol')} submitted for human approval — execution held")
+    except Exception as e:
+        logger.warning(f"[HITL] Submit error in report_node: {e}")
+
     # Update cloud Supabase agent_signals table with the rich cycle metrics
     try:
         sig = state.get("signal_recommendation", {})
@@ -561,6 +787,7 @@ def report_node(state: AgentState) -> AgentState:
                 
                 update_payload = {
                     "signal_type": sig.get("technical_signal"),
+                    "sentiment_score": float(sig.get("sentiment_score") or 0.0) if sig.get("sentiment_score") is not None else None,
                     "sentiment_trend": sig.get("sentiment_trend"),
                     "timesfm_forecast": sig.get("timesfm_forecast"),
                     "timesfm_pct": float(sig.get("timesfm_pct") or 0.0) if sig.get("timesfm_pct") is not None else None,
@@ -581,12 +808,13 @@ def report_node(state: AgentState) -> AgentState:
                     "reasoning": sig.get("reasoning"),
                 }
                 
-                import requests
-                resp = requests.patch(url, headers=headers, json=update_payload, timeout=5)
-                if resp.status_code in (200, 204):
-                    logger.info(f"[SUPABASE] Successfully updated agent_signal ID {signal_id} with full pipeline metrics.")
-                else:
-                    logger.warning(f"[SUPABASE] Failed to update agent_signal ID {signal_id} ({resp.status_code}): {resp.text}")
+                from common.safe_write import safe_write_sync
+                safe_write_sync(
+                    f"agent_signals?id=eq.{signal_id}",
+                    update_payload,
+                    "orchestrator-report-node",
+                    method="patch",
+                )
     except Exception as e:
         logger.warning(f"[SUPABASE] Error updating agent_signal table in report_node: {e}")
 
@@ -656,6 +884,21 @@ _equities_compiled_graph = _build_graph().compile()
 
 async def run_crypto_cycle() -> dict:
     """Run crypto agent pipeline and return cycle result dict."""
+    # GATE 2 — Stale price data halt (crypto uses ETH/USD)
+    if not validate_market_freshness('ETH/USD', 'crypto'):
+        logger.warning("Crypto cycle HALTED — stale price data")
+        return {"halted": True, "reason": "stale_data", "asset_class": "crypto"}
+
+    # GATE 3 — Soft daily stop check (crypto always active, but BUY still blocked)
+    _check_daily_stop()
+
+    # ── Kronos parallel forecast (non-blocking — best-effort) ────────────────
+    kronos_crypto = {}
+    try:
+        kronos_crypto = await asyncio.to_thread(_kronos_compare, 'ETH/USD')
+    except Exception as _ke:
+        logger.warning(f'[KRONOS] Crypto compare failed (non-fatal): {_ke}')
+
     initial_state: AgentState = {
         "asset_class": "crypto",
         "regime_summary": {},
@@ -667,15 +910,65 @@ async def run_crypto_cycle() -> dict:
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+        "kronos_comparison": kronos_crypto,
     }
     logger.info(f"[Orchestrator] Starting crypto cycle at {initial_state['cycle_timestamp']}")
-    result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
-    logger.info("[Orchestrator] Crypto cycle complete.")
+    try:
+        result = await asyncio.to_thread(_crypto_compiled_graph.invoke, initial_state)
+        result['kronos_comparison'] = kronos_crypto
+        logger.info("[Orchestrator] Crypto cycle complete.")
+    except Exception as exc:
+        logger.error(f"[Orchestrator] CRITICAL: Crypto cycle pipeline execution crashed: {exc}", exc_info=True)
+        result = {
+            "halted": True,
+            "reason": f"Pipeline execution failure: {exc}",
+            "asset_class": "crypto",
+            "regime_summary": {},
+            "market_context": {},
+            "signal_recommendation": {"action": "HOLD", "confidence": "LOW"},
+            "debate_result": {},
+            "greeks_decision": {},
+            "kelly_sizing": {"symbol": "ETH/USD", "position_value": 0.0, "position_value_str": "$0.00"},
+            "risk_decision": {"decision": "BLOCK", "reason": f"degraded due to pipeline crash: {exc}"},
+            "kronos_comparison": kronos_crypto,
+        }
     return result
 
 
 async def run_equities_cycle() -> dict:
     """Run equities agent pipeline and return cycle result dict."""
+    # GATE 2 — Stale price data halt
+    if not validate_market_freshness('SPY', 'equities'):
+        logger.warning("Equities cycle HALTED — stale price data")
+        return {"halted": True, "reason": "stale_data", "asset_class": "equities"}
+
+    # GATE 3 — Time-of-day session filter
+    from agents.session_filter import get_session_context
+    session = get_session_context()
+    logger.info(f"[SESSION] {session['session']} — {session['reason']}")
+    if not session['equities_active']:
+        logger.info("[SESSION] Equities not active this session — skipping cycle")
+        return {
+            "halted": True,
+            "reason": "session_inactive",
+            "asset_class": "equities",
+            "session": session['session'],
+            "session_reason": session['reason'],
+        }
+
+    # GATE 4 — Soft daily stop check
+    _check_daily_stop()
+
+    gex_data = compute_gex()
+    ma_data = get_spy_200day_ma()
+
+    # ── Kronos parallel forecast (non-blocking — best-effort) ────────────────
+    kronos_eq = {}
+    try:
+        kronos_eq = await asyncio.to_thread(_kronos_compare, 'SPY')
+    except Exception as _ke:
+        logger.warning(f'[KRONOS] Equities compare failed (non-fatal): {_ke}')
+
     initial_state: AgentState = {
         "asset_class": "equities",
         "regime_summary": {},
@@ -687,10 +980,33 @@ async def run_equities_cycle() -> dict:
         "risk_decision": {},
         "overnight_digest": {},
         "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+        "gex_data": gex_data,
+        "ma_data": ma_data,
+        "_session_context": session,
+        "kronos_comparison": kronos_eq,
     }
     logger.info(f"[Orchestrator] Starting equities cycle at {initial_state['cycle_timestamp']}")
-    result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
-    logger.info("[Orchestrator] Equities cycle complete.")
+    try:
+        result = await asyncio.to_thread(_equities_compiled_graph.invoke, initial_state)
+        result['kronos_comparison'] = kronos_eq
+        logger.info("[Orchestrator] Equities cycle complete.")
+    except Exception as exc:
+        logger.error(f"[Orchestrator] CRITICAL: Equities cycle pipeline execution crashed: {exc}", exc_info=True)
+        result = {
+            "halted": True,
+            "reason": f"Pipeline execution failure: {exc}",
+            "asset_class": "equities",
+            "regime_summary": {},
+            "market_context": {},
+            "signal_recommendation": {"action": "HOLD", "confidence": "LOW"},
+            "debate_result": {},
+            "greeks_decision": {},
+            "kelly_sizing": {"symbol": "SPY", "position_value": 0.0, "position_value_str": "$0.00"},
+            "risk_decision": {"decision": "BLOCK", "reason": f"degraded due to pipeline crash: {exc}"},
+            "kronos_comparison": kronos_eq,
+        }
+    # Propagate session context so run_cycle can include it in the report
+    result['_session_context'] = session
     return result
 
 
@@ -751,6 +1067,25 @@ async def run_cycle() -> dict:
             f"| Gamma: {gd.get('gamma', 0.0):.4f}"
         )
 
+    # Sentiment line (status-aware, None-safe). When status != OK the avg is None,
+    # so the STATUS leads the line — a missing/failed read can never render as a
+    # phantom 0.0000.
+    def _sentiment_line(mc: dict, sr: dict, art: int) -> str:
+        from agents import sentiment_status as ss
+        status = mc.get("sentiment_status", ss.OK)
+        avg = mc.get("avg_sentiment")
+        trend = sr.get("sentiment_trend", "STABLE")
+        if status == ss.OK and avg is not None:
+            return f"📰 Sentiment: {avg:.4f} ({art} articles) | Velocity: {trend}"
+        # Not OK: avg is None. Render the status, never a number.
+        if status == ss.STALE:
+            detail = f"last article >{ss.STALENESS_MIN}m old"
+        elif status == ss.ERROR:
+            detail = "sentiment fetch failed"
+        else:  # NO_DATA (and any unexpected non-OK status)
+            detail = f"{art} scored articles"
+        return f"📰 Sentiment: {status} ({detail})"
+
     # Debate lines
     def _debate_line(db: dict) -> str:
         if not db or db.get("verdict") in (None, "NEUTRAL"):
@@ -763,11 +1098,45 @@ async def run_cycle() -> dict:
             f"{reasoning_display}"
         )
 
+    c_sym = c_ks.get("symbol", "ETH/USD")
+    c_sym_regime_dict = c_rs.get('symbol_regimes', {}).get(c_sym, {})
+    c_symbol_regime = c_sym_regime_dict.get('regime', c_rs.get('overall_regime', 'QUIET'))
+    c_symbol_regime_prob = c_sym_regime_dict.get('regime_probability', 1.0)
+
+    e_sym = e_ks.get("symbol", "SPY")
+    e_sym_regime_dict = e_rs.get('symbol_regimes', {}).get(e_sym, {})
+    e_symbol_regime = e_sym_regime_dict.get('regime', e_rs.get('overall_regime', 'QUIET'))
+    e_symbol_regime_prob = e_sym_regime_dict.get('regime_probability', 1.0)
+
+    gex_data = equities_result.get("gex_data") or {}
+    ma_data = equities_result.get("ma_data") or {}
+    pead_data = equities_result.get("pead_data") or {}
+
+    # ── Kronos forecast lines ──────────────────────────────────────────────────
+    def _kronos_line(kc: dict, label: str) -> str:
+        if not kc or not kc.get('kronos', {}).get('direction'):
+            return f'🔮 Kronos ({label}): unavailable'
+        k = kc['kronos']
+        t = kc.get('timesfm', {})
+        agree_icon = '✅' if kc.get('agree') else '⚠️'
+        t_dir = t.get('direction', 'N/A')
+        t_pct = t.get('pct_change', 0.0)
+        return (
+            f'🔮 Kronos ({k.get("model", "Kronos")}): '
+            f'{k["direction"]} {k["pct_change"]:+.2f}% | '
+            f'Linear Baseline: {t_dir} {t_pct:+.2f}% | '
+            f'{agree_icon} {kc.get("agreement_signal", "")}'
+        )
+
+    c_kronos = crypto_result.get('kronos_comparison') or {}
+    e_kronos = equities_result.get('kronos_comparison') or {}
+
     report_text = (
         "🤖 Disrupting Alpha — Full Cycle Report\n\n"
         "📊 CRYPTO\n"
-        f"🎯 Regime: {c_rs.get('overall_regime', 'QUIET')} — {c_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {c_mc.get('avg_sentiment', 0.0):.4f} ({c_art} articles) | Velocity: {c_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"🎯 Regime: {c_symbol_regime} ({c_symbol_regime_prob:.0%})\n"
+        f"{_sentiment_line(c_mc, c_sr, c_art)}\n"
+        f"{_kronos_line(c_kronos, 'ETH/USD')}\n"
         f"Signal: {c_sr.get('action', 'N/A')} | {c_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(c_db)}\n"
         f"💰 Sizing (Kelly): {c_ks.get('symbol', 'BTC/USD')}: {c_ks.get('position_value_str', '$0')} ({c_frac:.1%} adj. portfolio)\n"
@@ -777,8 +1146,13 @@ async def run_cycle() -> dict:
         f"🕐 Execution: {'APPROVED' if crypto_result.get('execution_approved', True) else 'SKIP'} — {crypto_result.get('execution_reason', 'N/A')}\n"
         f"Risk: {c_rd.get('decision', 'N/A')}\n\n"
         "📈 EQUITIES\n"
-        f"🎯 Regime: {e_rs.get('overall_regime', 'QUIET')} — {e_rs.get('strategy_recommendation', 'N/A')}\n"
-        f"📰 Sentiment: {e_mc.get('avg_sentiment', 0.0):.4f} ({e_art} articles) | Velocity: {e_sr.get('sentiment_trend', 'STABLE')}\n"
+        f"🎯 Regime: {e_symbol_regime} ({e_symbol_regime_prob:.0%})\n"
+        f"📊 Market Context:\n"
+        f"GEX: {gex_data.get('gex_regime', 'UNKNOWN')} (${gex_data.get('gex_value_millions', 0):.0f}M)\n"
+        f"200MA: {ma_data.get('regime', 'UNKNOWN')} ({ma_data.get('pct_from_ma', 0):+.1f}%)\n"
+        f"PEAD: {pead_data.get('signal', 'NEUTRAL')} {pead_data.get('description','')[:60]}\n"
+        f"{_kronos_line(e_kronos, 'SPY')}\n"
+        f"{_sentiment_line(e_mc, e_sr, e_art)}\n"
         f"Signal: {e_sr.get('action', 'N/A')} | {e_sr.get('confidence', 'N/A')}\n"
         f"{_debate_line(e_db)}\n"
         f"💰 Sizing (Kelly): {e_ks.get('symbol', 'SPY')}: {e_ks.get('position_value_str', '$0')} ({e_frac:.1%} adj. portfolio)\n"
@@ -786,7 +1160,8 @@ async def run_cycle() -> dict:
         f"{_greeks_line(e_gd)}\n"
         f"📉 VaR: {e_var_pct:.1%} daily | DD: {e_dd_pct:.1%}\n"
         f"🕐 Execution: {'APPROVED' if equities_result.get('execution_approved', True) else 'SKIP'} — {equities_result.get('execution_reason', 'N/A')}\n"
-        f"Risk: {e_rd.get('decision', 'N/A')}"
+        f"Risk: {e_rd.get('decision', 'N/A')}\n"
+        f"🕐 Session: {equities_result.get('_session_context', {}).get('session', 'N/A')} — {equities_result.get('_session_context', {}).get('reason', 'N/A')}"
     )
 
     await _send_telegram(report_text, chat_id="8641189809")

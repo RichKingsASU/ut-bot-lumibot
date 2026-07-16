@@ -18,6 +18,8 @@ import httpx
 import requests
 from dotenv import load_dotenv
 
+from adapters import component_heartbeat
+
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 load_dotenv()
 
@@ -279,8 +281,22 @@ async def main() -> None:
         try:
             await run_cycle()
             logger.info(f"[RunAgents] ── Cycle #{cycle_count} complete ──")
-        except Exception as exc:
-            logger.error(f"[RunAgents] Cycle #{cycle_count} raised an exception: {exc}", exc_info=True)
+            # Component heartbeat: written ONLY on successful cycle completion,
+            # so its freshness is the "cycle advanced" signal the watchdog uses.
+            component_heartbeat.beat(
+                "run_agents",
+                status="ok",
+                last_successful_cycle_id=cycle_count,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException,
+                ConnectionResetError, OSError) as e:
+            logger.warning(f"Network error: {e} — retrying in 60s")
+            await asyncio.sleep(60)
+            continue
+        except Exception as e:
+            logger.error(f"Cycle error: {e} — retrying in 30s")
+            await asyncio.sleep(30)
+            continue
 
         # Daily at 8:00 PM ET: signal health check
         if now_et.hour == 20 and now_et.minute < 15:

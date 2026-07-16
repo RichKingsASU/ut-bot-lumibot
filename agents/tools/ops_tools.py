@@ -45,6 +45,8 @@ def _run(cmd: str, timeout: int = 10) -> subprocess.CompletedProcess:
         shell=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 
@@ -251,7 +253,7 @@ def run_health_check() -> Dict[str, Any]:
         f"{sys.executable} {script}",
         timeout=60,
     )
-    output = result.stdout + result.stderr
+    output = (result.stdout or "") + (result.stderr or "")
     return {
         "available": True,
         "returncode": result.returncode,

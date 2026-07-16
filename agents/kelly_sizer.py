@@ -4,6 +4,8 @@ import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from agents.risk_models import PositionSizeModel, MAX_POSITION_VALUE
+from pydantic import ValidationError
 
 logger = logging.getLogger("KellySizer")
 load_dotenv()
@@ -201,7 +203,9 @@ class KellySizer:
     adjusted_kelly = kelly_fraction * regime_adjustment
     
     # 5. Fetch latest IC from database if not passed
+    ic_status = "VALID" # Default to VALID if passed explicitly
     if ic_score is None:
+        ic_status = None
         targets = []
         if self.supabase_url and self.supabase_key:
             targets.append((self.supabase_url, self.supabase_key, "CLOUD"))
@@ -228,10 +232,14 @@ class KellySizer:
                     if resp.status_code == 200 and resp.json():
                         row = resp.json()[0]
                         ic_val = row.get("information_coefficient")
+                        ic_status = row.get("status")
                         if ic_val is not None:
                             ic_score = float(ic_val)
-                            logger.info(f"Retrieved latest IC score for {symbol} from {label} Supabase: {ic_score:.4f}")
-                            break
+                            logger.info(f"Retrieved latest IC score for {symbol} from {label} Supabase: {ic_score:.4f} (status={ic_status})")
+                        else:
+                            ic_score = None
+                            logger.info(f"Retrieved latest IC score for {symbol} from {label} Supabase: None (status={ic_status})")
+                        break
             except Exception as e:
                 logger.error(f"Failed to query {label} Supabase for {symbol} IC score: {e}")
 
@@ -243,7 +251,10 @@ class KellySizer:
     ic_scalar = 1.0
     ic_adjustment = "No adjustment (healthy signal or no performance data)"
     
-    if ic_score is not None:
+    if ic_status is None or ic_status == 'INSUFFICIENT_DATA' or ic_score is None:
+        ic_scalar = 1.0
+        ic_adjustment = f"IC UNRELIABLE (status={ic_status}): neutral, surfaced as NO_DATA"
+    else:
         if ic_score >= 0.02:
             ic_scalar = 1.0
             ic_adjustment = f"No adjustment (healthy signal: IC={ic_score:.4f})"
@@ -257,10 +268,25 @@ class KellySizer:
             ic_scalar = 0.0
             ic_adjustment = f"DISABLE trading (dead signal: IC={ic_score:.4f})"
 
+    logger.info(ic_adjustment)
+
     # 7. Calculate final position value:
     #    position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
     position_value = portfolio_value * adjusted_kelly * greeks_scalar * ic_scalar
-    
+
+    # 8. Pydantic hard-cap validation (GATE 1)
+    try:
+        PositionSizeModel(
+            symbol=symbol,
+            asset_class=asset_class,
+            proposed_position_value=position_value,
+            account_equity=portfolio_value,
+            verdict="PENDING"
+        )
+    except ValidationError as e:
+        logger.error(f"Kelly validation FAILED for {symbol}: {e}")
+        position_value = min(position_value, MAX_POSITION_VALUE)
+
     return {
       "symbol": symbol,
       "kelly_fraction": kelly_fraction,
@@ -323,20 +349,11 @@ class KellySizer:
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
+    from common.safe_write import safe_write_async
     for url, key, label in targets:
-        target_url = f"{url}/rest/v1/trade_performance"
-        headers = {
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal"
-        }
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(target_url, headers=headers, json=payload)
-                if resp.status_code in (200, 201):
-                    logger.info(f"Recorded trade outcome for {symbol} to Supabase {label}.")
-                else:
-                    logger.error(f"Failed to record trade outcome to Supabase {label}: {resp.status_code} — {resp.text}")
-        except Exception as e:
-            logger.error(f"Failed to write trade outcome to Supabase {label}: {e}")
+        ok = await safe_write_async(
+            "trade_performance", payload, f"kelly-sizer-{label.lower()}",
+            _url=url, _key=key,
+        )
+        if ok:
+            logger.info(f"Recorded trade outcome for {symbol} to Supabase {label}.")

@@ -75,40 +75,87 @@ class SignalAgent(BaseAgent):
             f"Latest signal → type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}"
         )
 
-        # ── Step 3: Combine with market_context.avg_sentiment ─────────────────
-        avg_sentiment: float = float(market_context.get("avg_sentiment", 0.0))
+        # ── Step 3: Combine with market_context sentiment (status-aware) ──────
+        # avg_sentiment is only trustworthy when sentiment_status == OK. For every
+        # other state it is None, so a 0.0 can no longer masquerade as a real
+        # neutral read. Policy:
+        #   NO_DATA / ERROR -> HOLD/BLOCK  (do not trade on missing/failed sentiment)
+        #                      unless this asset class is in degrade-only mode.
+        #   STALE           -> DEGRADE     (follow technicals at reduced conviction).
+        #   OK              -> normal sentiment-confirmed logic.
+        from agents import sentiment_status as ss
+
+        sentiment_status = str(market_context.get("sentiment_status", ss.OK))
+        status_reason = str(
+            market_context.get("status_reason")
+            or market_context.get("sentiment_status_reason")
+            or ""
+        )
+        raw_avg = market_context.get("avg_sentiment", None)
+        avg_sentiment: float = (
+            float(raw_avg) if (sentiment_status == ss.OK and raw_avg is not None) else 0.0
+        )
 
         action = "HOLD"
         confidence = "MEDIUM"
         reasoning = ""
+        sentiment_blocked = False  # True when we hard-blocked on missing/failed sentiment
 
-        if avg_sentiment > 0.3 and buy_sig:
-            action = "BUY"
-            confidence = "HIGH"
-            reasoning = (
-                f"Bullish sentiment ({avg_sentiment:.3f} > 0.3) confirmed by buy signal "
-                f"from signal_log (signal_type={latest_signal_type})."
-            )
-        elif avg_sentiment < -0.3 and sell_sig:
-            action = "SELL"
-            confidence = "HIGH"
-            reasoning = (
-                f"Bearish sentiment ({avg_sentiment:.3f} < -0.3) confirmed by sell signal "
-                f"from signal_log (signal_type={latest_signal_type})."
-            )
-        elif (avg_sentiment > 0.3 and sell_sig) or (avg_sentiment < -0.3 and buy_sig):
-            # Sentiment conflicts with technical signal
+        if sentiment_status in ss.MISSING_STATES and ss.enforces_block(self.asset_class):
+            # HOLD/BLOCK: refuse to trade on missing/failed sentiment.
+            sentiment_blocked = True
             action = "HOLD"
             confidence = "LOW"
             reasoning = (
-                f"Sentiment ({avg_sentiment:.3f}) conflicts with technical signal "
-                f"(buy_sig={buy_sig}, sell_sig={sell_sig}). Holding to avoid conflicting signals."
+                f"BLOCK: sentiment {sentiment_status} ({status_reason}). "
+                f"Refusing to trade on missing/failed sentiment data."
             )
+        elif sentiment_status == ss.OK:
+            # Normal sentiment-confirmed logic.
+            if avg_sentiment > 0.3 and buy_sig:
+                action = "BUY"
+                confidence = "HIGH"
+                reasoning = (
+                    f"Bullish sentiment ({avg_sentiment:.3f} > 0.3) confirmed by buy signal "
+                    f"from signal_log (signal_type={latest_signal_type})."
+                )
+            elif avg_sentiment < -0.3 and sell_sig:
+                action = "SELL"
+                confidence = "HIGH"
+                reasoning = (
+                    f"Bearish sentiment ({avg_sentiment:.3f} < -0.3) confirmed by sell signal "
+                    f"from signal_log (signal_type={latest_signal_type})."
+                )
+            elif (avg_sentiment > 0.3 and sell_sig) or (avg_sentiment < -0.3 and buy_sig):
+                # Sentiment conflicts with technical signal
+                action = "HOLD"
+                confidence = "LOW"
+                reasoning = (
+                    f"Sentiment ({avg_sentiment:.3f}) conflicts with technical signal "
+                    f"(buy_sig={buy_sig}, sell_sig={sell_sig}). Holding to avoid conflicting signals."
+                )
+            else:
+                confidence = "MEDIUM"
+                reasoning = (
+                    f"Neutral sentiment region ({avg_sentiment:.3f}). Following technical signal: "
+                    f"signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}."
+                )
         else:
-            confidence = "MEDIUM"
+            # DEGRADE: STALE (any asset), or NO_DATA/ERROR where blocking is not
+            # enforced (e.g. equities until the scorer scores equities). Do NOT use
+            # the (missing/stale) sentiment value; follow the technical signal at
+            # reduced conviction and flag it.
+            if buy_sig and not sell_sig:
+                action = "BUY"
+            elif sell_sig and not buy_sig:
+                action = "SELL"
+            else:
+                action = "HOLD"
+            confidence = "LOW"
             reasoning = (
-                f"Neutral sentiment region ({avg_sentiment:.3f}). Following technical signal: "
-                f"signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig}."
+                f"DEGRADE: sentiment {sentiment_status} ({status_reason}). "
+                f"Proceeding on technical signal only at reduced conviction "
+                f"(signal_type={latest_signal_type}, buy_sig={buy_sig}, sell_sig={sell_sig})."
             )
 
         symbol = latest.get("symbol", "ETH/USD" if self.asset_class == "crypto" else "SPY") if signal_rows else ("ETH/USD" if self.asset_class == "crypto" else "SPY")
@@ -156,14 +203,14 @@ class SignalAgent(BaseAgent):
                     confidence = 'HIGH'
                 elif confidence_boost < 0 and confidence == 'HIGH':
                     confidence = 'MEDIUM'
-                reasoning += f" | TimesFM: {forecast['forecast_direction']} ({forecast['forecast_pct_change']:+.1f}%)"
+                reasoning += f" | Linear Baseline: {forecast['forecast_direction']} ({forecast['forecast_pct_change']:+.1f}%)"
                 timesfm_forecast = forecast['forecast_direction']
                 timesfm_pct = forecast['forecast_pct_change']
             else:
                 timesfm_forecast = "NONE"
                 timesfm_pct = 0.0
         except Exception as e:
-            logger.warning(f'TimesFM integration skipped: {e}')
+            logger.warning(f'Linear baseline forecast skipped: {e}')
             timesfm_forecast = 0.0
             timesfm_pct = 0.0
 
@@ -173,6 +220,9 @@ class SignalAgent(BaseAgent):
             "action": action,
             "confidence": confidence,
             "sentiment_score": avg_sentiment,
+            "sentiment_status": sentiment_status,
+            "sentiment_status_reason": status_reason,
+            "sentiment_blocked": sentiment_blocked,
             "sentiment_velocity": sentiment_velocity,
             "sentiment_trend": sentiment_trend,
             "technical_signal": latest_signal_type,
@@ -181,11 +231,26 @@ class SignalAgent(BaseAgent):
             "timesfm_pct": timesfm_pct,
         }
 
-        # ── Step 3b: Greeks modifier ───────────────────────────────────────────
-        if greeks_context and greeks_context.get('trade_mode'):
-            trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
-            iv_rank = greeks_context.get('iv_rank', 50.0)
-            gamma = greeks_context.get('gamma', 0.0)
+        # ── Step 3b: Greeks modifier (with Supabase fallback) ───────────────────
+        resolved_greeks = greeks_context
+        if not resolved_greeks or not resolved_greeks.get('trade_mode'):
+            try:
+                greeks_rows = await self.query_supabase(
+                    table="greeks_snapshots",
+                    select="*",
+                    filters={"symbol": f"eq.{symbol}", "order": "snapshot_at.desc"},
+                    limit=1
+                )
+                if greeks_rows:
+                    resolved_greeks = greeks_rows[0]
+                    logger.info(f"Loaded Greeks for {symbol} from Supabase: {resolved_greeks}")
+            except Exception as e:
+                logger.error(f"Failed to query greeks_snapshots for {symbol}: {e}")
+
+        if resolved_greeks and resolved_greeks.get('trade_mode'):
+            trade_mode = resolved_greeks.get('trade_mode', 'NEUTRAL')
+            iv_rank = float(resolved_greeks.get('iv_rank', 50.0))
+            gamma = float(resolved_greeks.get('gamma', 0.0))
 
             # Boost confidence if Greeks align
             if trade_mode == 'LONG_GAMMA' and action == 'BUY':
@@ -211,6 +276,11 @@ class SignalAgent(BaseAgent):
             # Update confidence after possible modification
             signal_recommendation['confidence'] = confidence
             signal_recommendation['reasoning'] = reasoning
+        else:
+            # Safe defaults if no Greeks available
+            signal_recommendation['trade_mode'] = 'NEUTRAL'
+            signal_recommendation['iv_rank'] = 50.0
+            signal_recommendation['gamma'] = 0.0
 
         logger.info(f"Signal recommendation → {signal_recommendation}")
 
@@ -231,24 +301,34 @@ class SignalAgent(BaseAgent):
         try:
             service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
             if self.supabase_url and service_role_key:
-                url = f"{self.supabase_url}/rest/v1/agent_signals"
-                headers = {
-                    "apikey": service_role_key,
-                    "Authorization": f"Bearer {service_role_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation",
-                }
                 payload = {
                     "asset_class": signal_recommendation.get("asset_class"),
                     "symbol": signal_recommendation.get("symbol"),
                     "action": signal_recommendation.get("action"),
                     "confidence": signal_recommendation.get("confidence"),
                     "reasoning": signal_recommendation.get("reasoning"),
+                    "sentiment_score": signal_recommendation.get("sentiment_score"),
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "agent_name": self.name,
                 }
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post(url, headers=headers, json=payload)
+                # Use return=representation to capture the inserted row ID downstream.
+                # safe_write_async doesn't return the body, so we do a direct post here
+                # but still route through the heartbeat/alert machinery via beat_async.
+                from common.safe_write import beat_async
+                from datetime import timezone as _tz
+                _now = datetime.now(_tz.utc).isoformat()
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp = await client.post(
+                            f"{self.supabase_url}/rest/v1/agent_signals",
+                            headers={
+                                "apikey": service_role_key,
+                                "Authorization": f"Bearer {service_role_key}",
+                                "Content-Type": "application/json",
+                                "Prefer": "return=representation",
+                            },
+                            json=payload,
+                        )
                     if resp.status_code in (200, 201):
                         logger.info("signal_recommendation written to Supabase agent_signals.")
                         resp_data = resp.json()
@@ -257,10 +337,14 @@ class SignalAgent(BaseAgent):
                             if inserted_id:
                                 signal_recommendation["id"] = inserted_id
                                 logger.info(f"Stored agent_signal ID: {inserted_id} in recommendation.")
+                        await beat_async("signal-agent", status="OK", meta={"table": "agent_signals"})
                     else:
-                        logger.error(
-                            f"Supabase insert failed: {resp.status_code} — {resp.text}"
-                        )
+                        err = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                        logger.error(f"Supabase insert failed: {err}")
+                        await beat_async("signal-agent", status="DEGRADED", last_error=err)
+                except Exception as inner_exc:
+                    logger.error(f"Failed to write signal_recommendation to Supabase: {inner_exc}")
+                    await beat_async("signal-agent", status="DEGRADED", last_error=str(inner_exc))
             else:
                 logger.warning("Supabase credentials not set; skipping agent_signals write.")
         except Exception as e:

@@ -20,7 +20,29 @@ export default async (req: Request, context: Context) => {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
-  const { symbol, timeframe, date_start, date_end, atr_period = 10, sensitivity = 1.0, initial_capital = 100000 } = await req.json();
+  const body = await req.json();
+
+  // Accept both camelCase (frontend) and snake_case (API) field names
+  const symbol = body.symbol;
+  // Normalize timeframe: Alpaca stores as '1Min', '5Min', '15Min', '1Hour', '1Day'
+  const tfAlias: Record<string, string> = {
+    '1m': '1Min', '5m': '5Min', '15m': '15Min', '1h': '1Hour', '1d': '1Day',
+    '1min': '1Min', '5min': '5Min', '15min': '15Min', '1hour': '1Hour', '1day': '1Day',
+  };
+  const rawTf = (body.timeframe || '15Min').toString();
+  const timeframe = tfAlias[rawTf.toLowerCase()] || rawTf;
+  const date_start = body.date_start || body.startDate;
+  const date_end = body.date_end || body.endDate;
+  const atr_period = body.atr_period || 10;
+  const sensitivity = body.sensitivity || 1.0;
+  const initial_capital = body.initial_capital || 100000;
+
+  if (!symbol) {
+    return new Response(JSON.stringify({ error: "symbol is required" }), { status: 400 });
+  }
+  if (!date_start || !date_end) {
+    return new Response(JSON.stringify({ error: "date_start/startDate and date_end/endDate are required" }), { status: 400 });
+  }
 
   console.log(`[BACKTEST] Running for ${symbol} ${timeframe} from ${date_start} to ${date_end}...`);
 
@@ -34,8 +56,14 @@ export default async (req: Request, context: Context) => {
     .lte("ts", date_end)
     .order("ts", { ascending: true });
 
-  if (error || !bars || bars.length === 0) {
-    return new Response(JSON.stringify({ error: "No data found for backtest" }), { status: 400 });
+  if (error) {
+    console.error("[BACKTEST] Supabase error:", error);
+    return new Response(JSON.stringify({ error: `Database error: ${error.message}` }), { status: 500 });
+  }
+  if (!bars || bars.length === 0) {
+    return new Response(JSON.stringify({
+      error: `No OHLCV data found for ${symbol} (${timeframe}) between ${date_start} and ${date_end}. The bar_log table may not have data for this symbol/timeframe combination. Try ingesting historical data first via Data > Ingest.`
+    }), { status: 400 });
   }
 
   // 2. UT Bot Strategy Logic (Ported from Python)
@@ -153,6 +181,19 @@ export default async (req: Request, context: Context) => {
   const avgLoss = lossCount > 0 ? tradeResults.filter(p => p <= 0).reduce((a, b) => a + b, 0) / lossCount : 0;
   const profitFactor = Math.abs(avgLoss) > 0 ? (winCount * avgWin) / (lossCount * Math.abs(avgLoss)) : winCount > 0 ? 100 : 0;
 
+  // Annualized Sharpe: daily returns stddev * sqrt(252)
+  let sharpe_ratio = 0;
+  if (equityCurve.length > 1) {
+    const dailyReturns: number[] = [];
+    for (let i = 1; i < equityCurve.length; i++) {
+      if (equityCurve[i-1] > 0) dailyReturns.push((equityCurve[i] - equityCurve[i-1]) / equityCurve[i-1]);
+    }
+    const meanRet = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+    const variance = dailyReturns.reduce((a, b) => a + Math.pow(b - meanRet, 2), 0) / dailyReturns.length;
+    const stdDev = Math.sqrt(variance);
+    sharpe_ratio = stdDev > 0 ? (meanRet / stdDev) * Math.sqrt(252) : 0;
+  }
+
   const result = {
     strategy: "UT Bot Preview",
     symbol,
@@ -160,13 +201,21 @@ export default async (req: Request, context: Context) => {
     data_source: "Supabase",
     date_start,
     date_end,
+    bars_used: bars.length,
     atr_period,
     sensitivity,
     initial_capital,
     final_value: finalValue,
+    // Camel-case aliases so the frontend can read them directly
+    totalReturn: totalReturnPct,
+    sharpe: sharpe_ratio,
+    maxDrawdown: maxDrawdown * 100,
+    totalTrades: tradeResults.length,
+    winRate: tradeResults.length > 0 ? (winCount / tradeResults.length) * 100 : 0,
+    // Snake-case for DB storage
     total_return_pct: totalReturnPct,
     max_drawdown_pct: maxDrawdown * 100,
-    sharpe_ratio: 0, // Placeholder
+    sharpe_ratio,
     total_trades: tradeResults.length,
     winning_trades: winCount,
     losing_trades: lossCount,
@@ -174,6 +223,17 @@ export default async (req: Request, context: Context) => {
     avg_win: avgWin,
     avg_loss: avgLoss,
     profit_factor: profitFactor,
+    equityCurve: equityCurve.slice(0, 500).map((eq, i) => {
+      const ts = bars[i]?.ts;
+      const time = ts ? Math.floor(Date.parse(ts) / 1000) : Math.floor(Date.now() / 1000);
+      return {
+        time,
+        open: eq,
+        high: eq,
+        low: eq,
+        close: eq
+      };
+    }),
     params: { atr_period, sensitivity }
   };
 

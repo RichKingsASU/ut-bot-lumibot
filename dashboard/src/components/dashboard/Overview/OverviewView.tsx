@@ -1,13 +1,29 @@
 import React, { useState, useEffect } from 'react'
-import { DollarSign, TrendingUp, Briefcase, Target, ShieldAlert, LineChart as ChartIcon } from 'lucide-react'
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Briefcase,
+  Target,
+  Activity,
+  Wifi,
+  WifiOff,
+  LineChart as ChartIcon,
+  Clock,
+  AlertTriangle,
+  Zap,
+} from 'lucide-react'
 import { useTradingContext } from '../../../context/TradingContext'
 import { DataFreshness } from '../../DataFreshness'
-import { formatTimestamp } from '../../../lib/time'
-import { PageHeader } from '../../ui/PageHeader'
 import { useMetrics } from '../../../hooks/useMetrics'
 import { EmergencyShutdown } from './EmergencyShutdown'
 import { supabase } from '../../../lib/supabaseClient'
+import { parseConfidence } from '../../../lib/confidence'
 import { Link } from 'react-router-dom'
+import { cn } from '../../../lib/utils'
+import { BentoGrid, BentoTile } from '../../ui/BentoLayouts'
+import { Badge } from '../../ui/Badge'
+import { Skeleton } from '../../ui/Skeleton'
 import {
   AreaChart,
   Area,
@@ -17,20 +33,6 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts'
-
-const colors = {
-  bgPrimary: '#0d1117',
-  bgSecondary: '#161b22',
-  bgTertiary: '#21262d',
-  border: '#30363d',
-  textPrimary: '#e6edf3',
-  textMuted: '#8b949e',
-  blue: '#58a6ff',
-  green: '#3fb950',
-  red: '#f85149',
-  amber: '#e3b341',
-  orange: '#f0883e',
-}
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
@@ -45,6 +47,82 @@ interface PortfolioSnapshot {
   portfolio_value: number
   equity: number
 }
+
+// ─── Sub-Components ─────────────────────────────────────────────────────────
+
+function TileHeader({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("px-4 pt-4 pb-2 flex items-center justify-between", className)}>
+      {children}
+    </div>
+  )
+}
+
+function TileTitle({ icon: Icon, children }: { icon?: React.ElementType; children: React.ReactNode }) {
+  return (
+    <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+      {Icon && <Icon size={13} className="opacity-60" />}
+      {children}
+    </h3>
+  )
+}
+
+function StatBlock({
+  label,
+  value,
+  subValue,
+  trend,
+  icon: Icon,
+}: {
+  label: string
+  value: string
+  subValue?: string
+  trend?: 'up' | 'down' | 'neutral'
+  icon?: React.ElementType
+}) {
+  const trendColor = trend === 'up' ? 'text-[#10b981]' : trend === 'down' ? 'text-[#ef4444]' : 'text-muted-foreground'
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+        {Icon && <Icon size={11} className="opacity-50" />}
+        {label}
+      </span>
+      <span className={cn("text-xl font-bold tabular-nums font-mono tracking-tight leading-none", trendColor)}>
+        {value}
+      </span>
+      {subValue && (
+        <span className={cn("text-[10px] font-medium tabular-nums font-mono", trendColor)}>
+          {subValue}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ConnectionDot({ online }: { online: boolean }) {
+  return (
+    <span
+      className={cn(
+        "w-2 h-2 rounded-full flex-shrink-0",
+        online ? "bg-[#10b981] shadow-[0_0_6px_rgba(16,185,129,0.5)]" : "bg-[#ef4444]"
+      )}
+      role="status"
+      aria-label={online ? "Connected" : "Disconnected"}
+    />
+  )
+}
+
+function StaleIndicator({ stale }: { stale: boolean }) {
+  if (!stale) return null
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+      <AlertTriangle size={9} />
+      STALE
+    </span>
+  )
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function OverviewView() {
   const {
@@ -61,12 +139,13 @@ export default function OverviewView() {
   const [regimeData, setRegimeData] = useState<RegimeState | null>(null)
   const [equityData, setEquityData] = useState<PortfolioSnapshot[]>([])
   const [equityLoading, setEquityLoading] = useState(true)
+  const [liveAgentSignals, setLiveAgentSignals] = useState<any[]>([])
 
   useEffect(() => {
     if (account) setLastUpdated(new Date())
   }, [account?.equity])
 
-  // Fetch Regime + Equity Curve
+  // Fetch Regime + Equity Curve + Agent Signals
   useEffect(() => {
     let cancelled = false
 
@@ -75,7 +154,7 @@ export default function OverviewView() {
         // 1. Fetch regime
         const { data: regimeRows } = await supabase
           .from('regime_states')
-          .select('regime, probability, detected_at')
+          .select('regime, probability:regime_probability, detected_at')
           .order('detected_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -91,7 +170,7 @@ export default function OverviewView() {
         // 2. Fetch portfolio snapshots
         const { data: snapshots } = await supabase
           .from('portfolio_snapshots')
-          .select('snapshot_at, portfolio_value, equity')
+          .select('snapshot_at, portfolio_value:equity, equity')
           .order('snapshot_at', { ascending: true })
 
         if (snapshots && !cancelled) {
@@ -127,7 +206,7 @@ export default function OverviewView() {
             return {
               symbol: s.symbol,
               action: s.action || 'HOLD',
-              confidence: s.confidence != null ? Number(s.confidence) : 0.5,
+              confidence: parseConfidence(s.confidence),
               created_at: s.created_at || '',
               verdict,
               bull,
@@ -150,463 +229,352 @@ export default function OverviewView() {
 
   const { winRate: liveWinRate } = useMetrics()
 
-  const [liveAgentSignals, setLiveAgentSignals] = useState<any[]>([])
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted }}>
-        Loading dashboard data...
-      </div>
-    )
-  }
+  // ─── Derived Values ─────────────────────────────────────────────────────
 
   const equity = account ? parseFloat(account.equity) : 0
   const lastEquity = account ? parseFloat(account.last_equity) : 0
   const dayPnl = equity - lastEquity
   const dayPnlPct = lastEquity !== 0 ? (dayPnl / lastEquity) * 100 : 0
   const openPositions = positions.length
-
-  const winRateDisplay = liveWinRate == null ? '—' : `${liveWinRate}%`
-
-  const statCards = [
-    { label: 'Total Equity', value: currency.format(equity), icon: DollarSign, color: colors.blue },
-    {
-      label: 'Day P&L',
-      value: `${dayPnl >= 0 ? '+' : ''}${currency.format(dayPnl)} (${dayPnlPct >= 0 ? '+' : ''}${dayPnlPct.toFixed(2)}%)`,
-      icon: TrendingUp,
-      color: dayPnl >= 0 ? colors.green : colors.red,
-    },
-    { label: 'Open Positions', value: String(openPositions), icon: Briefcase, color: colors.amber },
-    { label: 'Win Rate (all time)', value: winRateDisplay, icon: Target, color: colors.green },
-  ]
-
-  const recentLogs = [...logs].reverse().slice(0, 5)
+  const pnlTrend: 'up' | 'down' | 'neutral' = dayPnl > 0 ? 'up' : dayPnl < 0 ? 'down' : 'neutral'
 
   const connectionItems = [
-    { name: 'Alpaca', online: connected },
-    { name: 'Database', online: true },
+    { name: 'Alpaca Broker', online: connected },
+    { name: 'Supabase DB', online: true },
     { name: 'Bot Engine', online: botStatus.online },
   ]
 
-  // Regime styling configuration
-  const getRegimeColor = (r: string) => {
-    switch (r) {
-      case 'BULL': return colors.green
-      case 'BEAR': return colors.red
-      case 'VOLATILE': return colors.orange
-      case 'QUIET': return colors.blue
-      default: return colors.textMuted
-    }
-  }
-
   const regimeName = regimeData?.regime || 'QUIET'
-  const regimeColor = getRegimeColor(regimeName)
-  const regimeProb = regimeData?.probability ? ` ${(regimeData.probability * 100).toFixed(0)}%` : ''
+  const regimeProb = regimeData?.probability ? (regimeData.probability * 100).toFixed(0) : null
   const regimeAge = regimeData?.detected_at
     ? (() => {
         const diffMs = Date.now() - new Date(regimeData.detected_at).getTime()
         const mins = Math.max(0, Math.floor(diffMs / 60000))
-        if (mins < 60) return `detected ${mins}m ago`
+        if (mins < 60) return `${mins}m in state`
         const hrs = Math.floor(mins / 60)
-        return `detected ${hrs}h ago`
+        return `${hrs}h in state`
       })()
-    : 'detected recently'
+    : null
+
+  const regimeColorMap: Record<string, string> = {
+    BULL: '#10b981',
+    BEAR: '#ef4444',
+    VOLATILE: '#f59e0b',
+    QUIET: '#3b82f6',
+  }
+  const regimeColor = regimeColorMap[regimeName] || '#8b949e'
+
+  const recentLogs = [...logs].reverse().slice(0, 8)
+
+  // ─── Loading State ──────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+        <BentoGrid>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <BentoTile key={i} colSpan={i < 2 ? 2 : 1} className="min-h-[180px]">
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-8 w-40" />
+                <Skeleton className="h-2 w-full" />
+              </div>
+            </BentoTile>
+          ))}
+        </BentoGrid>
+      </div>
+    )
+  }
+
+  // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: 24, height: '100%', overflowY: 'auto', backgroundColor: colors.bgPrimary }}>
-      <PageHeader
-        title="Overview"
-        subtitle="Live trading dashboard"
-        actions={
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            {/* Regime Badge */}
-            <Link
-              to="/admin/pipeline"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                padding: '6px 12px',
-                border: `1px solid ${regimeColor}`,
-                backgroundColor: `${regimeColor}10`,
-                borderRadius: 8,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <div style={{ fontSize: 10, fontWeight: 700, color: regimeColor, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                REGIME: {regimeName}{regimeProb}
-              </div>
-              <div style={{ fontSize: 9, color: colors.textMuted }}>
-                {regimeAge}
-              </div>
-            </Link>
-            <EmergencyShutdown />
-            <DataFreshness lastUpdated={lastUpdated} />
+    <div className="p-4 lg:p-6 h-full overflow-y-auto custom-scrollbar">
+
+      {/* ── Page Header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">Command Board</h1>
+          <p className="text-[11px] text-muted-foreground">Multi-agent status • Daily bars • Advisory only</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <EmergencyShutdown />
+          <DataFreshness lastUpdated={lastUpdated} />
+        </div>
+      </div>
+
+      {/* ── Bento Grid ──────────────────────────────────────────────────── */}
+      <BentoGrid className="grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 auto-rows-[minmax(160px,auto)] gap-3">
+
+        {/* TILE: Portfolio Equity (2-col) */}
+        <BentoTile colSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={DollarSign}>Portfolio</TileTitle>
+            <StaleIndicator stale={!connected} />
+          </TileHeader>
+          <div className="px-4 pb-4 flex items-end justify-between gap-6">
+            <StatBlock
+              label="Total Equity"
+              value={currency.format(equity)}
+              icon={DollarSign}
+            />
+            <StatBlock
+              label="Day P&L"
+              value={`${dayPnl >= 0 ? '+' : ''}${currency.format(dayPnl)}`}
+              subValue={`${dayPnlPct >= 0 ? '+' : ''}${dayPnlPct.toFixed(2)}%`}
+              trend={pnlTrend}
+              icon={pnlTrend === 'up' ? TrendingUp : TrendingDown}
+            />
+            <StatBlock
+              label="Open Positions"
+              value={String(openPositions)}
+              icon={Briefcase}
+            />
+            <StatBlock
+              label="Win Rate"
+              value={liveWinRate == null ? '—' : `${liveWinRate}%`}
+              icon={Target}
+            />
           </div>
-        }
-      />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
-        {statCards.map((card) => {
-          const Icon = card.icon
-          return (
-            <div
-              key={card.label}
-              style={{
-                backgroundColor: colors.bgSecondary,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                padding: 20,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-              }}
-            >
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 8,
-                  backgroundColor: `${card.color}18`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+        </BentoTile>
+
+        {/* TILE: HMM Regime */}
+        <BentoTile colSpan={1} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={Activity}>Market Regime</TileTitle>
+          </TileHeader>
+          <Link to="/admin/pipeline" className="px-4 pb-4 flex flex-col gap-2 flex-1 hover:bg-accent/5 transition-colors rounded-b-xl">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-2xl font-black tracking-tight"
+                style={{ color: regimeColor }}
               >
-                <Icon size={22} color={card.color} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>{card.label}</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>{card.value}</div>
-              </div>
-            </div>
-          )
-        })}
-
-        {/* HMM Regime Badge Card */}
-        <Link
-          to="/admin/pipeline"
-          style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${regimeColor}`,
-            borderRadius: 8,
-            padding: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            textDecoration: 'none',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = `${regimeColor}0a`
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = colors.bgSecondary
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-              backgroundColor: `${regimeColor}18`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <TrendingUp size={22} color={regimeColor} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>Market Regime</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: regimeColor }}>
-              {regimeName}{regimeProb}
-            </div>
-            <div style={{ fontSize: 11, color: colors.textMuted }}>
-              {regimeAge}
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Equity Curve Chart */}
-      <div
-        style={{
-          backgroundColor: colors.bgSecondary,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 8,
-          padding: 20,
-          marginBottom: 24,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ChartIcon size={16} color={colors.blue} />
-          Equity Curve (portfolio_snapshots)
-        </div>
-        <div style={{ height: 260, position: 'relative' }}>
-          {equityLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted, fontSize: 13 }}>
-              Loading portfolio snapshots...
-            </div>
-          ) : equityData.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textMuted, gap: 10 }}>
-              <ChartIcon size={32} style={{ opacity: 0.3 }} />
-              <span style={{ fontSize: 13 }}>No snapshot data yet</span>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={equityData}>
-                <defs>
-                  <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={colors.blue} stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor={colors.blue} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis
-                  dataKey="snapshot_at"
-                  tick={{ fill: colors.textMuted, fontSize: 10 }}
-                  stroke={colors.border}
-                  tickFormatter={(val) => {
-                    try {
-                      return new Date(val).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
-                    } catch {
-                      return val
-                    }
-                  }}
-                />
-                <YAxis
-                  tick={{ fill: colors.textMuted, fontSize: 10 }}
-                  stroke={colors.border}
-                  domain={['auto', 'auto']}
-                  tickFormatter={(val) => currency.format(val).replace(/\.00$/, '')}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.bgTertiary,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 6,
-                    color: colors.textPrimary,
-                    fontSize: 12,
-                  }}
-                  labelFormatter={(label) => {
-                    try {
-                      return new Date(label).toLocaleString()
-                    } catch {
-                      return label
-                    }
-                  }}
-                  formatter={(value) => [currency.format(Number(value)), 'Equity']}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="equity"
-                  stroke={colors.blue}
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorEquity)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* Connection Health + Recent Signals row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, marginBottom: 24 }}>
-        {/* Connection Health */}
-        <div
-          style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            padding: 20,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
-            Connection Health
-          </div>
-          {connectionItems.map((item) => (
-            <div
-              key={item.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 0',
-                borderBottom: `1px solid ${colors.border}`,
-              }}
-            >
-              <span style={{ color: colors.textPrimary, fontSize: 13 }}>{item.name}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: item.online ? colors.green : colors.red,
-                  }}
-                />
-                <span style={{ fontSize: 12, color: item.online ? colors.green : colors.red }}>
-                  {item.online ? 'Connected' : 'Disconnected'}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Recent Signals */}
-        <div
-          style={{
-            backgroundColor: colors.bgSecondary,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            padding: 20,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
-            Recent Signals
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['Time', 'Symbol', 'Action', 'Confidence', 'Verdict'].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 12px',
-                      fontSize: 11,
-                      color: colors.textMuted,
-                      borderBottom: `1px solid ${colors.border}`,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {liveAgentSignals.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 16, color: colors.textMuted, textAlign: 'center', fontSize: 13 }}>
-                    No signals yet
-                  </td>
-                </tr>
+                {regimeName}
+              </span>
+              {regimeProb && (
+                <Badge variant="outline" className="text-[10px] font-mono tabular-nums">
+                  {regimeProb}% conf
+                </Badge>
               )}
-              {liveAgentSignals.map((sig, i) => {
-                const verdictColor =
-                  sig.verdict === 'ENTER' ? colors.green :
-                  sig.verdict === 'AVOID' ? colors.red :
-                  colors.neutral
-                return (
-                  <tr key={i}>
-                    <td style={{ padding: '8px 12px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                      {new Date(sig.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+            {regimeAge && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Clock size={10} />
+                {regimeAge}
+              </span>
+            )}
+            <p className="text-[9px] text-muted-foreground/60 mt-auto">
+              HMM classifier • daily bars • click to inspect
+            </p>
+          </Link>
+        </BentoTile>
+
+        {/* TILE: System Health */}
+        <BentoTile colSpan={1} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={Wifi}>System Health</TileTitle>
+          </TileHeader>
+          <div className="px-4 pb-4 space-y-2.5 flex-1">
+            {connectionItems.map((item) => (
+              <div
+                key={item.name}
+                className="flex items-center justify-between"
+              >
+                <span className="text-xs text-foreground font-medium">{item.name}</span>
+                <div className="flex items-center gap-1.5">
+                  <ConnectionDot online={item.online} />
+                  <span className={cn(
+                    "text-[10px] font-semibold tabular-nums",
+                    item.online ? "text-[#10b981]" : "text-[#ef4444]"
+                  )}>
+                    {item.online ? 'OK' : 'DOWN'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </BentoTile>
+
+        {/* TILE: Equity Curve (4-col) */}
+        <BentoTile colSpan={4} rowSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={ChartIcon}>Equity Curve</TileTitle>
+            <span className="text-[9px] text-muted-foreground font-mono tabular-nums">
+              {equityData.length} snapshots
+            </span>
+          </TileHeader>
+          <div className="px-4 pb-4 flex-1 min-h-0">
+            {equityLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Skeleton className="h-full w-full rounded-lg" />
+              </div>
+            ) : equityData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                <ChartIcon size={32} className="opacity-20" />
+                <span className="text-xs font-medium">No snapshot data yet</span>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={equityData}>
+                  <defs>
+                    <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(217.2, 32.6%, 17.5%)" />
+                  <XAxis
+                    dataKey="snapshot_at"
+                    tick={{ fill: 'hsl(215, 20.2%, 65.1%)', fontSize: 9, fontFamily: 'JetBrains Mono' }}
+                    stroke="hsl(217.2, 32.6%, 17.5%)"
+                    tickFormatter={(val) => {
+                      try {
+                        return new Date(val).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
+                      } catch {
+                        return val
+                      }
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fill: 'hsl(215, 20.2%, 65.1%)', fontSize: 9, fontFamily: 'JetBrains Mono' }}
+                    stroke="hsl(217.2, 32.6%, 17.5%)"
+                    domain={['auto', 'auto']}
+                    tickFormatter={(val) => currency.format(val).replace(/\.00$/, '')}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(224, 71.4%, 4.1%)',
+                      border: '1px solid hsl(217.2, 32.6%, 17.5%)',
+                      borderRadius: 8,
+                      color: 'hsl(210, 20%, 98%)',
+                      fontSize: 11,
+                      fontFamily: 'JetBrains Mono',
+                    }}
+                    labelFormatter={(label) => {
+                      try {
+                        return new Date(label).toLocaleString()
+                      } catch {
+                        return label
+                      }
+                    }}
+                    formatter={(value) => [currency.format(Number(value)), 'Equity']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="equity"
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                    fillOpacity={1}
+                    fill="url(#colorEquity)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </BentoTile>
+
+        {/* TILE: Recent Signals (2-col) */}
+        <BentoTile colSpan={2} rowSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40 overflow-hidden">
+          <TileHeader>
+            <TileTitle icon={Zap}>Agent Signals</TileTitle>
+            <Badge variant="outline" className="text-[9px]">ADVISORY ONLY</Badge>
+          </TileHeader>
+          <div className="px-4 pb-4 flex-1 overflow-auto custom-scrollbar">
+            <table className="w-full text-xs" role="grid">
+              <thead>
+                <tr className="border-b border-border">
+                  {['Time', 'Sym', 'Action', 'Conf', 'Verdict'].map((h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className="text-left px-2 py-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30">
+                {liveAgentSignals.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-muted-foreground text-center text-xs">
+                      No signals yet
                     </td>
-                    <td style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: colors.blue, borderBottom: `1px solid ${colors.border}` }}>
-                      {sig.symbol}
-                    </td>
-                    <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 10px',
-                          borderRadius: 4,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          backgroundColor: sig.action === 'BUY' ? `${colors.green}22` : `${colors.red}22`,
-                          color: sig.action === 'BUY' ? colors.green : colors.red,
-                        }}
-                      >
-                        {sig.action}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 12px', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>
-                      {(sig.confidence * 100).toFixed(0)}%
-                    </td>
-                    <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  </tr>
+                )}
+                {liveAgentSignals.map((sig, i) => {
+                  const actionColor = sig.action === 'BUY' ? 'text-[#10b981]' : sig.action === 'SELL' ? 'text-[#ef4444]' : 'text-muted-foreground'
+                  const verdictColor = sig.verdict === 'ENTER' ? 'text-[#10b981]' : sig.verdict === 'AVOID' ? 'text-[#ef4444]' : 'text-muted-foreground'
+                  return (
+                    <tr key={i} className="hover:bg-accent/5 transition-colors">
+                      <td className="px-2 py-2 text-muted-foreground font-mono tabular-nums">
+                        {new Date(sig.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-2 py-2 font-bold text-foreground">
+                        {sig.symbol}
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className={cn("font-bold", actionColor)}>{sig.action}</span>
+                      </td>
+                      <td className="px-2 py-2 font-mono tabular-nums text-foreground">
+                        {(sig.confidence * 100).toFixed(0)}%
+                      </td>
+                      <td className="px-2 py-2">
                         {sig.verdict ? (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 600,
-                              backgroundColor: `${verdictColor}22`,
-                              color: verdictColor,
-                              textTransform: 'uppercase',
-                            }}
-                          >
+                          <span className={cn("font-bold text-[10px]", verdictColor)}>
                             {sig.verdict}
                           </span>
                         ) : (
-                          <span style={{ color: colors.textMuted }}>—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
-                        {(sig.bull !== null || sig.bear !== null) && (
-                          <span style={{ fontSize: 11, color: colors.textMuted }}>
-                            B{sig.bull ?? 0} / S{sig.bear ?? 0}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Live Alerts */}
-      <div
-        style={{
-          backgroundColor: colors.bgSecondary,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 8,
-          padding: 20,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 16 }}>
-          Live Alerts
-        </div>
-        {recentLogs.length === 0 && (
-          <div style={{ color: colors.textMuted, fontSize: 13 }}>No alerts</div>
-        )}
-        {recentLogs.map((log) => (
-          <div
-            key={log.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 0',
-              borderBottom: `1px solid ${colors.border}`,
-            }}
-          >
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                flexShrink: 0,
-                backgroundColor:
-                  log.level === 'error' ? colors.red : log.level === 'warning' ? colors.amber : colors.blue,
-              }}
-            />
-            <span style={{ fontSize: 12, color: colors.textMuted, flexShrink: 0 }}>
-              {log.timestamp.toLocaleTimeString()}
-            </span>
-            <span style={{ fontSize: 13, color: colors.textPrimary }}>{log.message}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        ))}
-      </div>
+        </BentoTile>
+
+        {/* TILE: Live Alerts (2-col) */}
+        <BentoTile colSpan={2} rowSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40 overflow-hidden">
+          <TileHeader>
+            <TileTitle icon={AlertTriangle}>Live Alerts</TileTitle>
+            <span className="text-[9px] text-muted-foreground font-mono tabular-nums">
+              {recentLogs.length} recent
+            </span>
+          </TileHeader>
+          <div className="px-4 pb-4 flex-1 overflow-auto custom-scrollbar">
+            {recentLogs.length === 0 && (
+              <div className="text-muted-foreground text-xs py-4 text-center">No alerts</div>
+            )}
+            <div className="space-y-1">
+              {recentLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start gap-2 py-1.5 text-xs"
+                >
+                  <span
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5",
+                      log.level === 'error' ? 'bg-[#ef4444]' : log.level === 'warning' ? 'bg-[#f59e0b]' : 'bg-[#3b82f6]'
+                    )}
+                  />
+                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums flex-shrink-0 w-16">
+                    {log.timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                  <span className="text-foreground leading-tight">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </BentoTile>
+
+      </BentoGrid>
     </div>
   )
 }

@@ -32,6 +32,8 @@ class ExecutionFilter:
         self.alpaca_key = os.getenv('ALPACA_API_KEY')
         self.alpaca_secret = os.getenv('ALPACA_API_SECRET')
         self.alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+        # Equity market-data (bars/quotes) lives on the data host, NOT paper-api.
+        self.alpaca_data = os.getenv('ALPACA_DATA_URL', 'https://data.alpaca.markets')
         self.headers = {
             'APCA-API-KEY-ID': self.alpaca_key,
             'APCA-API-SECRET-KEY': self.alpaca_secret
@@ -92,7 +94,7 @@ class ExecutionFilter:
 
     def check_gap(self, symbol: str = 'SPY') -> dict:
         url = f"{self.alpaca_base}/v2/stocks/{symbol}/quotes/latest"
-        bars_url = f"{self.alpaca_base}/v2/stocks/{symbol}/bars"
+        bars_url = f"{self.alpaca_data}/v2/stocks/{symbol}/bars"
         
         gap_pct = 0.0
         gap_direction = 'FLAT'

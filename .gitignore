@@ -102,3 +102,14 @@ dashboard/dist/
 dashboard/.env
 !dashboard/src/lib/
 scratch/
+node-local/
+
+# Local workspace debris
+venv_old/
+test.wav
+supabase/.temp/
+venv_broken_py314/
+
+
+venv_broken_py314/
+supabase/.temp/

@@ -3,6 +3,8 @@ import { useTradingContext } from '../../../context/TradingContext'
 import { fmtPrice } from '../../../utils/formatters'
 import { supabase } from '../../../lib/supabaseClient'
 import { useTradingMode, tradingModeBadgeStyle } from '../../../hooks/useTradingMode'
+import { useSupabaseRealtime } from '../../../hooks/useSupabaseRealtime'
+import { cn } from '../../../lib/utils'
 
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D'
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D']
@@ -102,234 +104,196 @@ export function TopBar() {
   const online = connected
   const tradingMode = useTradingMode()
   const modeBadge = tradingModeBadgeStyle(tradingMode)
+  const { realtimeConnected, heartbeatAgeMs } = useSupabaseRealtime()
+
+  const heartbeatAgeSec = heartbeatAgeMs != null ? Math.floor(heartbeatAgeMs / 1000) : null
+  const heartbeatColor = heartbeatAgeSec == null
+    ? 'text-muted-foreground'
+    : heartbeatAgeSec < 30
+      ? 'text-[#10b981]'
+      : heartbeatAgeSec < 120
+        ? 'text-[#f59e0b]'
+        : 'text-[#ef4444]'
+  const heartbeatLabel = heartbeatAgeSec == null ? '—' : heartbeatAgeSec < 60 ? `${heartbeatAgeSec}s` : `${Math.floor(heartbeatAgeSec / 60)}m`
 
   return (
     <header
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        height: 48,
-        padding: '0 16px',
-        background: '#161b22',
-        borderBottom: '1px solid #30363d',
-        flexShrink: 0,
-      }}
+      className="flex items-center justify-between gap-4 h-16 px-6 bg-surface-1/40 border-b border-border-muted/50 backdrop-blur-md flex-shrink-0 z-40 relative"
     >
-      {/* Logo */}
-      <span
-        style={{
-          fontWeight: 700,
-          fontSize: 14,
-          color: '#58a6ff',
-          whiteSpace: 'nowrap',
-          letterSpacing: 1,
-        }}
-      >
-        ◆ DISRUPTING ALPHA
-      </span>
-
-      <div style={{ width: 1, height: 24, background: '#30363d' }} />
-
-      {/* Symbol pill */}
-      {editingSymbol ? (
-        <input
-          ref={inputRef}
-          value={symbolInput}
-          onChange={(e) => setSymbolInput(e.target.value)}
-          onBlur={handleSymbolSubmit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSymbolSubmit()
-            if (e.key === 'Escape') {
-              setSymbolInput(symbol)
-              setEditingSymbol(false)
-            }
-          }}
-          style={{
-            background: '#21262d',
-            border: '1px solid #58a6ff',
-            borderRadius: 4,
-            color: '#e6edf3',
-            fontSize: 13,
-            fontWeight: 600,
-            padding: '3px 8px',
-            width: 80,
-            outline: 'none',
-          }}
-        />
-      ) : (
-        <button
-          onClick={() => {
-            setSymbolInput(symbol)
-            setEditingSymbol(true)
-          }}
-          style={{
-            background: '#21262d',
-            border: '1px solid #30363d',
-            borderRadius: 4,
-            color: '#e6edf3',
-            fontSize: 13,
-            fontWeight: 600,
-            padding: '3px 10px',
-            cursor: 'pointer',
-          }}
-        >
-          {symbol}
-        </button>
-      )}
-
-      {/* Current price */}
-      {currentPrice != null && (
-        <span style={{ color: priceColor, fontWeight: 600, fontSize: 14 }}>
-          {fmtPrice(currentPrice)}
-        </span>
-      )}
-
-      <div style={{ width: 1, height: 24, background: '#30363d' }} />
-
-      {/* Timeframe buttons */}
-      <div style={{ display: 'flex', gap: 2 }}>
-        {TIMEFRAMES.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(tf)}
-            style={{
-              padding: '3px 8px',
-              fontSize: 11,
-              fontWeight: 600,
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              background: timeframe === tf ? '#58a6ff' : '#21262d',
-              color: timeframe === tf ? '#0d1117' : '#8b949e',
+      {/* Left side: Symbol Selection & Price */}
+      <div className="flex items-center gap-4">
+        {editingSymbol ? (
+          <input
+            ref={inputRef}
+            value={symbolInput}
+            onChange={(e) => setSymbolInput(e.target.value)}
+            onBlur={handleSymbolSubmit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSymbolSubmit()
+              if (e.key === 'Escape') {
+                setSymbolInput(symbol)
+                setEditingSymbol(false)
+              }
             }}
+            className="bg-surface-2 border border-blue-500 rounded-lg text-primary text-sm font-semibold px-3 py-1.5 w-24 outline-none transition-smooth"
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setSymbolInput(symbol)
+              setEditingSymbol(true)
+            }}
+            className="px-3.5 py-1.5 bg-surface-2/65 hover:bg-surface-3 border border-border-muted hover:border-vibrant rounded-xl text-primary text-sm font-semibold transition-smooth cursor-pointer shadow-sm flex items-center gap-1.5"
           >
-            {tf}
+            <span className="text-[10px] text-dim font-bold uppercase tracking-wider">Asset:</span>
+            {symbol}
           </button>
-        ))}
+        )}
+
+        {currentPrice != null && (
+          <div className="flex flex-col">
+            <span style={{ color: priceColor }} className="font-bold text-base leading-none transition-smooth">
+              {fmtPrice(currentPrice)}
+            </span>
+            {prevClose != null && (
+              <span className="text-[9px] text-dim font-bold tracking-tight mt-0.5">
+                {priceUp ? '▲' : '▼'} {(((currentPrice - prevClose) / prevClose) * 100).toFixed(2)}%
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="w-px h-6 bg-border-muted/50 hidden sm:block" />
+
+        {/* Timeframe selector */}
+        <div className="hidden sm:flex gap-1 bg-surface-2/40 p-1 border border-border-muted/50 rounded-xl">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-smooth cursor-pointer ${
+                timeframe === tf
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-secondary hover:text-vibrant'
+              }`}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+
+        {pnl !== null && (
+          <>
+            <div className="w-px h-6 bg-border-muted/50 hidden md:block" />
+            <div 
+              title={accountUpdatedAt ? `Last updated ${updatedAgo}` : undefined}
+              className="hidden md:flex flex-col cursor-help"
+            >
+              <span className="text-[9px] text-dim font-bold uppercase tracking-wider">Session P&L</span>
+              <span className={`text-xs font-bold mt-0.5 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {pnl >= 0 ? '+' : ''}{fmtPrice(pnl)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
-      <div style={{ width: 1, height: 24, background: '#30363d' }} />
-
-      {/* P&L — snapshot value, hover to see when last refreshed */}
-      {pnl !== null && (
+      {/* Right side: Session State, Active Mode, Connection, Sign out */}
+      <div className="flex items-center gap-4">
+        {/* Session Status */}
         <span
-          title={accountUpdatedAt ? `Last updated ${updatedAgo}` : undefined}
+          className="text-[9px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-smooth"
           style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: pnl >= 0 ? '#3fb950' : '#f85149',
-            cursor: 'help',
+            background: `${marketSession.color}12`,
+            color: marketSession.color,
+            borderColor: `${marketSession.color}33`,
           }}
         >
-          P&L: {pnl >= 0 ? '+' : ''}
-          {fmtPrice(pnl)}
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: marketSession.color }} />
+          {marketSession.label}
         </span>
-      )}
 
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-      {/* Market session badge */}
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          padding: '3px 8px',
-          borderRadius: 3,
-          background: `${marketSession.color}22`,
-          color: marketSession.color,
-          border: `1px solid ${marketSession.color}44`,
-          letterSpacing: 0.5,
-        }}
-      >
-        {marketSession.label}
-      </span>
-
-      {/* Consolidated Status & Mode */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{
-          fontSize: 10,
-          fontWeight: 700,
-          padding: '3px 8px',
-          borderRadius: 3,
-          background: botRunning ? '#3fb95022' : '#f8514922',
-          color: botRunning ? '#3fb950' : '#f85149',
-          border: `1px solid ${botRunning ? '#3fb95044' : '#f8514944'}`,
-          letterSpacing: 0.5,
-        }}>
+        {/* Bot active indicator */}
+        <span
+          className={`text-[9px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-smooth ${
+            botRunning 
+              ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+              : 'bg-red-500/10 text-red-400 border-red-500/30'
+          }`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${botRunning ? 'bg-green-400' : 'bg-red-400'} ${botRunning ? 'animate-pulse' : ''}`} />
           {botRunning ? 'BOT ACTIVE' : 'BOT OFFLINE'}
-        </div>
-
-        <div style={{
-          fontSize: 10,
-          fontWeight: 700,
-          padding: '3px 8px',
-          borderRadius: 3,
-          background: modeBadge.background,
-          color: modeBadge.color,
-          border: modeBadge.border,
-          letterSpacing: 0.5,
-        }}>
-          {modeBadge.label}
-        </div>
-      </div>
-
-      {/* Online dot */}
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 5 }}
-        title={online ? 'ONLINE' : 'OFFLINE'}
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: online ? '#3fb950' : '#f85149',
-          }}
-        />
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 600,
-            color: online ? '#3fb950' : '#f85149',
-          }}
-        >
-          {online ? 'ONLINE' : 'OFFLINE'}
         </span>
-      </div>
 
-      <div style={{ width: 1, height: 24, background: '#30363d' }} />
-
-      {/* Logout button */}
-      <button
-        onClick={() => supabase.auth.signOut()}
-        aria-label="Sign out"
-        title="Sign out"
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 4,
-          display: 'flex',
-          alignItems: 'center',
-          color: '#8b949e',
-        }}
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        {/* Mode badge */}
+        <span
+          className="text-[9px] font-bold px-2.5 py-1 rounded-lg border transition-smooth"
+          style={{
+            background: modeBadge.background,
+            color: modeBadge.color,
+            border: modeBadge.border,
+          }}
         >
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16 17 21 12 16 7" />
-          <line x1="21" y1="12" x2="9" y2="12" />
-        </svg>
-      </button>
+          {modeBadge.label}
+        </span>
+
+        {/* Online state */}
+        <div
+          className={`flex items-center gap-1.5 text-[10px] font-semibold cursor-help ${
+            online ? 'text-green-400' : 'text-red-400'
+          }`}
+          title={online ? 'CONNECTED TO ALPACA API' : 'DISCONNECTED FROM ALPACA API'}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-green-400' : 'bg-red-400'} ${online ? 'animate-ping' : ''}`} />
+          {online ? 'ONLINE' : 'OFFLINE'}
+        </div>
+
+        {/* Realtime Heartbeat Latency */}
+        <div
+          className={cn(
+            "flex items-center gap-1.5 text-[9px] font-bold px-2 py-1 rounded-lg border transition-smooth",
+            realtimeConnected
+              ? 'bg-emerald-500/5 border-emerald-500/20'
+              : 'bg-red-500/5 border-red-500/20'
+          )}
+          title={realtimeConnected ? `Realtime connected, last msg ${heartbeatLabel} ago` : 'Realtime disconnected'}
+        >
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+            )}
+          />
+          <span className={heartbeatColor + ' font-mono tabular-nums'}>
+            {realtimeConnected ? heartbeatLabel : 'RT OFF'}
+          </span>
+        </div>
+
+        <div className="w-px h-6 bg-border-muted/50" />
+
+        {/* Logout */}
+        <button
+          onClick={() => supabase.auth.signOut()}
+          aria-label="Sign out"
+          title="Sign out"
+          className="p-2 hover:bg-surface-2 rounded-xl text-dim hover:text-red-400 transition-smooth cursor-pointer"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
+      </div>
     </header>
   )
 }

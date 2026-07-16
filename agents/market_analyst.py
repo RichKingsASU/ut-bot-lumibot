@@ -35,12 +35,17 @@ class MarketAnalystAgent(BaseAgent):
         """
         logger.info("Starting market analysis execution...")
         
-        # Step 1: get_recent_sentiment(24)
+        # Step 1: get_recent_sentiment(24) — now status-aware.
+        # avg_sentiment is None unless status == OK, so 0.0 can no longer
+        # masquerade as missing data downstream.
         sentiment_data = await self.get_recent_sentiment(24, self.asset_class)
-        avg_sentiment = sentiment_data.get("avg_score", 0.0)
+        avg_sentiment = sentiment_data.get("avg_score")  # float when OK, else None
         sentiment_label = sentiment_data.get("label", "neutral")
         top_headlines = sentiment_data.get("top_headlines", [])
         article_count = sentiment_data.get("article_count", 0)
+        sentiment_status = sentiment_data.get("sentiment_status", "OK")
+        sentiment_status_reason = sentiment_data.get("status_reason", "")
+        sentiment_newest_age_min = sentiment_data.get("newest_age_min")
         
         # Step 2: query_supabase("signal_log", limit=10)
         try:
@@ -89,6 +94,9 @@ class MarketAnalystAgent(BaseAgent):
         market_context = {
             "asset_class": self.asset_class,
             "avg_sentiment": avg_sentiment,
+            "sentiment_status": sentiment_status,
+            "sentiment_status_reason": sentiment_status_reason,
+            "sentiment_newest_age_min": sentiment_newest_age_min,
             "sentiment_label": sentiment_label,
             "article_count": article_count,
             "sentiment_velocity": 0.0,

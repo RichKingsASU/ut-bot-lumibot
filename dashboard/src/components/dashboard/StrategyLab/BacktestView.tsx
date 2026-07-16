@@ -140,15 +140,15 @@ export default function BacktestView() {
         const rows: BacktestRun[] = data.map(
           (r: Record<string, unknown>): BacktestRun => ({
             id: String(r.id ?? r.created_at ?? Math.random()),
-            strategyName: String(r.strategy_name ?? r.strategyName ?? '—'),
+            strategyName: String(r.strategy ?? r.strategy_name ?? r.strategyName ?? '—'),
             symbol: String(r.symbol ?? '—'),
-            startDate: String(r.start_date ?? r.startDate ?? ''),
-            endDate: String(r.end_date ?? r.endDate ?? ''),
-            totalReturn: typeof r.total_return === 'number' ? r.total_return : null,
-            sharpe: typeof r.sharpe === 'number' ? r.sharpe : null,
-            maxDrawdown: typeof r.max_drawdown === 'number' ? r.max_drawdown : null,
+            startDate: String(r.date_start ?? r.start_date ?? r.startDate ?? ''),
+            endDate: String(r.date_end ?? r.end_date ?? r.endDate ?? ''),
+            totalReturn: typeof r.total_return_pct === 'number' ? r.total_return_pct : (typeof r.total_return === 'number' ? r.total_return : null),
+            sharpe: typeof r.sharpe_ratio === 'number' ? r.sharpe_ratio : (typeof r.sharpe === 'number' ? r.sharpe : null),
+            maxDrawdown: typeof r.max_drawdown_pct === 'number' ? r.max_drawdown_pct : (typeof r.max_drawdown === 'number' ? r.max_drawdown : null),
             totalTrades: typeof r.total_trades === 'number' ? r.total_trades : null,
-            winRate: typeof r.win_rate === 'number' ? r.win_rate : null,
+            winRate: typeof r.win_rate_pct === 'number' ? r.win_rate_pct : (typeof r.win_rate === 'number' ? r.win_rate : null),
             equityCurve: [],
             runAt: String(r.created_at ?? new Date().toISOString()),
           }),
@@ -226,13 +226,17 @@ export default function BacktestView() {
         body: JSON.stringify({
           strategyId: strategy.id,
           symbol,
+          timeframe: '15m',
           startDate,
           endDate,
+          date_start: startDate,
+          date_end: endDate,
         }),
       })
-      if (!res.ok) throw new Error(`run-backtest returned ${res.status}`)
       const data = await res.json()
-      if (data?.error) throw new Error(data.error)
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || `Backtest failed with status ${res.status}`)
+      }
 
       const run: BacktestRun = {
         id: String(data.id ?? `${Date.now()}`),
@@ -251,11 +255,15 @@ export default function BacktestView() {
       setLatest(run)
       setHistory((prev) => [run, ...prev].slice(0, 20))
     } catch (e) {
-      setStatusMsg(
-        e instanceof Error && e.message.includes('run-backtest')
-          ? 'Backtest engine not yet connected — wire /.netlify/functions/run-backtest to enable runs.'
-          : 'Backtest run failed. Check the network tab and try again.',
-      )
+      let msg = 'Backtest run failed.'
+      if (e instanceof Error) {
+        if (e.message.includes('run-backtest')) {
+          msg = 'Backtest engine not connected — wire /.netlify/functions/run-backtest to enable runs.'
+        } else {
+          msg = e.message
+        }
+      }
+      setStatusMsg(msg)
     } finally {
       setRunning(false)
     }

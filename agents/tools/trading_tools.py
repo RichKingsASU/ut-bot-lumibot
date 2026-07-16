@@ -235,32 +235,46 @@ def get_pnl_range(start: str, end: str) -> Dict[str, Any]:
 @safe_tool
 def get_regime_state(asset_class: str) -> Dict[str, Any]:
     """
-    Return the current market regime for an asset class.
+    Return the current market regime for an asset class or symbol.
 
-    Reads from the regime_state table in Supabase if available,
-    otherwise returns a stub with a "unknown" state.
+    Reads from the regime_states table in Supabase if available.
 
     Args:
-        asset_class: e.g. "equities", "crypto", "SPY"
+        asset_class: e.g. "equities", "crypto", "SPY", "BTC/USD"
     """
     try:
-        rows = _supa_get(
-            "regime_state",
-            asset_class=f"eq.{asset_class}",
-            order="updated_at.desc",
-            limit=1,
-        )
+        query_key = "symbol"
+        query_val = asset_class
+        if asset_class.lower() in ("equities", "crypto"):
+            query_key = "asset_class"
+
+        params = {
+            query_key: f"eq.{query_val}",
+            "order": "detected_at.desc",
+            "limit": 1
+        }
+
+        rows = _supa_get("regime_states", **params)
         if rows:
-            return rows[0]
+            row = rows[0]
+            return {
+                "asset_class": row.get("asset_class"),
+                "regime": row.get("regime"),
+                "confidence": float(row.get("regime_probability")) if row.get("regime_probability") is not None else None,
+                "updated_at": row.get("detected_at"),
+                "symbol": row.get("symbol"),
+                "volatility": float(row.get("volatility")) if row.get("volatility") is not None else None,
+                "volume_ratio": float(row.get("volume_ratio")) if row.get("volume_ratio") is not None else None,
+            }
     except Exception as exc:
-        log.warning(f"regime_state table not available: {exc}")
+        log.warning(f"regime_states table not available: {exc}")
 
     return {
         "asset_class": asset_class,
         "regime": "unknown",
         "confidence": None,
         "updated_at": None,
-        "detail": "Regime state table not available",
+        "detail": "Regime states table not available or empty",
     }
 
 

@@ -84,8 +84,10 @@ def cmd_services() -> None:
     with console.status("Querying services…", spinner="dots"):
         services = list_services()
 
-    if isinstance(services, Exception) or not services:
-        console.print("[yellow]No service data available (is this running on the edge server?)[/yellow]")
+    from agents.tools._shared import OpResult
+    if isinstance(services, Exception) or isinstance(services, OpResult) or not services:
+        msg = services.message if isinstance(services, OpResult) else "No service data available (is this running on the edge server?)"
+        console.print(f"[yellow]{msg}[/yellow]")
         return
 
     table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
@@ -128,8 +130,10 @@ def cmd_positions() -> None:
     with console.status("Fetching positions…", spinner="dots"):
         positions = get_positions()
 
-    if not positions or isinstance(positions, Exception):
-        console.print("[yellow]No open positions (or Alpaca credentials not configured)[/yellow]")
+    from agents.tools._shared import OpResult
+    if not positions or isinstance(positions, Exception) or isinstance(positions, OpResult):
+        msg = positions.message if isinstance(positions, OpResult) else "No open positions (or Alpaca credentials not configured)"
+        console.print(f"[yellow]{msg}[/yellow]")
         return
 
     table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
@@ -167,6 +171,11 @@ def cmd_health() -> None:
     console.print(Panel("[bold cyan]Health Check[/bold cyan] — scripts/health_check.py", expand=False))
     with console.status("Running health_check.py…", spinner="dots"):
         result = run_health_check()
+
+    from agents.tools._shared import OpResult
+    if isinstance(result, OpResult):
+        console.print(f"[red]Error: {result.message}[/red]")
+        return
 
     if not result.get("available"):
         console.print(f"[yellow]{result.get('reason', 'health_check.py not available')}[/yellow]")

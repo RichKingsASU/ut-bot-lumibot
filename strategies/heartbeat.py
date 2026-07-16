@@ -73,26 +73,12 @@ def _upsert_status(status: str = "online", target_status: str = "running"):
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    try:
-        import httpx
-        # Upsert: POST with Prefer: resolution=merge-duplicates
-        resp = httpx.post(
-            f"{url}/rest/v1/bot_status",
-            json=payload,
-            headers={
-                "apikey": key,
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates",
-            },
-            timeout=10,
-        )
-        if resp.status_code < 300:
-            logger.debug("Heartbeat sent (status=%s)", status)
-        else:
-            logger.warning("Heartbeat HTTP %d: %s", resp.status_code, resp.text[:200])
-    except Exception as e:
-        logger.warning("Heartbeat failed (non-blocking): %s", e)
+    from common.safe_write import safe_write_sync
+    safe_write_sync(
+        "bot_status", payload, "heartbeat",
+        method="post", upsert=True,
+    )
+    logger.debug("Heartbeat sent (status=%s)", status)
 
 
 def _check_remote_commands() -> str:
@@ -127,6 +113,14 @@ def _heartbeat_loop():
     while not _stop_event.is_set():
         # 1. Update online status
         _upsert_status("online")
+
+        # 1b. Component-level heartbeat for 'main' (ADDITIVE — lets the watchdog
+        #     detect partial failure independent of the global bot_status row).
+        try:
+            from adapters.component_heartbeat import beat as _component_beat
+            _component_beat("main", status="online")
+        except Exception as e:
+            logger.debug("Component heartbeat failed: %s", e)
 
         # 2. Check for remote commands
         cmd = _check_remote_commands()

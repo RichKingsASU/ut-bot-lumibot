@@ -7,20 +7,20 @@ cd /home/k2/ut-bot-lumibot
 source venv/bin/activate
 
 echo "1. Health check..."
-python3 scripts/health_check.py | \
+venv/bin/python3 scripts/health_check.py | \
   grep -E "OVERALL|✅|❌|⚠️" | tail -20
 
 echo ""
 echo "2. VaR check..."
-python3 scripts/run_var_check.py 2>&1 | tail -5
+venv/bin/python3 scripts/run_var_check.py 2>&1 | tail -5
 
 echo ""
 echo "3. Pairs analysis..."
-python3 scripts/run_pairs_analysis.py 2>&1 | tail -8
+venv/bin/python3 scripts/run_pairs_analysis.py 2>&1 | tail -8
 
 echo ""
 echo "4. Account status..."
-python3 -c "
+venv/bin/python3 -c "
 import os, httpx
 from dotenv import load_dotenv
 load_dotenv('/home/k2/ut-bot-lumibot/.env')
@@ -41,7 +41,7 @@ for p in pos:
 
 echo ""
 echo "5. Current regimes..."
-python3 -c "
+venv/bin/python3 -c "
 import os, httpx
 from dotenv import load_dotenv
 load_dotenv('/home/k2/ut-bot-lumibot/.env')

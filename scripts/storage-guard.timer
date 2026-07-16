@@ -1,0 +1,17 @@
+[Unit]
+Description=Tick-Storage Self-Healing Guard Timer (runs every 2 minutes)
+Documentation=file:///home/k2/ut-bot-lumibot/scripts/storage_guard.sh
+
+[Timer]
+# Run shortly after boot to catch drives that came up late
+OnBootSec=90sec
+# Then every 2 minutes thereafter
+OnUnitActiveSec=2min
+# Prevent timer drift — activate relative to calendar not last activation
+AccuracySec=10sec
+# Run missed triggers if system was suspended/off
+Persistent=true
+Unit=storage-guard.service
+
+[Install]
+WantedBy=timers.target

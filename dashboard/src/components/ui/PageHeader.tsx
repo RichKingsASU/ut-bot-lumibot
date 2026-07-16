@@ -2,7 +2,7 @@ import React from 'react'
 
 interface PageHeaderProps {
   title: string
-  subtitle?: string
+  subtitle?: React.ReactNode
   actions?: React.ReactNode
 }
 
@@ -30,7 +30,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
           {title}
         </h1>
         {subtitle && (
-          <p
+          <div
             style={{
               fontSize: 13,
               color: 'var(--text-muted)',
@@ -38,7 +38,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
             }}
           >
             {subtitle}
-          </p>
+          </div>
         )}
       </div>
       {actions && (

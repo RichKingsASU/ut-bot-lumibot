@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Bitcoin, Coins, TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, RefreshCw, Terminal } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { parseConfidence } from '../../../lib/confidence'
 
 interface CryptoAsset {
   name: string
@@ -65,7 +66,7 @@ export function CryptoView() {
       // 3. Fetch Regime States from Supabase
       const { data: regimesData } = await supabase
         .from('regime_states')
-        .select('symbol, regime, probability, detected_at')
+        .select('symbol, regime, probability:regime_probability, detected_at')
         .in('symbol', ['BTC/USD', 'ETH/USD', 'SOL/USD'])
         .order('detected_at', { ascending: false })
         .limit(10)
@@ -82,11 +83,6 @@ export function CryptoView() {
         let price = quote ? quote.price : 0
         let change = quote ? quote.change_pct : 0
         
-        if (price === 0 && fallbackSignal) {
-          // Fallback to last signal price if available
-          price = fallbackSignal.price || 0
-        }
-
         return {
           name: def.name,
           symbol: def.symbol,
@@ -98,7 +94,7 @@ export function CryptoView() {
       })
 
       setAssets(updatedAssets)
-      setSignals(signalsData || [])
+      setSignals((signalsData || []).map((s: any) => ({ ...s, confidence: parseConfidence(s.confidence) })))
 
       // Deduplicate regimes to get the latest per symbol
       const latestRegimes: Record<string, CryptoRegime> = {}

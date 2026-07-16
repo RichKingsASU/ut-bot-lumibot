@@ -43,11 +43,29 @@ export default function SystemHealthView() {
         // Fetch latest health status from bot (Local only)
         let health = null;
         try {
-          const resp = await fetch('http://localhost:8000/health', { signal: AbortSignal.timeout(2000) })
+          const botUrl = (import.meta.env.VITE_BOT_URL as string) || 'http://localhost:8000';
+          const resp = await fetch(`${botUrl}/health`, { signal: AbortSignal.timeout(2000) })
           health = await resp.json()
         } catch (e) {
           // Expected in cloud environment unless tunneled
-          health = { status: 'UNKNOWN', websocket: 'UNKNOWN' };
+          // Try to load from Netlify bot-status function
+          try {
+            const adminKeyVal = localStorage.getItem('ADMIN_API_KEY') || ''
+            const resp = await fetch('/.netlify/functions/bot-status', {
+              headers: { 'X-Admin-API-Key': adminKeyVal }
+            })
+            if (resp.ok) {
+              const statusData = await resp.json()
+              health = {
+                status: statusData.online ? 'ready' : (statusData.status === 'stale' ? 'stale' : 'offline'),
+                websocket: statusData.online ? 'connected' : 'disconnected'
+              }
+            } else {
+              health = { status: 'offline', websocket: 'disconnected' }
+            }
+          } catch {
+            health = { status: 'UNKNOWN', websocket: 'UNKNOWN' };
+          }
         }
 
         // Fetch recent audits
@@ -160,9 +178,18 @@ export default function SystemHealthView() {
                 <input 
                   type={showKey ? "text" : "password"}
                   value={adminKey}
-                  onChange={(e) => {
-                    setAdminKey(e.target.value)
-                    localStorage.setItem('ADMIN_API_KEY', e.target.value)
+                  onChange={async (e) => {
+                    const val = e.target.value
+                    setAdminKey(val)
+                    localStorage.setItem('ADMIN_API_KEY', val)
+                    localStorage.setItem('admin_api_key', val)
+                    try {
+                      await supabase.auth.updateUser({
+                        data: { ADMIN_API_KEY: val }
+                      })
+                    } catch (err) {
+                      console.error('Failed to sync ADMIN_API_KEY to user profile metadata:', err)
+                    }
                   }}
                   style={{ 
                     background: 'none', 

@@ -128,29 +128,22 @@ class PairsTrader(BaseAgent):
 
         # Write active signals to Supabase agent_signals
         if self.supabase_url and self.supabase_key:
-            headers = {
-                "apikey": self.supabase_key,
-                "Authorization": f"Bearer {self.supabase_key}",
-                "Content-Type": "application/json"
-            }
-            url = f"{self.supabase_url}/rest/v1/agent_signals"
-            
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                for sig in active_signals:
-                    conf = 'HIGH' if abs(sig['current_zscore']) > 2.5 else 'MEDIUM'
-                    payload = {
-                        "symbol": sig['pair'],
-                        "action": sig['signal'],
-                        "confidence": conf,
-                        "reasoning": f"Z-score {sig['current_zscore']:.2f}, half-life {sig['half_life']:.0f}d, p-value {sig['pvalue']:.3f}",
-                        "asset_class": "pairs",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "agent_name": self.name
-                    }
-                    try:
-                        await client.post(url, headers=headers, json=payload)
-                    except Exception as e:
-                        logger.error(f"Failed to write pair signal to Supabase: {e}")
+            from common.safe_write import safe_write_async
+            for sig in active_signals:
+                conf = 'HIGH' if abs(sig['current_zscore']) > 2.5 else 'MEDIUM'
+                payload = {
+                    "symbol": sig['pair'],
+                    "action": sig['signal'],
+                    "confidence": conf,
+                    "reasoning": f"Z-score {sig['current_zscore']:.2f}, half-life {sig['half_life']:.0f}d, p-value {sig['pvalue']:.3f}",
+                    "asset_class": "pairs",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "agent_name": self.name
+                }
+                await safe_write_async(
+                    "agent_signals", payload, "pairs-trader",
+                    _url=self.supabase_url, _key=self.supabase_key,
+                )
 
         return {
             'pairs_analyzed': len(opportunities),

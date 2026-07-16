@@ -134,13 +134,16 @@ def get_news_summary(
     since = _parse_window(window)
     params: Dict[str, Any] = {
         "created_at": f"gte.{since}",
-        "select": "headline,source,url,published_at,sentiment_score,symbols",
+        "select": "title,source,url,published_at,sentiment_score,summary",
         "order": "published_at.desc",
         "limit": 50,
     }
 
     try:
         rows = _supa_get("news_articles", **params)
+        for r in rows:
+            if "title" in r:
+                r["headline"] = r["title"]
     except Exception as exc:
         log.warning(f"news_articles table not available: {exc}")
         rows = []
@@ -150,7 +153,7 @@ def get_news_summary(
         sym_set = {s.upper() for s in symbols}
         rows = [
             r for r in rows
-            if any(s in sym_set for s in (r.get("symbols") or []))
+            if any(s in f"{r.get('title') or ''} {r.get('summary') or ''}".upper() for s in sym_set)
         ]
 
     sentiments = [
@@ -173,7 +176,7 @@ def get_sentiment_scores(symbols: List[str]) -> Dict[str, Any]:
     """
     Return the latest FinBERT sentiment scores for a list of symbols.
 
-    Reads from the sentiment_scores table in Supabase.
+    Reads from the news_articles table in Supabase, filtering by ticker mentions.
 
     Args:
         symbols: List of ticker symbols, e.g. ["SPY", "QQQ"]
@@ -182,32 +185,55 @@ def get_sentiment_scores(symbols: List[str]) -> Dict[str, Any]:
         Dict mapping symbol → { score, label, article_count, updated_at }
     """
     result: Dict[str, Any] = {}
+    try:
+        # Fetch the latest 200 scored articles from news_articles
+        rows = _supa_get(
+            "news_articles",
+            sentiment_score="not.is.null",
+            order="published_at.desc",
+            limit=200,
+        )
+    except Exception as exc:
+        log.warning(f"Failed to query news_articles for sentiment: {exc}")
+        rows = []
+
     for sym in symbols:
-        try:
-            rows = _supa_get(
-                "sentiment_scores",
-                symbol=f"eq.{sym.upper()}",
-                order="updated_at.desc",
-                limit=1,
-            )
-            if rows:
-                result[sym] = rows[0]
+        sym_clean = sym.replace("/USD", "").replace("/", "").upper()
+        # Find articles mentioning the symbol in title or summary
+        matched = []
+        for r in rows:
+            title = str(r.get("title") or "").lower()
+            summary = str(r.get("summary") or "").lower()
+            if sym_clean.lower() in title or sym_clean.lower() in summary:
+                matched.append(r)
+
+        if matched:
+            scores = [float(r["sentiment_score"]) for r in matched if r.get("sentiment_score") is not None]
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+
+            # Determine dominant label based on score threshold
+            if avg_score > 0.15:
+                label = "bullish"
+            elif avg_score < -0.15:
+                label = "bearish"
             else:
-                result[sym] = {
-                    "symbol": sym,
-                    "score": None,
-                    "label": None,
-                    "updated_at": None,
-                    "note": "No sentiment data available",
-                }
-        except Exception as exc:
-            log.warning(f"sentiment_scores unavailable for {sym}: {exc}")
+                label = "neutral"
+
+            result[sym] = {
+                "symbol": sym,
+                "score": round(avg_score, 4),
+                "label": label,
+                "article_count": len(matched),
+                "updated_at": matched[0].get("published_at") or matched[0].get("created_at"),
+            }
+        else:
             result[sym] = {
                 "symbol": sym,
                 "score": None,
-                "label": None,
+                "label": "neutral",
+                "article_count": 0,
                 "updated_at": None,
-                "note": f"Error: {exc}",
+                "note": "No news articles mentioning this symbol found in the recent window",
             }
     return result
 
@@ -221,19 +247,34 @@ def get_regime_history(window: str = "30d") -> List[Dict[str, Any]]:
         window: Lookback window, e.g. "30d", "7d"
 
     Returns:
-        List of regime state records ordered by updated_at desc
+        List of regime state records ordered by detected_at desc
     """
     since = _parse_window(window)
     try:
         rows = _supa_get(
-            "regime_state",
-            updated_at=f"gte.{since}",
-            order="updated_at.desc",
+            "regime_states",
+            detected_at=f"gte.{since}",
+            order="detected_at.desc",
             limit=200,
         )
-        return rows
+        mapped_rows = []
+        for r in rows:
+            mapped_rows.append({
+                "id": r.get("id"),
+                "symbol": r.get("symbol"),
+                "asset_class": r.get("asset_class"),
+                "regime": r.get("regime"),
+                "confidence": float(r.get("regime_probability")) if r.get("regime_probability") is not None else None,
+                "volatility": float(r.get("volatility")) if r.get("volatility") is not None else None,
+                "trend_strength": float(r.get("trend_strength")) if r.get("trend_strength") is not None else None,
+                "volume_ratio": float(r.get("volume_ratio")) if r.get("volume_ratio") is not None else None,
+                "hidden_state": r.get("hidden_state"),
+                "updated_at": r.get("detected_at"),
+                "detected_at": r.get("detected_at"),
+            })
+        return mapped_rows
     except Exception as exc:
-        log.warning(f"regime_state table not available: {exc}")
+        log.warning(f"regime_states table not available: {exc}")
         return []
 
 

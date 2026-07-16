@@ -18,6 +18,20 @@ const JSON_HEADERS = {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// agent_signals.confidence is categorical text ("LOW"|"MEDIUM"|"HIGH"); the UI
+// expects a 0-1 fraction. parseFloat("MEDIUM") is NaN → normalize here.
+function confToNum(raw: any): number {
+  if (typeof raw === "number" && !Number.isNaN(raw)) return raw > 1 ? raw / 100 : raw;
+  if (typeof raw === "string") {
+    const s = raw.trim().toUpperCase();
+    const cat: Record<string, number> = { LOW: 0.34, MEDIUM: 0.67, HIGH: 1.0 };
+    if (s in cat) return cat[s];
+    const n = parseFloat(s);
+    if (!Number.isNaN(n)) return n > 1 ? n / 100 : n;
+  }
+  return 0.5;
+}
+
 export default async (req: Request, _context: Context) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -77,19 +91,17 @@ export default async (req: Request, _context: Context) => {
       is_healthy = heartbeat_age_seconds < 120;
     }
 
-    // 3. Fetch Kill Switch Active
-    const { data: settings } = await supabase
-      .from("user_settings")
-      .select("trading_enabled")
-      .eq("id", 1)
-      .maybeSingle();
-
-    const kill_switch_active = settings ? !settings.trading_enabled : false;
+    // 3. Kill switch is tracked in bot_status: the Telegram bot sets
+    //    status='kill' / target_status='stopped'. user_settings is a key/value
+    //    table with no trading_enabled column, so the old query always returned
+    //    null (kill switch stuck at inactive).
+    const kill_switch_active =
+      !!botStatus && (botStatus.status === "kill" || botStatus.target_status === "stopped");
 
     // 4. Fetch Regime States (limit 18)
     const { data: regimesData } = await supabase
       .from("regime_states")
-      .select("symbol, regime, probability, detected_at")
+      .select("symbol, regime, probability:regime_probability, detected_at")
       .order("detected_at", { ascending: false })
       .limit(18);
 
@@ -110,7 +122,7 @@ export default async (req: Request, _context: Context) => {
     const signals = (signalsData || []).map((s: any) => ({
       symbol: s.symbol,
       action: s.action || "HOLD",
-      confidence: s.confidence != null ? parseFloat(s.confidence) : 0.5,
+      confidence: confToNum(s.confidence),
       asset_class: s.asset_class || "equity",
       created_at: s.created_at,
     }));

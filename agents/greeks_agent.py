@@ -336,24 +336,13 @@ class GreeksAgent(BaseAgent):
             "rvol":          greeks.get("rvol"),
             "volume":        greeks.get("volume"),
             "trade_mode":    risk_decision.get("trade_mode"),
-            "action":        risk_decision.get("action"),
-            "size_scalar":   risk_decision.get("size_scalar"),
-            "position_value": risk_decision.get("position_value"),
             "snapshot_at":   datetime.now(timezone.utc).isoformat(),
         }
 
-        url     = f"{SUPABASE_URL}/rest/v1/greeks_snapshots"
-        headers = {
-            "apikey":        SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type":  "application/json",
-            "Prefer":        "resolution=merge-duplicates",
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, headers=headers, json=row)
-                resp.raise_for_status()
+        from common.safe_write import safe_write_async
+        ok = await safe_write_async(
+            "greeks_snapshots", row, "greeks-agent",
+            method="post",
+        )
+        if ok:
             logger.debug("Snapshot persisted for %s", symbol)
-        except Exception as exc:
-            logger.error("Supabase snapshot write failed for %s: %s", symbol, exc)

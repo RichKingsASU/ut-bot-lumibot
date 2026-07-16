@@ -1,187 +1,183 @@
 #!/usr/bin/env python3
-"""Seed historical OHLCV data from Alpaca into Parquet on the 8TB drive.
+"""seed_historical.py — Seed REAL historical bars into the tick-storage Parquet
+tree so the backtest resolver returns REAL_PARQUET instead of SyntheticDataError.
+Sources: alpaca (default; equities ~2016+, crypto ~2021+) | yfinance (daily, SPY to 1993).
 
-Pulls ALL available history for the configured symbols and timeframes,
-chunked to avoid API timeouts, and writes one Parquet file per
-symbol+timeframe (daily) or per symbol+month (minute).
-
-Coverage requested (Alpaca returns less where it has no history):
-  Equities SPY/IWM/QQQ : daily from 2010, 1-minute from 2020 (monthly files)
-  Crypto BTC/ETH/SOL   : daily from 2020, 1-minute from 2021 (monthly files)
-
-Output layout:
-  /mnt/tick-storage/historical/equities/{SYM}/{SYM}_1D_{START}_{END}.parquet
-  /mnt/tick-storage/historical/equities/{SYM}/{SYM}_1m_{YEAR}_{MONTH}.parquet
-  /mnt/tick-storage/historical/crypto/{SYM}/{SYM}_1D_{START}_{END}.parquet
-  /mnt/tick-storage/historical/crypto/{SYM}/{SYM}_1m_{YEAR}_{MONTH}.parquet
-
-Usage:
-  python scripts/seed_historical.py                 # seed everything
-  python scripts/seed_historical.py --asset crypto  # crypto only
-  python scripts/seed_historical.py --symbols SPY    # one symbol
-  python scripts/seed_historical.py --force          # ignore skip-if-fresh
+Daily bars are written to the path every reader in this repo globs:
+    <root>/historical/equities/<SYM>/<SYM>_1D_<start>_<end>.parquet   (crypto -> historical/crypto/)
+where <start>/<end> are the ACTUAL first/last bar dates in the file, not the
+requested window. Readers glob `<SYM>_1D_*.parquet` and concatenate every match,
+so exactly one 1D file per symbol may exist; stale ones are moved to <SYM>/_archive/.
+Minute bars still go to historical/minute/<SYM>/<YEAR>.parquet — not yet on the
+resolver's path (see MINUTE_SUBDIR note below).
+Each file gets a .manifest.json sidecar. Columns: timestamp(UTC),open,high,low,close,volume.
 """
 from __future__ import annotations
+import argparse, json, os
+from datetime import datetime, timezone
+from pathlib import Path
 
-import argparse
-from datetime import date, datetime, timezone
+DEFAULT_ROOT = "/mnt/tick-storage"
+EQUITIES_SUBDIR = "historical/equities"
+CRYPTO_SUBDIR = "historical/crypto"
+# NOTE: minute bars are NOT yet on the resolver's path — readers expect
+# equities/<SYM>/<SYM>_1m_<YYYY>_<MM>.parquet. Daily was the reported blocker.
+MINUTE_SUBDIR = "historical/minute"
+ARCHIVE_DIRNAME = "_archive"
+CRYPTO = {"ETHUSD","BTCUSD","SOLUSD"}
+ALPACA_KEY_ENVS = ["APCA_API_KEY_ID","ALPACA_API_KEY","ALPACA_API_KEY_ID"]
+ALPACA_SEC_ENVS = ["APCA_API_SECRET_KEY","ALPACA_API_SECRET","ALPACA_SECRET_KEY"]
+STD_COLS = ["timestamp","open","high","low","close","volume"]
 
-import pandas as pd
-from tqdm import tqdm
+def _norm_symbol(symbol, source):
+    s = symbol.upper().replace("/","")
+    if s in CRYPTO and source == "alpaca":  return f"{s[:-3]}/USD"
+    if s in CRYPTO and source == "yfinance": return f"{s[:-3]}-USD"
+    return s
 
-import seed_common as sc
-from alpaca.data.timeframe import TimeFrame
+def _is_crypto(symbol): return symbol.upper().replace("/","") in CRYPTO
 
-log = sc.setup_logging("seed_historical")
+def _creds():
+    key = next((os.environ[e] for e in ALPACA_KEY_ENVS if os.environ.get(e)), None)
+    sec = next((os.environ[e] for e in ALPACA_SEC_ENVS if os.environ.get(e)), None)
+    if not key or not sec:
+        raise SystemExit("ERROR: Alpaca creds not in env ("
+                         f"{ALPACA_KEY_ENVS}/{ALPACA_SEC_ENVS}). Or use --source yfinance.")
+    return key, sec
 
+def _daily_dir(root: Path, canon: str) -> Path:
+    """Directory the 1D resolver globs for this symbol."""
+    return root / (CRYPTO_SUBDIR if _is_crypto(canon) else EQUITIES_SUBDIR) / canon
 
-# --------------------------------------------------------------------------- #
-# Per-timeframe seeding
-# --------------------------------------------------------------------------- #
-def seed_daily(symbol: str, is_crypto: bool, start: date, force: bool, stats: dict) -> None:
-    """Fetch the full daily history (yearly chunks) into one Parquet file."""
-    end = date.today()
-    sym_dir = sc.symbol_dir(symbol, is_crypto)
-    sym_dir.mkdir(parents=True, exist_ok=True)
-    target = sym_dir / f"{sc.fs_symbol(symbol)}_{sc.TF_DAILY_LABEL}_{start.isoformat()}_{end.isoformat()}.parquet"
+def _daily_name(canon: str, first: str, last: str) -> str:
+    """<SYM>_1D_<start>_<end>.parquet, stamped with the ACTUAL bar range."""
+    return f"{canon}_1D_{first}_{last}.parquet"
 
-    if target.exists() and sc.modified_today(target) and not force:
-        log.info("⏭  skip (fresh today): %s", target.name)
-        return
+def _archive_stale_1d(dest_dir: Path, canon: str, keep: str, dry: bool) -> list[str]:
+    """Move other <SYM>_1D_*.parquet aside — readers concat every glob match, so
+    leaving two would silently blend sources. Archived, never deleted."""
+    stale = sorted(p for p in dest_dir.glob(f"{canon}_1D_*.parquet") if p.name != keep)
+    if not stale:
+        return []
+    moved = []
+    for p in stale:
+        if dry:
+            print(f"  [dry-run] would archive {p.name} -> {ARCHIVE_DIRNAME}/")
+        else:
+            (dest_dir / ARCHIVE_DIRNAME).mkdir(parents=True, exist_ok=True)
+            p.replace(dest_dir / ARCHIVE_DIRNAME / p.name)
+            side = p.with_suffix(p.suffix + ".manifest.json")
+            if side.exists():
+                side.replace(dest_dir / ARCHIVE_DIRNAME / side.name)
+            print(f"  archived {p.name} -> {ARCHIVE_DIRNAME}/ (superseded)")
+        moved.append(p.name)
+    return moved
 
-    client = sc.get_crypto_client() if is_crypto else sc.get_stock_client()
-    frames = []
-    for cs, ce in sc.year_chunks(start, end):
-        try:
-            df = (
-                sc.fetch_crypto_bars(client, symbol, TimeFrame.Day, cs, ce)
-                if is_crypto
-                else sc.fetch_stock_bars(client, symbol, TimeFrame.Day, cs, ce)
-            )
-            if not df.empty:
-                frames.append(df)
-        except Exception as exc:  # noqa: BLE001
-            log.error("daily fetch failed %s %s: %s", symbol, cs.year, exc)
-            stats["failures"].append(f"{symbol} 1D {cs.year}: {exc}")
+def _preflight(root: Path):
+    t = root / EQUITIES_SUBDIR
+    try:
+        t.mkdir(parents=True, exist_ok=True)
+        p = t / "._writetest"; p.write_text("ok"); p.unlink()
+    except PermissionError:
+        raise SystemExit(f"ERROR: {root} not writable as {os.environ.get('USER','?')}. "
+            "NTFS mounted as root. Fix /etc/fstab:\n  UUID=267ED1667ED12F75 /mnt/tick-storage "
+            "ntfs-3g uid=1000,gid=1000,umask=022,nofail 0 0\nthen sudo mount -a")
+    except OSError as e:
+        raise SystemExit(f"ERROR: cannot write {root} ({e}). If read-only: sudo ntfsfix /dev/sdb2")
 
-    if not frames:
-        log.warning("no daily data returned for %s (start %s)", symbol, start)
-        return
-
-    out = pd.concat(frames, ignore_index=True).drop_duplicates(subset="ts").sort_values("ts")
-    # Remove any older daily snapshots for this symbol to avoid accumulation.
-    for old in sym_dir.glob(f"{sc.fs_symbol(symbol)}_{sc.TF_DAILY_LABEL}_*.parquet"):
-        if old != target:
-            old.unlink()
-    sc.write_parquet(out, target)
-    _report_saved(symbol, sc.TF_DAILY_LABEL, out, target, stats)
-
-
-def seed_minute(symbol: str, is_crypto: bool, start: date, force: bool, stats: dict) -> None:
-    """Fetch 1-minute history, one Parquet file per calendar month."""
-    end = date.today()
-    sym_dir = sc.symbol_dir(symbol, is_crypto)
-    sym_dir.mkdir(parents=True, exist_ok=True)
-    client = sc.get_crypto_client() if is_crypto else sc.get_stock_client()
-
-    months = list(sc.month_chunks(start, end))
-    for year, month, cs, ce in tqdm(
-        months, desc=f"{symbol} 1m", unit="mo", leave=False
-    ):
-        target = sym_dir / f"{sc.fs_symbol(symbol)}_{sc.TF_MINUTE_LABEL}_{year}_{month:02d}.parquet"
-
-        # Past complete months are immutable — skip if already present.
-        # The current month re-fetches unless written earlier today.
-        complete = sc.month_is_complete(year, month)
-        if target.exists() and not force:
-            if complete or sc.modified_today(target):
-                continue
-
-        try:
-            df = (
-                sc.fetch_crypto_bars(client, symbol, TimeFrame.Minute, cs, ce)
-                if is_crypto
-                else sc.fetch_stock_bars(client, symbol, TimeFrame.Minute, cs, ce)
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.error("minute fetch failed %s %s-%02d: %s", symbol, year, month, exc)
-            stats["failures"].append(f"{symbol} 1m {year}-{month:02d}: {exc}")
-            continue
-
-        if df.empty:
-            continue
-        sc.write_parquet(df, target)
-        _report_saved(symbol, sc.TF_MINUTE_LABEL, df, target, stats, period=f"{year}-{month:02d}")
-
-
-def _report_saved(symbol, tf_label, df, path, stats, period=None):
-    rows = len(df)
-    size = sc.file_size_mb(path)
-    start_ts = pd.to_datetime(df["ts"].iloc[0]).date()
-    end_ts = pd.to_datetime(df["ts"].iloc[-1]).date()
-    label = f"{tf_label} {period}" if period else tf_label
-    print(f"✅ Saved {symbol} {label} {start_ts} → {end_ts}: {rows:,} rows ({size:.1f}MB)")
-    stats["files"] += 1
-    stats["rows"] += rows
-
-
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Seed historical OHLCV from Alpaca -> Parquet")
-    ap.add_argument("--asset", choices=["all", "equities", "crypto"], default="all")
-    ap.add_argument("--symbols", nargs="*", help="Restrict to these symbols")
-    ap.add_argument("--force", action="store_true", help="Re-download even if fresh")
-    args = ap.parse_args()
-
-    stats = {"files": 0, "rows": 0, "failures": []}
-    start_clock = datetime.now(timezone.utc)
-
-    equities = sc.EQUITY_SYMBOLS if args.asset in ("all", "equities") else []
-    cryptos = sc.CRYPTO_SYMBOLS if args.asset in ("all", "crypto") else []
-    if args.symbols:
-        want = set(args.symbols)
-        equities = [s for s in equities if s in want]
-        cryptos = [s for s in cryptos if s in want]
-
-    log.info("Seeding equities=%s crypto=%s force=%s", equities, cryptos, args.force)
-
-    for sym in equities:
-        log.info("=== %s (equity) ===", sym)
-        seed_daily(sym, False, sc.EQUITY_DAILY_START, args.force, stats)
-        seed_minute(sym, False, sc.EQUITY_MINUTE_START, args.force, stats)
-
-    for sym in cryptos:
-        log.info("=== %s (crypto) ===", sym)
-        seed_daily(sym, True, sc.CRYPTO_DAILY_START, args.force, stats)
-        seed_minute(sym, True, sc.CRYPTO_MINUTE_START, args.force, stats)
-
-    total_gb = sc.dir_size_bytes(sc.HIST_ROOT) / 1_000_000_000
-    elapsed = (datetime.now(timezone.utc) - start_clock).total_seconds() / 60
-
-    print("\n" + "═" * 55)
-    print("SEED COMPLETE")
-    print("═" * 55)
-    print(f"Files saved:   {stats['files']}")
-    print(f"Rows:          {stats['rows']:,}")
-    print(f"Storage:       {total_gb:.2f}GB on {sc.HIST_ROOT}")
-    print(f"Elapsed:       {elapsed:.1f} min")
-    if stats["failures"]:
-        print(f"Failures:      {len(stats['failures'])}")
-        for f in stats["failures"]:
-            print(f"  ✗ {f}")
+def _fetch_alpaca(symbol, timeframe, start, end):
+    import pandas as pd
+    from alpaca.data.timeframe import TimeFrame
+    tf = TimeFrame.Day if timeframe=="daily" else TimeFrame.Minute
+    if _is_crypto(symbol.replace("/","")):
+        from alpaca.data.historical import CryptoHistoricalDataClient
+        from alpaca.data.requests import CryptoBarsRequest
+        c = CryptoHistoricalDataClient()
+        bars = c.get_crypto_bars(CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=tf, start=start, end=end))
     else:
-        print("Failures:      none")
+        from alpaca.data.historical import StockHistoricalDataClient
+        from alpaca.data.requests import StockBarsRequest
+        k,s = _creds(); c = StockHistoricalDataClient(k,s)
+        bars = c.get_stock_bars(StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, start=start, end=end))
+    df = bars.df
+    if df is None or df.empty: return pd.DataFrame(columns=STD_COLS)
+    df = df.reset_index()
+    tsc = "timestamp" if "timestamp" in df.columns else df.columns[1]
+    df = df.rename(columns={tsc:"timestamp"})
+    return df[["timestamp","open","high","low","close","volume"]]
 
-    sc.send_telegram(
-        "📊 Historical seed complete:\n"
-        f"{stats['files']} files, {stats['rows']:,} rows\n"
-        f"Storage: {total_gb:.1f}GB on /mnt/tick-storage\n"
-        "Coverage: SPY/IWM/QQQ from 2010, BTC/ETH/SOL from 2020"
-        + (f"\n⚠️ {len(stats['failures'])} failures (see logs)" if stats["failures"] else "")
-    )
+def _fetch_yf(symbol, timeframe, start, end):
+    import pandas as pd, yfinance as yf
+    if timeframe=="minute":
+        raise SystemExit("yfinance minute history ~30d only; use --source alpaca for minute.")
+    d = yf.download(symbol, start=start.date().isoformat(), end=end.date().isoformat(),
+                    interval="1d", auto_adjust=False, progress=False)
+    if d is None or d.empty: return pd.DataFrame(columns=STD_COLS)
+    d = d.reset_index()
+    if isinstance(d.columns, pd.MultiIndex): d.columns = [c[0] for c in d.columns]
+    d = d.rename(columns={"Date":"timestamp","Datetime":"timestamp","Open":"open",
+                          "High":"high","Low":"low","Close":"close","Volume":"volume"})
+    df = d[["timestamp","open","high","low","close","volume"]].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    return df
 
+def _normalize(df):
+    import pandas as pd
+    if df.empty: return df
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.dropna(subset=["timestamp"]).drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
+    for c in ["open","high","low","close","volume"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
 
-if __name__ == "__main__":
-    main()
+def _write(df, out: Path, meta, dry):
+    if dry: print(f"  [dry-run] would write {len(df):>6} rows -> {out}"); return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(out, engine="pyarrow", index=False)
+    out.with_suffix(out.suffix+".manifest.json").write_text(json.dumps(meta, indent=2, default=str))
+
+def main(argv=None):
+    p = argparse.ArgumentParser()
+    p.add_argument("--symbols", nargs="+", default=["SPY","IWM","ETHUSD"])
+    p.add_argument("--timeframe", choices=["daily","minute"], default="daily")
+    p.add_argument("--source", choices=["alpaca","yfinance"], default="alpaca")
+    p.add_argument("--start", default="2000-01-01")
+    p.add_argument("--end", default=None)
+    p.add_argument("--root", default=DEFAULT_ROOT)
+    p.add_argument("--dry-run", action="store_true")
+    a = p.parse_args(argv)
+    root = Path(a.root); _preflight(root)
+    start = datetime.fromisoformat(a.start).replace(tzinfo=timezone.utc)
+    end = datetime.fromisoformat(a.end).replace(tzinfo=timezone.utc) if a.end else datetime.now(timezone.utc)
+    fetch = {"alpaca":_fetch_alpaca,"yfinance":_fetch_yf}[a.source]
+    print(f"Seeding {a.timeframe} | source={a.source} | {start.date()}->{end.date()} | root={root}\n")
+    rows_out=[]
+    for canon in [s.upper().replace("/","") for s in a.symbols]:
+        try:
+            df = _normalize(fetch(_norm_symbol(canon,a.source), a.timeframe, start, end))
+        except SystemExit: raise
+        except Exception as e:
+            print(f"  {canon:8s} FAILED: {type(e).__name__}: {e}"); rows_out.append((canon,a.source,0,"-","-")); continue
+        if df.empty:
+            print(f"  {canon:8s} no data"); rows_out.append((canon,a.source,0,"-","-")); continue
+        c0,c1 = df['timestamp'].min().date(), df['timestamp'].max().date()
+        meta={"source":a.source,"symbol":canon,"timeframe":a.timeframe,"rows":int(len(df)),
+              "start":str(c0),"end":str(c1),"fetched_at":datetime.now(timezone.utc).isoformat()}
+        if a.timeframe=="daily":
+            dest = _daily_dir(root, canon); name = _daily_name(canon, str(c0), str(c1))
+            _write(df, dest/name, meta, a.dry_run)
+            _archive_stale_1d(dest, canon, name, a.dry_run)
+        else:
+            df["_yr"]=df["timestamp"].dt.year
+            for yr,g in df.groupby("_yr"):
+                _write(g.drop(columns="_yr"), root/MINUTE_SUBDIR/canon/f"{yr}.parquet", dict(meta,year=int(yr),rows=int(len(g))), a.dry_run)
+        rows_out.append((canon,a.source,len(df),str(c0),str(c1)))
+    print("\n"+"="*66)
+    print(f"{'SYMBOL':8s}{'SOURCE':10s}{'ROWS':>8s}{'START':>13s}{'END':>13s}")
+    for sym,src,r,s0,s1 in rows_out: print(f"{sym:8s}{src:10s}{r:>8d}{s0:>13s}{s1:>13s}")
+    print("="*66)
+    if a.source=="alpaca" and any(r[3]!="-" and r[3]>="2016" for r in rows_out):
+        print("\nNOTE: Alpaca equities start ~2016. For SPY back to 1993 use --source yfinance.")
+    print("\nNext: run STRICT -> python3 scripts/backtest_hmm_switching.py")
+
+if __name__=="__main__": main()

@@ -39,26 +39,18 @@ class AlpacaStreamer:
                 "high": bar.high,
                 "low": bar.low,
                 "close": bar.close,
-                "volume": bar.volume,
+                "volume": int(bar.volume) if bar.volume is not None else 0,
                 "vwap": bar.vwap,
-                "trade_count": bar.trade_count,
+                "trade_count": int(bar.trade_count) if bar.trade_count is not None else 0,
                 "feed": self.feed
             }
             
-            resp = await self.client.post(
-                f"{self.supabase_url}/rest/v1/ohlcv_bars",
-                json=payload,
-                headers={
-                    "apikey": self.supabase_key,
-                    "Authorization": f"Bearer {self.supabase_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "resolution=merge-duplicates"
-                }
+            from common.safe_write import safe_write_async
+            ok = await safe_write_async(
+                "ohlcv_bars", payload, "alpaca-streamer",
+                _url=self.supabase_url, _key=self.supabase_key,
             )
-            
-            if resp.status_code >= 300:
-                logger.error(f"Supabase Upsert Failed: {resp.status_code} {resp.text}")
-            else:
+            if ok:
                 logger.debug(f"Streamed bar for {bar.symbol} @ {bar.timestamp}")
                 
         except Exception as e:

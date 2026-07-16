@@ -55,88 +55,118 @@ class BullAgent(BaseAgent):
         signal_recommendation = signal_recommendation or {}
         greeks_context = greeks_context or {}
         regime_summary = regime_summary or {}
+        sym_regime_dict = regime_summary.get('symbol_regimes', {}).get(symbol, {})
+        regime = sym_regime_dict.get('regime') or regime_summary.get('overall_regime', '')
+
+        from agents.pead_signal import get_pead_signal
+        pead = get_pead_signal(symbol)
+        pead_context = f"Post-Earnings Signal: {pead.get('signal')}\n{pead.get('description')}"
 
         score = 0.0
         factors = []
 
         # 1. SENTIMENT (0-30 points):
         sentiment = market_context.get('avg_sentiment', 0.0)
-        if sentiment > 0.3:
-            score += 30
-            factors.append(f'Strong bullish sentiment {sentiment:.2f}')
-        elif sentiment > 0.1:
-            score += 20
-            factors.append(f'Mild bullish sentiment {sentiment:.2f}')
-        elif sentiment > -0.1:
-            score += 10
-            factors.append(f'Neutral sentiment {sentiment:.2f}')
-        elif sentiment > -0.3:
-            score += 5
-            factors.append(f'Mild bearish sentiment {sentiment:.2f}')
+        if sentiment is None:
+            sentiment = 0.0
+
+        asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
+        if asset_class == 'equities':
+            base_bull = 50.0
+            if regime == 'BULL':
+                base_bull += 15.0
+            
+            sentiment_velocity = market_context.get('sentiment_velocity', 0.0)
+            if sentiment_velocity > 0.05:
+                base_bull += 8.0
+                
+            timesfm_forecast = signal_recommendation.get('timesfm_forecast', 'NONE')
+            if timesfm_forecast == 'UP':
+                base_bull += 7.0
+                
+            score = max(0.0, min(100.0, base_bull))
+            factors.append(f"Equities rule-based scoring: base=50, regime={regime}, vel={sentiment_velocity:.3f}, linear_baseline={timesfm_forecast}")
         else:
-            score += 0
-            factors.append(f'Strong bearish sentiment {sentiment:.2f}')
-
-        # 2. REGIME (0-30 points):
-        regime = (regime_summary or {}).get('overall_regime', '')
-        if regime == 'BULL':
-            score += 30
-            factors.append('BULL regime — strong tailwind')
-        elif regime == 'QUIET':
-            score += 20
-            factors.append('QUIET regime — mean reversion opportunity')
-        elif regime == 'VOLATILE':
-            score += 15
-            factors.append('VOLATILE — explosive move possible')
-        elif regime == 'BEAR':
-            score += 5
-            factors.append('BEAR regime — headwind')
-        else:
-            score += 10
-            factors.append('Unknown regime')
-
-        # 3. TECHNICAL SIGNAL (0-20 points):
-        action = signal_recommendation.get('action', 'HOLD')
-        buy_sig = signal_recommendation.get('buy_sig', False)
-        sell_sig = signal_recommendation.get('sell_sig', False)
-        if buy_sig or action == 'BUY':
-            score += 20
-            factors.append('Active BUY signal')
-        elif action == 'HOLD' and not sell_sig:
-            score += 10
-            factors.append('Neutral signal — no active sell')
-        elif sell_sig or action == 'SELL':
-            score += 0
-            factors.append('Active SELL signal — bearish')
-
-        # 4. SENTIMENT VELOCITY (0-10 points):
-        velocity = market_context.get('sentiment_velocity', 0.0)
-        trend = market_context.get('sentiment_trend', 'STABLE')
-        if trend == 'IMPROVING':
-            score += 10
-            factors.append('Sentiment improving')
-        elif trend == 'STABLE':
-            score += 5
-            factors.append('Sentiment stable')
-        else:
-            score += 0
-            factors.append('Sentiment deteriorating')
-
-        # 5. GREEKS MODE (0-10 points):
-        if greeks_context:
-            trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
-            iv_rank = greeks_context.get('iv_rank', 50.0)
-            if trade_mode == 'LONG_GAMMA':
+            if sentiment > 0.3:
+                score += 30
+                factors.append(f'Strong bullish sentiment {sentiment:.2f}')
+            elif sentiment > 0.1:
+                score += 20
+                factors.append(f'Mild bullish sentiment {sentiment:.2f}')
+            elif sentiment > -0.1:
                 score += 10
-                factors.append('LONG_GAMMA — IV cheap')
-            elif trade_mode == 'NEUTRAL':
+                factors.append(f'Neutral sentiment {sentiment:.2f}')
+            elif sentiment > -0.3:
                 score += 5
-                factors.append('Greeks neutral')
+                factors.append(f'Mild bearish sentiment {sentiment:.2f}')
             else:
-                score += 2
-                factors.append('SHORT_PREMIUM mode')
+                score += 0
+                factors.append(f'Strong bearish sentiment {sentiment:.2f}')
 
-        score = min(100.0, score)
+            # 2. REGIME (0-30 points):
+            if regime == 'BULL':
+                score += 30
+                factors.append('BULL regime — strong tailwind')
+            elif regime == 'QUIET':
+                score += 20
+                factors.append('QUIET regime — mean reversion opportunity')
+            elif regime == 'VOLATILE':
+                score += 15
+                factors.append('VOLATILE — explosive move possible')
+            elif regime == 'BEAR':
+                score += 5
+                factors.append('BEAR regime — headwind')
+            else:
+                score += 10
+                factors.append('Unknown regime')
+
+            # 3. TECHNICAL SIGNAL (0-20 points):
+            action = signal_recommendation.get('action', 'HOLD')
+            buy_sig = signal_recommendation.get('buy_sig', False)
+            sell_sig = signal_recommendation.get('sell_sig', False)
+            if buy_sig or action == 'BUY':
+                score += 20
+                factors.append('Active BUY signal')
+            elif action == 'HOLD' and not sell_sig:
+                score += 10
+                factors.append('Neutral signal — no active sell')
+            elif sell_sig or action == 'SELL':
+                score += 0
+                factors.append('Active SELL signal — bearish')
+
+            # 4. SENTIMENT VELOCITY (0-10 points):
+            velocity = market_context.get('sentiment_velocity', 0.0)
+            trend = market_context.get('sentiment_trend', 'STABLE')
+            if trend == 'IMPROVING':
+                score += 10
+                factors.append('Sentiment improving')
+            elif trend == 'STABLE':
+                score += 5
+                factors.append('Sentiment stable')
+            else:
+                score += 0
+                factors.append('Sentiment deteriorating')
+
+            # 5. GREEKS MODE (0-10 points):
+            if greeks_context:
+                trade_mode = greeks_context.get('trade_mode', 'NEUTRAL')
+                iv_rank = greeks_context.get('iv_rank', 50.0)
+                if trade_mode == 'LONG_GAMMA':
+                    score += 10
+                    factors.append('LONG_GAMMA — IV cheap')
+                elif trade_mode == 'NEUTRAL':
+                    score += 5
+                    factors.append('Greeks neutral')
+                else:
+                    score += 2
+                    factors.append('SHORT_PREMIUM mode')
+
+            score = min(100.0, score)
+
+        if pead['signal'] == 'BULLISH_DRIFT':
+            score += pead.get('modifier', 0)
+            factors.append(f"PEAD bullish drift modifier: +{pead.get('modifier', 0)}")
+        score = max(0.0, min(100.0, score))
 
         # Fetch live data from Supabase
         asset_class = (market_context or {}).get('asset_class') or (signal_recommendation or {}).get('asset_class') or 'equities'
@@ -150,23 +180,20 @@ class BullAgent(BaseAgent):
             latest_signals = await self.query_supabase(
                 table="agent_signals",
                 select="symbol,action,confidence,created_at",
-                filters={"asset_class": asset_filter, "order": "created_at.desc"},
+                filters={"symbol": f"eq.{symbol}", "order": "created_at.desc"},
                 limit=5
             )
         except Exception as e:
             logger.error(f"Failed to query live agent_signals from Supabase: {e}")
             
-        try:
-            regime_rows = await self.query_supabase(
-                table="regime_states",
-                select="regime,regime_probability,detected_at",
-                filters={"asset_class": asset_filter, "order": "detected_at.desc"},
-                limit=1
-            )
-            if regime_rows:
-                current_regime_row = regime_rows[0]
-        except Exception as e:
-            logger.error(f"Failed to query live regime_states from Supabase: {e}")
+        # Use passed in-memory regime_summary
+        sym_regime_dict = regime_summary.get('symbol_regimes', {}).get(symbol, {})
+        sym_regime = sym_regime_dict.get('regime') or regime_summary.get('overall_regime', 'Unknown')
+        sym_prob = sym_regime_dict.get('regime_probability')
+        if sym_prob is not None:
+            regime_str = f"{sym_regime} (Prob: {sym_prob})"
+        else:
+            regime_str = f"{sym_regime}"
             
         try:
             recent_sentiment = await self.query_supabase(
@@ -179,20 +206,32 @@ class BullAgent(BaseAgent):
             logger.error(f"Failed to query live news sentiment from Supabase: {e}")
 
         signals_str = "\n".join([f"  - {s.get('symbol')}: {s.get('action')} ({s.get('confidence')})" for s in latest_signals]) if latest_signals else "  None"
-        regime_str = f"{current_regime_row.get('regime')} (Prob: {current_regime_row.get('regime_probability')})" if current_regime_row else "Unknown"
         sentiment_str = "\n".join([f"  - {ns.get('title')} (score: {ns.get('sentiment_score')})" for ns in recent_sentiment]) if recent_sentiment else "  None"
 
         from agents._llm import call_claude, llm_available
         reasoning = ' | '.join(factors)
 
+        gex_context = market_context.get('gex_context', 'N/A')
+        ma_context = market_context.get('ma_context', 'N/A')
+
         if llm_available():
+            regime_val_str = f"{sym_regime} ({sym_prob:.0%})" if sym_prob is not None else f"{sym_regime}"
             prompt = f'''
 Symbol: {symbol}
-Regime: {regime_summary.get("overall_regime") if regime_summary else "Unknown"} (Live Regime: {regime_str})
-Sentiment: {market_context.get("avg_sentiment", 0):.3f} ({market_context.get("sentiment_label", "neutral")})
+Regime: {regime_val_str}
+Sentiment: {sentiment:.3f} ({market_context.get("sentiment_label", "neutral")}) [status: {market_context.get("sentiment_status", "OK")}]
 Velocity: {market_context.get("sentiment_trend", "STABLE")}
 Signal: {signal_recommendation.get("action", "HOLD")}
 Bull score: {score:.0f}/100
+
+Dealer Gamma Positioning:
+{gex_context}
+
+200-day MA Regime:
+{ma_context}
+
+Post-Earnings Signal:
+{pead_context}
 
 Live Signals (Supabase):
 {signals_str}

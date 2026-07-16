@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, RefreshCw, AlertCircle, Sparkles, TrendingUp, Info } from 'lucide-react';
-import { PageHeader } from '../components/ui/PageHeader';
+import {
+  Cpu,
+  RefreshCw,
+  AlertCircle,
+  Sparkles,
+  TrendingUp,
+  Info,
+  Clock,
+  Loader2,
+} from 'lucide-react';
+import { cn } from '../lib/utils';
+import { BentoGrid, BentoTile } from '../components/ui/BentoLayouts';
+import { Badge } from '../components/ui/Badge';
+import { Skeleton } from '../components/ui/Skeleton';
 
 interface LastCycleInfo {
   ran_at: string | null;
@@ -37,6 +49,92 @@ interface PipelineResponse {
   regime_summary: RegimeSummaryItem[];
   debate: DebateInfo;
 }
+
+// ─── Sub-Components ─────────────────────────────────────────────────────────
+
+function TileHeader({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("px-4 pt-4 pb-2 flex items-center justify-between", className)}>
+      {children}
+    </div>
+  );
+}
+
+function TileTitle({ icon: Icon, children }: { icon?: React.ElementType; children: React.ReactNode }) {
+  return (
+    <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+      {Icon && <Icon size={13} className="opacity-60" />}
+      {children}
+    </h3>
+  );
+}
+
+function ScoreBar({ label, score, color }: { label: string; score: number | null; color: string }) {
+  if (score === null) return null;
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between items-center text-[10px] font-bold">
+        <span className="uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="font-mono tabular-nums" style={{ color }}>{score}%</span>
+      </div>
+      <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700 ease-out"
+          style={{ width: `${score}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SignalTable({ signals, emptyMessage }: { signals: SignalItem[]; emptyMessage: string }) {
+  return (
+    <div className="overflow-x-auto custom-scrollbar">
+      <table className="w-full text-xs" role="grid">
+        <thead>
+          <tr className="border-b border-border">
+            {['Time', 'Symbol', 'Action', 'Conf', 'Reasoning'].map((h) => (
+              <th key={h} scope="col" className="text-left px-2 py-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/30">
+          {signals.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-6 text-center text-muted-foreground text-xs">
+                {emptyMessage}
+              </td>
+            </tr>
+          ) : (
+            signals.map((s, i) => {
+              const actionColor = s.action === 'BUY' ? 'text-[#10b981]' : s.action === 'SELL' ? 'text-[#ef4444]' : 'text-muted-foreground';
+              const reasoningText = s.reasoning ? (s.reasoning.length > 60 ? s.reasoning.substring(0, 60) + '…' : s.reasoning) : '—';
+              return (
+                <tr key={i} className="hover:bg-accent/5 transition-colors">
+                  <td className="px-2 py-2 text-muted-foreground font-mono tabular-nums">
+                    {new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td className="px-2 py-2 font-bold text-foreground">{s.symbol}</td>
+                  <td className="px-2 py-2">
+                    <span className={cn("font-bold", actionColor)}>{s.action}</span>
+                  </td>
+                  <td className="px-2 py-2 font-mono tabular-nums text-foreground">{(s.confidence * 100).toFixed(0)}%</td>
+                  <td className="px-2 py-2 text-muted-foreground max-w-[180px] truncate" title={s.reasoning}>
+                    {reasoningText}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function AgentPipelinePage() {
   const [data, setData] = useState<PipelineResponse | null>(null);
@@ -88,32 +186,44 @@ export default function AgentPipelinePage() {
     return () => clearInterval(counter);
   }, []);
 
+  // ─── Loading State ──────────────────────────────────────────────────────
+
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full text-zinc-400">
-        <div className="flex flex-col items-center gap-3">
-          <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-          <span className="text-sm font-semibold uppercase tracking-wider">Analyzing Intelligence Pipeline...</span>
-        </div>
+      <div className="p-6 space-y-4">
+        <Skeleton className="h-8 w-64" />
+        <BentoGrid>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <BentoTile key={i} colSpan={i < 2 ? 2 : 1}>
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-2 w-full" />
+              </div>
+            </BentoTile>
+          ))}
+        </BentoGrid>
       </div>
     );
   }
 
+  // ─── Error State ────────────────────────────────────────────────────────
+
   if (error) {
     return (
-      <div className="p-8 h-full bg-zinc-950 text-red-400 flex items-center justify-center">
-        <div className="max-w-md p-6 bg-zinc-900 border border-red-500/20 rounded-xl space-y-4 shadow-2xl">
+      <div className="p-8 flex items-center justify-center h-full">
+        <div className="max-w-md p-6 bg-card border border-destructive/20 rounded-xl space-y-4 shadow-lg">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-red-500" />
-            <h3 className="text-lg font-bold text-white uppercase tracking-wider">Pipeline Connection Failure</h3>
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Pipeline Connection Failure</h3>
           </div>
-          <p className="text-sm text-zinc-400 leading-relaxed">{error}</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{error}</p>
           <button
             onClick={() => {
               setLoading(true);
               fetchData();
             }}
-            className="w-full py-2.5 bg-red-900/30 hover:bg-red-900/50 border border-red-500/40 text-red-300 font-semibold rounded-lg transition-all"
+            className="w-full py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive font-semibold text-xs rounded-lg transition-all"
           >
             Retry Connection
           </button>
@@ -125,258 +235,183 @@ export default function AgentPipelinePage() {
   if (!data) return null;
 
   const { last_cycle, crypto_signals, equity_signals, regime_summary, debate } = data;
-
-  // Cycle age minutes logic
   const cycleMins = Math.floor(last_cycle.cycle_age_seconds / 60);
+  const cycleStale = cycleMins >= 60;
 
-  const getAgeColorClass = (mins: number) => {
-    if (mins < 20) return 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20';
-    if (mins < 60) return 'bg-amber-950/40 text-amber-400 border border-amber-500/20';
-    return 'bg-red-950/40 text-red-400 border border-red-500/20';
-  };
-
-  // Verdict style
-  const getVerdictStyle = (verdict: string | null) => {
-    if (!verdict) return 'bg-zinc-800 text-zinc-400 border-zinc-700';
-    if (verdict === 'ENTER') return 'bg-emerald-950 text-emerald-400 border border-emerald-500/30';
-    if (verdict === 'AVOID') return 'bg-rose-950 text-rose-400 border border-rose-500/30';
-    return 'bg-zinc-900 text-zinc-300 border border-zinc-700';
-  };
-
-  // Regime badge styling
-  const getRegimeClasses = (r: string) => {
+  const getRegimeColor = (r: string) => {
     switch (r.toUpperCase()) {
-      case 'BULL':
-        return 'bg-green-950/30 text-green-400 border border-green-500/20';
-      case 'BEAR':
-        return 'bg-red-950/30 text-red-400 border border-red-500/20';
-      case 'VOLATILE':
-        return 'bg-amber-950/30 text-amber-400 border border-amber-500/20';
-      case 'QUIET':
-        return 'bg-blue-950/30 text-blue-400 border border-blue-500/20';
-      default:
-        return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
+      case 'BULL': return '#10b981';
+      case 'BEAR': return '#ef4444';
+      case 'VOLATILE': return '#f59e0b';
+      case 'QUIET': return '#3b82f6';
+      default: return '#8b949e';
     }
   };
 
+  const verdictColor = debate.verdict === 'ENTER' ? '#10b981' : debate.verdict === 'AVOID' ? '#ef4444' : '#8b949e';
+
+  // ─── Render ─────────────────────────────────────────────────────────────
+
   return (
-    <div className="p-6 space-y-6 h-full overflow-y-auto bg-zinc-950 text-zinc-100 custom-scrollbar">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <PageHeader title="Agent Pipeline" subtitle="LangGraph Intelligence debate & decision matrix" />
-        <div className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 px-3 py-1.5 rounded-lg border border-zinc-800/80">
-          <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Last refreshed: {secondsAgo}s ago</span>
+    <div className="p-4 lg:p-6 h-full overflow-y-auto custom-scrollbar">
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">Agent Control Plane</h1>
+          <p className="text-[11px] text-muted-foreground">LangGraph intelligence pipeline • advisory mode — not wired to execution</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[9px] font-mono tabular-nums gap-1">
+            <Clock size={10} />
+            {secondsAgo}s ago
+          </Badge>
           <button
-            onClick={() => {
-              setLoading(true);
-              fetchData();
-            }}
-            className="ml-2 p-1 hover:bg-zinc-800 rounded transition-colors text-zinc-300"
+            onClick={() => { setLoading(true); fetchData(); }}
+            className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground"
+            aria-label="Refresh pipeline data"
           >
-            <RefreshCw className="w-3 h-3" />
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>
 
-      {/* ROW 1: Cycle Status Bar */}
-      <div className={`w-full p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${getAgeColorClass(cycleMins)}`}>
-        <div className="flex items-center gap-3">
-          <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
-          <div>
-            <span className="font-bold tracking-wider text-xs uppercase">
-              Last intelligence cycle ran: {cycleMins} {cycleMins === 1 ? 'minute' : 'minutes'} ago
-            </span>
-            <p className="text-[10px] opacity-80 mt-0.5">
-              Ran at: {last_cycle.ran_at ? new Date(last_cycle.ran_at).toLocaleTimeString() : 'N/A'}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] uppercase tracking-widest font-black opacity-70">Last cycle trigger:</span>
-          <span className="px-2.5 py-1 bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-xs font-bold rounded-lg uppercase tracking-wider">
-            {last_cycle.asset_class_last}
-          </span>
-        </div>
+      {/* ── Advisory Banner ─────────────────────────────────────────────── */}
+      <div className="mb-4 px-3 py-2 rounded-lg border border-amber-500/20 bg-amber-500/5 flex items-center gap-2 text-[11px] text-amber-400 font-medium" role="alert">
+        <Info size={14} />
+        <span>
+          <strong>Advisory Only:</strong> The multi-agent brain produces signals but is <strong>not yet wired</strong> to execution decisions.
+          All trade actions require manual human confirmation via the trading interface.
+        </span>
       </div>
 
-      {/* ROW 2: Debate Scorecard */}
-      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg space-y-6">
-        <div className="text-center space-y-1">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400">Market Debate — Last Verdict</h3>
-          <p className="text-[10px] text-zinc-500">Autonomous consensus between Bull and Bear analysts</p>
-        </div>
+      {/* ── Bento Grid ──────────────────────────────────────────────────── */}
+      <BentoGrid className="grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-[minmax(160px,auto)] gap-3">
 
-        {debate.bull_score === null && debate.bear_score === null ? (
-          <div className="p-6 text-center text-zinc-500 text-xs bg-zinc-950/50 rounded-xl border border-zinc-800/80">
-            Debate data unavailable — check agents
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto">
-              {/* Bull Score */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-green-400 uppercase tracking-widest">Bull Analyst Score</span>
-                  <span className="text-green-400 font-mono text-sm">{debate.bull_score}%</span>
-                </div>
-                <div className="h-2.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
-                  <div
-                    className="h-full bg-green-500 transition-all duration-1000"
-                    style={{ width: `${debate.bull_score}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Bear Score */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-red-400 uppercase tracking-widest">Bear Analyst Score</span>
-                  <span className="text-red-400 font-mono text-sm">{debate.bear_score}%</span>
-                </div>
-                <div className="h-2.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
-                  <div
-                    className="h-full bg-red-500 transition-all duration-1000"
-                    style={{ width: `${debate.bear_score}%` }}
-                  />
-                </div>
-              </div>
+        {/* TILE: Last Cycle Status */}
+        <BentoTile colSpan={2} className={cn(
+          "bg-card/60 backdrop-blur-sm border-border/40",
+          cycleStale && "border-destructive/30"
+        )}>
+          <TileHeader>
+            <TileTitle icon={Sparkles}>Last Intelligence Cycle</TileTitle>
+            {cycleStale && (
+              <Badge variant="destructive" className="text-[9px]">STALE</Badge>
+            )}
+          </TileHeader>
+          <div className="px-4 pb-4 flex items-center justify-between gap-4">
+            <div>
+              <span className={cn(
+                "text-3xl font-black tabular-nums font-mono tracking-tight",
+                cycleMins < 20 ? "text-[#10b981]" : cycleMins < 60 ? "text-[#f59e0b]" : "text-[#ef4444]"
+              )}>
+                {cycleMins}m
+              </span>
+              <span className="text-xs text-muted-foreground ml-1.5">ago</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                {last_cycle.ran_at ? new Date(last_cycle.ran_at).toLocaleTimeString() : 'N/A'}
+              </p>
             </div>
-
-            <div className="flex flex-col items-center justify-center gap-2 pt-2 border-t border-zinc-800/50 max-w-2xl mx-auto">
-              <span className="text-[9px] uppercase tracking-widest font-bold text-zinc-500">Cycle Verdict</span>
-              <div className="flex items-center gap-3">
-                <span className={`px-4 py-1.5 rounded-lg text-sm font-black tracking-wider uppercase ${getVerdictStyle(debate.verdict)}`}>
-                  {debate.verdict || 'HOLD'}
-                </span>
-                {debate.confidence !== null && (
-                  <span className="text-xs font-mono text-zinc-400 bg-zinc-950 border border-zinc-800/80 px-2.5 py-1.5 rounded-lg">
-                    Confidence: <span className="font-bold text-indigo-400">{debate.confidence}%</span>
-                  </span>
-                )}
-              </div>
+            <div className="text-right">
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wider block mb-1">Last Trigger</span>
+              <Badge variant="secondary" className="text-[10px] font-mono uppercase">
+                {last_cycle.asset_class_last}
+              </Badge>
             </div>
           </div>
-        )}
-      </div>
+        </BentoTile>
 
-      {/* ROW 3: Two Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT: Crypto Pipeline */}
-        <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg space-y-4">
-          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-            <span className="text-lg">🔮</span>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">Crypto Cycle</h3>
+        {/* TILE: Debate Verdict */}
+        <BentoTile colSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={TrendingUp}>Market Debate</TileTitle>
+            <Badge variant="outline" className="text-[9px]">ADVISORY</Badge>
+          </TileHeader>
+          <div className="px-4 pb-4 space-y-3">
+            {debate.bull_score === null && debate.bear_score === null ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Debate data unavailable</p>
+            ) : (
+              <>
+                <ScoreBar label="Bull Analyst" score={debate.bull_score} color="#10b981" />
+                <ScoreBar label="Bear Analyst" score={debate.bear_score} color="#ef4444" />
+                <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">Verdict</span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="text-sm font-black uppercase tracking-wider"
+                      style={{ color: verdictColor }}
+                    >
+                      {debate.verdict || 'HOLD'}
+                    </span>
+                    {debate.confidence !== null && (
+                      <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                        {debate.confidence}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-zinc-800 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  <th className="pb-2">Time</th>
-                  <th className="pb-2">Symbol</th>
-                  <th className="pb-2">Action</th>
-                  <th className="pb-2">Conf</th>
-                  <th className="pb-2">Reasoning</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {crypto_signals.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center text-zinc-500">No crypto signals</td>
-                  </tr>
-                ) : (
-                  crypto_signals.map((s, i) => {
-                    const reasoningText = s.reasoning ? (s.reasoning.length > 80 ? s.reasoning.substring(0, 80) + '...' : s.reasoning) : 'N/A';
-                    return (
-                      <tr key={i} className="hover:bg-zinc-800/20">
-                        <td className="py-3 text-zinc-400 font-mono">
-                          {new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="py-3 text-zinc-200 font-bold">{s.symbol}</td>
-                        <td className={`py-3 ${s.action === 'BUY' ? 'text-green-400 font-bold' : s.action === 'SELL' ? 'text-red-400 font-bold' : 'text-zinc-500'}`}>
-                          {s.action}
-                        </td>
-                        <td className="py-3 font-mono">{(s.confidence * 100).toFixed(0)}%</td>
-                        <td className="py-3 text-zinc-400 max-w-[200px] truncate" title={s.reasoning}>{reasoningText}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        </BentoTile>
 
-        {/* RIGHT: Equities Pipeline */}
-        <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg space-y-4">
-          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-            <span className="text-lg">📈</span>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">Equities Cycle</h3>
+        {/* TILE: Crypto Signals */}
+        <BentoTile colSpan={2} rowSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40 overflow-hidden">
+          <TileHeader>
+            <TileTitle icon={Cpu}>Crypto Agent Signals</TileTitle>
+            <span className="text-[9px] text-muted-foreground font-mono">{crypto_signals.length} signals</span>
+          </TileHeader>
+          <div className="px-4 pb-4 flex-1 overflow-auto custom-scrollbar">
+            <SignalTable signals={crypto_signals} emptyMessage="No crypto signals" />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-zinc-800 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  <th className="pb-2">Time</th>
-                  <th className="pb-2">Symbol</th>
-                  <th className="pb-2">Action</th>
-                  <th className="pb-2">Conf</th>
-                  <th className="pb-2">Reasoning</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {equity_signals.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center text-zinc-500">No equity signals</td>
-                  </tr>
-                ) : (
-                  equity_signals.map((s, i) => {
-                    const reasoningText = s.reasoning ? (s.reasoning.length > 80 ? s.reasoning.substring(0, 80) + '...' : s.reasoning) : 'N/A';
-                    return (
-                      <tr key={i} className="hover:bg-zinc-800/20">
-                        <td className="py-3 text-zinc-400 font-mono">
-                          {new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="py-3 text-zinc-200 font-bold">{s.symbol}</td>
-                        <td className={`py-3 ${s.action === 'BUY' ? 'text-green-400 font-bold' : s.action === 'SELL' ? 'text-red-400 font-bold' : 'text-zinc-500'}`}>
-                          {s.action}
-                        </td>
-                        <td className="py-3 font-mono">{(s.confidence * 100).toFixed(0)}%</td>
-                        <td className="py-3 text-zinc-400 max-w-[200px] truncate" title={s.reasoning}>{reasoningText}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        </BentoTile>
 
-      {/* ROW 4: Regime Summary */}
-      <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg space-y-4">
-        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-          <Info className="w-4 h-4 text-indigo-400" />
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">Current Regime Context</h3>
-        </div>
-        {regime_summary.length === 0 ? (
-          <p className="text-xs text-zinc-500 text-center py-4">No regime summary states available.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {regime_summary.map((r, i) => (
-              <div
-                key={i}
-                className={`p-3 rounded-lg flex flex-col items-center justify-center text-center transition-all ${getRegimeClasses(
-                  r.regime
-                )}`}
-              >
-                <span className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase">{r.symbol}</span>
-                <span className="text-xs font-black mt-1 uppercase tracking-wide">{r.regime}</span>
-                <span className="text-[10px] opacity-80 mt-0.5">{(r.regime_probability * 100).toFixed(0)}%</span>
+        {/* TILE: Equity Signals */}
+        <BentoTile colSpan={2} rowSpan={2} className="bg-card/60 backdrop-blur-sm border-border/40 overflow-hidden">
+          <TileHeader>
+            <TileTitle icon={TrendingUp}>Equity Agent Signals</TileTitle>
+            <span className="text-[9px] text-muted-foreground font-mono">{equity_signals.length} signals</span>
+          </TileHeader>
+          <div className="px-4 pb-4 flex-1 overflow-auto custom-scrollbar">
+            <SignalTable signals={equity_signals} emptyMessage="No equity signals" />
+          </div>
+        </BentoTile>
+
+        {/* TILE: Regime Summary */}
+        <BentoTile colSpan={4} className="bg-card/60 backdrop-blur-sm border-border/40">
+          <TileHeader>
+            <TileTitle icon={Info}>Regime Context</TileTitle>
+            <span className="text-[9px] text-muted-foreground font-mono">{regime_summary.length} symbols</span>
+          </TileHeader>
+          <div className="px-4 pb-4">
+            {regime_summary.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No regime data</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                {regime_summary.map((r, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center justify-center p-2 rounded-lg border bg-card/40 text-center"
+                    style={{ borderColor: `${getRegimeColor(r.regime)}30` }}
+                  >
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{r.symbol}</span>
+                    <span
+                      className="text-xs font-black uppercase mt-0.5"
+                      style={{ color: getRegimeColor(r.regime) }}
+                    >
+                      {r.regime}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground font-mono tabular-nums">
+                      {(r.regime_probability * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </BentoTile>
+
+      </BentoGrid>
     </div>
   );
 }

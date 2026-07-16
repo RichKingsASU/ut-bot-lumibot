@@ -1,0 +1,3 @@
+# Cached underlying bars pulled from Alpaca
+*.parquet
+!.gitignore
