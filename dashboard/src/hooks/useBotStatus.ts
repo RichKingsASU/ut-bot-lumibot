@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { netlifyFetch } from '../lib/apiClient'
 
 export interface BotStatusData {
   online: boolean
@@ -13,8 +14,8 @@ export interface BotStatusData {
   seconds_since_heartbeat: number | null
 }
 
-const POLL_INTERVAL = 10_000 // 10 seconds
-const ENDPOINT = '/.netlify/functions/bot-status'
+const POLL_INTERVAL = 10_000
+const MAX_AUTH_FAILURES = 3
 
 const DEFAULT_STATUS: BotStatusData = {
   online: false,
@@ -32,19 +33,27 @@ const DEFAULT_STATUS: BotStatusData = {
 export function useBotStatus(): BotStatusData {
   const [data, setData] = useState<BotStatusData>(DEFAULT_STATUS)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const authFailures = useRef(0)
+  const stoppedRef = useRef(false)
 
   const fetchStatus = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-      const res = await fetch(ENDPOINT, {
-        headers: {
-          'X-Admin-API-Key': adminKey
+      const res = await netlifyFetch('bot-status')
+      if (res.status === 401) {
+        authFailures.current += 1
+        if (authFailures.current >= MAX_AUTH_FAILURES) {
+          stoppedRef.current = true
+          if (intervalRef.current) clearInterval(intervalRef.current)
         }
-      })
+        setData(prev => ({ ...prev, online: false, status: 'error' }))
+        return
+      }
       if (!res.ok) {
         setData(prev => ({ ...prev, online: false, status: 'error' }))
         return
       }
+      authFailures.current = 0
       const json = await res.json()
       setData(json)
     } catch {
@@ -53,12 +62,10 @@ export function useBotStatus(): BotStatusData {
   }, [])
 
   useEffect(() => {
-    // Fetch immediately on mount
+    stoppedRef.current = false
+    authFailures.current = 0
     fetchStatus()
-
-    // Then poll every 10s
     intervalRef.current = setInterval(fetchStatus, POLL_INTERVAL)
-
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }

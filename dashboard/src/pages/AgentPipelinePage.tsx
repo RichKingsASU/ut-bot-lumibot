@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Cpu,
   RefreshCw,
@@ -13,6 +13,7 @@ import { cn } from '../lib/utils';
 import { BentoGrid, BentoTile } from '../components/ui/BentoLayouts';
 import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface LastCycleInfo {
   ran_at: string | null;
@@ -136,28 +137,27 @@ function SignalTable({ signals, emptyMessage }: { signals: SignalItem[]; emptyMe
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
+const MAX_AUTH_FAILURES = 3
+
 export default function AgentPipelinePage() {
   const [data, setData] = useState<PipelineResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
-
-  const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
+  const authFailures = useRef(0);
+  const stoppedRef = useRef(false);
 
   const fetchData = async () => {
+    if (stoppedRef.current) return;
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (adminKey) {
-        headers['X-Admin-API-Key'] = adminKey;
+      const res = await netlifyFetch('get-pipeline-status');
+      if (res.status === 401) {
+        authFailures.current += 1;
+        if (authFailures.current >= MAX_AUTH_FAILURES) stoppedRef.current = true;
+        setError('Unauthorized — set Admin API Key in Settings.');
+        return;
       }
-
-      const res = await fetch('/.netlify/functions/get-pipeline-status', { headers });
       if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error('Unauthorized. Please set your Admin API Key in Settings.');
-        }
         throw new Error(`HTTP error ${res.status}`);
       }
 
@@ -165,6 +165,7 @@ export default function AgentPipelinePage() {
       setData(json);
       setError(null);
       setSecondsAgo(0);
+      authFailures.current = 0;
     } catch (err: any) {
       console.error('Failed to fetch pipeline status:', err);
       setError(err.message);
@@ -174,8 +175,10 @@ export default function AgentPipelinePage() {
   };
 
   useEffect(() => {
+    stoppedRef.current = false;
+    authFailures.current = 0;
     fetchData();
-    const interval = setInterval(fetchData, 60000);
+    const interval = setInterval(() => { if (!stoppedRef.current) fetchData(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 

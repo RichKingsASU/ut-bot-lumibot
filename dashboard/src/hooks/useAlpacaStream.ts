@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { OHLCV } from '../types/dashboard'
+import { netlifyFetch } from '../lib/apiClient'
 
 interface StreamState {
   candles: OHLCV[]
@@ -9,8 +10,9 @@ interface StreamState {
 }
 
 const MAX_CANDLES = 200
-const POLL_INTERVAL = 5000   // poll latest price every 5s
-const BARS_INTERVAL = 60000  // refresh bars every 60s
+const POLL_INTERVAL = 5000
+const BARS_INTERVAL = 60000
+const MAX_AUTH_FAILURES = 3
 
 function timeframeToMinutes(tf: string): number {
   const map: Record<string, number> = {
@@ -19,18 +21,33 @@ function timeframeToMinutes(tf: string): number {
   return map[tf] ?? 15
 }
 
+// Suppress unused-variable warning — kept for potential future use
+void timeframeToMinutes
+
 export function useAlpacaStream(symbol: string, timeframe: string): StreamState {
   const [candles, setCandles] = useState<OHLCV[]>([])
   const [currentPrice, setCurrentPrice] = useState(0)
   const [connected, setConnected] = useState(false)
   const [prevClose, setPrevClose] = useState(0)
+  const authFailures = useRef(0)
+  const stoppedRef = useRef(false)
 
   const fetchBars = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const res = await fetch(
-        `/.netlify/functions/alpaca-bars?symbol=${symbol}&timeframe=${timeframe}&limit=${MAX_CANDLES}`
+      const res = await netlifyFetch(
+        `alpaca-bars?symbol=${symbol}&timeframe=${timeframe}&limit=${MAX_CANDLES}`
       )
+      if (res.status === 401) {
+        authFailures.current += 1
+        if (authFailures.current >= MAX_AUTH_FAILURES) {
+          stoppedRef.current = true
+          setConnected(false)
+        }
+        return
+      }
       if (!res.ok) return
+      authFailures.current = 0
       const data = await res.json() as { bars: Array<{ t: string; o: number; h: number; l: number; c: number; v: number }> }
       const bars: OHLCV[] = (data.bars || []).map((b) => ({
         time: Math.floor(new Date(b.t).getTime() / 1000),
@@ -55,16 +72,22 @@ export function useAlpacaStream(symbol: string, timeframe: string): StreamState 
   }, [symbol, timeframe])
 
   const fetchLatestPrice = useCallback(async () => {
+    if (stoppedRef.current) return
     try {
-      const res = await fetch(
-        `/.netlify/functions/alpaca-stream?symbol=${symbol}`
-      )
+      const res = await netlifyFetch(`alpaca-stream?symbol=${symbol}`)
+      if (res.status === 401) {
+        authFailures.current += 1
+        if (authFailures.current >= MAX_AUTH_FAILURES) {
+          stoppedRef.current = true
+          setConnected(false)
+        }
+        return
+      }
       if (!res.ok) return
+      authFailures.current = 0
       const data = await res.json() as { price?: number }
       if (data.price != null && data.price > 0) {
         setCurrentPrice(data.price)
-
-        // Update the last candle's close (live tick)
         setCandles((prev) => {
           if (prev.length === 0) return prev
           const updated = [...prev]
@@ -83,9 +106,15 @@ export function useAlpacaStream(symbol: string, timeframe: string): StreamState 
   }, [symbol])
 
   useEffect(() => {
+    stoppedRef.current = false
+    authFailures.current = 0
     void fetchBars()
-    const barsTimer = setInterval(fetchBars, BARS_INTERVAL)
-    const priceTimer = setInterval(fetchLatestPrice, POLL_INTERVAL)
+    const barsTimer = setInterval(() => {
+      if (!stoppedRef.current) void fetchBars()
+    }, BARS_INTERVAL)
+    const priceTimer = setInterval(() => {
+      if (!stoppedRef.current) void fetchLatestPrice()
+    }, POLL_INTERVAL)
 
     return () => {
       clearInterval(barsTimer)

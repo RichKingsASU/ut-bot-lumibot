@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { PageHeader } from '../../ui/PageHeader'
 import { PriceChart, type PriceChartBar } from '../../ui/PriceChart'
+import { netlifyFetch } from '../../../lib/apiClient'
 
 const colors = {
   bgPrimary: '#0d1117',
@@ -38,8 +39,8 @@ export default function CryptoTradeView() {
     const fetchBars = async () => {
       setLoading(true)
       try {
-        const res = await fetch(
-          `/.netlify/functions/crypto-bars?symbol=${encodeURIComponent(symbol)}&timeframe=1Min&limit=200`
+        const res = await netlifyFetch(
+          `crypto-bars?symbol=${encodeURIComponent(symbol)}&timeframe=1Min&limit=200`
         )
         if (res.ok) {
           const data = await res.json()

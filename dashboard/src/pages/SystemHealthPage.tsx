@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Shield, Activity, RefreshCw, AlertTriangle, TrendingUp, DollarSign, Wallet, Clipboard, Database, Globe } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface AccountData {
   equity: number;
@@ -47,28 +48,27 @@ interface HealthResponse {
   positions: any | null;
 }
 
+const MAX_AUTH_FAILURES = 3
+
 export default function SystemHealthPage() {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
-
-  const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
+  const authFailures = useRef(0);
+  const stoppedRef = useRef(false);
 
   const fetchData = async () => {
+    if (stoppedRef.current) return;
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (adminKey) {
-        headers['X-Admin-API-Key'] = adminKey;
+      const res = await netlifyFetch('get-system-health');
+      if (res.status === 401) {
+        authFailures.current += 1;
+        if (authFailures.current >= MAX_AUTH_FAILURES) stoppedRef.current = true;
+        setError('Unauthorized — set Admin API Key in Settings.');
+        return;
       }
-
-      const res = await fetch('/.netlify/functions/get-system-health', { headers });
       if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error('Unauthorized. Please set your Admin API Key in Settings.');
-        }
         throw new Error(`HTTP error ${res.status}`);
       }
 
@@ -76,6 +76,7 @@ export default function SystemHealthPage() {
       setData(json);
       setError(null);
       setSecondsAgo(0);
+      authFailures.current = 0;
     } catch (err: any) {
       console.error('Failed to fetch system health:', err);
       setError(err.message);
@@ -85,8 +86,10 @@ export default function SystemHealthPage() {
   };
 
   useEffect(() => {
+    stoppedRef.current = false;
+    authFailures.current = 0;
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => { if (!stoppedRef.current) fetchData(); }, 30000);
     return () => clearInterval(interval);
   }, []);
 

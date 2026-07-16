@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, AlertTriangle, Zap, Clock, ShieldAlert } from 'lucide-react';
+import { netlifyFetch } from '../../../lib/apiClient';
 
 interface GreekData {
   symbol: string;
@@ -36,8 +37,7 @@ export default function GreeksHeatmap() {
 
   const fetchGreeks = async () => {
     try {
-      // Assuming Netlify functions are available at /.netlify/functions/get-greeks
-      const res = await fetch('/.netlify/functions/get-greeks');
+      const res = await netlifyFetch('get-greeks');
       if (!res.ok) throw new Error('Failed to fetch Greeks data');
       const json = await res.json();
       setData(json);

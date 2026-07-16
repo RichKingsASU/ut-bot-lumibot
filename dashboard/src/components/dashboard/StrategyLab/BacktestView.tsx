@@ -4,6 +4,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { PriceChart, type PriceChartBar } from '../../ui/PriceChart'
 import { supabase } from '../../../lib/supabaseClient'
 import { formatSharpe } from '../../../lib/metrics'
+import { netlifyFetch } from '../../../lib/apiClient'
 import {
   LineChart as RechartsLineChart,
   Line as RechartsLine,
@@ -220,9 +221,8 @@ export default function BacktestView() {
     const strategy = strategies.find((s) => s.id === strategyId) || strategies[0]
 
     try {
-      const res = await fetch('/.netlify/functions/run-backtest', {
+      const res = await netlifyFetch('run-backtest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           strategyId: strategy.id,
           symbol,

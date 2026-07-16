@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from '../../ui/ErrorBoundary'
+import { AdminKeyBanner } from '../../AdminKeyBanner'
 
 export function MainLayout() {
   const location = useLocation()
@@ -15,6 +16,7 @@ export function MainLayout() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
         <TopBar />
+        <AdminKeyBanner />
         <main className="flex-1 overflow-auto custom-scrollbar">
           <ErrorBoundary key={location.pathname}>
             <Outlet />

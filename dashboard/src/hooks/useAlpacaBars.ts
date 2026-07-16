@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { netlifyFetch } from '../lib/apiClient'
 
 interface Bar {
   time: number
@@ -25,8 +26,8 @@ export function useAlpacaBars(symbol: string, timeframe: string, limit = 200): U
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(
-        `/.netlify/functions/alpaca-bars?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
+      const res = await netlifyFetch(
+        `alpaca-bars?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
       )
       if (!res.ok) throw new Error(`Failed to fetch bars: ${res.status}`)
       const data = await res.json() as { bars?: Array<{ t: string; o: number; h: number; l: number; c: number; v: number }> }

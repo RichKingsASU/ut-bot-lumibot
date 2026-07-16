@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toUserMessage } from '../lib/apiError';
+import { netlifyFetch } from '../lib/apiClient';
 
 interface BarInventory {
   symbol: string;
@@ -56,7 +57,7 @@ const SeedStatus: React.FC = () => {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/.netlify/functions/seed-status');
+      const res = await netlifyFetch('seed-status');
       if (!res.ok) throw new Error('Failed to fetch seeding status');
       const json = await res.json();
       setData(json);
@@ -79,7 +80,7 @@ const SeedStatus: React.FC = () => {
     if (triggering === key) return;
     setTriggering(key);
     try {
-      const res = await fetch('/.netlify/functions/seed-bars-background', {
+      const res = await netlifyFetch('seed-bars-background', {
         method: 'POST',
         body: JSON.stringify({ symbol, timeframe, days: 730 })
       });
@@ -97,7 +98,7 @@ const SeedStatus: React.FC = () => {
     if (triggering === underlying) return;
     setTriggering(underlying);
     try {
-      const res = await fetch('/.netlify/functions/seed-options-background', {
+      const res = await netlifyFetch('seed-options-background', {
         method: 'POST',
         body: JSON.stringify({ underlying, dte_max: 60 })
       });

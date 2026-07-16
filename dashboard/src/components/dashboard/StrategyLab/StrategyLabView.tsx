@@ -8,6 +8,7 @@ import { BacktestPanel } from './BacktestPanel';
 import { supabase } from '../../../lib/supabaseClient';
 import { PageHeader } from '../../ui/PageHeader';
 import { Maximize2, Minimize2, Terminal, Code2, PlayCircle, Settings } from 'lucide-react';
+import { netlifyFetch } from '../../../lib/apiClient';
 
 const DEFAULT_STRATEGIES: LabStrategy[] = [
   {
@@ -180,16 +181,9 @@ const StrategyLabView: React.FC = () => {
     setTerminalLines(prev => [...prev, { type: 'info', text: `[compile] Starting compilation check for ${selected.filename}...` }]);
     
     try {
-      const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
-      const response = await fetch('/.netlify/functions/compile-strategy', {
+      const response = await netlifyFetch('compile-strategy', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-API-Key': adminKey
-        },
-        body: JSON.stringify({
-          code: selected.code
-        })
+        body: JSON.stringify({ code: selected.code })
       });
       
       if (!response.ok) {
@@ -267,13 +261,8 @@ const StrategyLabView: React.FC = () => {
     try {
       const { atr_period, sensitivity, timeframe } = parseCodeParams(selected.code);
       
-      const adminKey = localStorage.getItem('ADMIN_API_KEY') || '';
-      const response = await fetch('/.netlify/functions/run-backtest', {
+      const response = await netlifyFetch('run-backtest', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-API-Key': adminKey
-        },
         body: JSON.stringify({
           symbol: params.symbol,
           timeframe,

@@ -3,6 +3,7 @@ import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Respon
 import { supabase } from '../../../lib/supabaseClient'
 import { PageHeader } from '../../ui/PageHeader'
 import { RefreshCw, AlertTriangle, ShieldCheck, Activity } from 'lucide-react'
+import { netlifyFetch } from '../../../lib/apiClient'
 
 interface SnapshotData {
   date: string
@@ -22,10 +23,7 @@ export function AccountHealthView() {
     setError(null)
     try {
       // 1. Fetch Alpaca Account
-      const adminKey = import.meta.env.VITE_ADMIN_API_KEY || ''
-      const accRes = await fetch('/.netlify/functions/alpaca-account', {
-        headers: { 'X-Admin-API-Key': adminKey }
-      })
+      const accRes = await netlifyFetch('alpaca-account')
 
       if (!accRes.ok) {
         throw new Error(`Alpaca API error: ${accRes.status}`)
