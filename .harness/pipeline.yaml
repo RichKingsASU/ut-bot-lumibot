@@ -34,10 +34,11 @@ pipeline:
                       python -m venv venv
                       source venv/bin/activate
                       pip install --upgrade pip
-                      pip install flake8 safety
+                      pip install flake8 safety bandit
                       flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
                       # Run safety check on dependency files
                       safety check -r requirements.txt || echo "Warnings found in dependency audit."
+                      bandit -r . -x tests,venv,dashboard,.agents
               - step:
                   type: Run
                   name: Python Unit and Reliability Tests
@@ -81,6 +82,7 @@ pipeline:
                     command: |
                       cd dashboard
                       npm ci
+                      npm audit || echo "NPM audit warnings found"
                       npm run typecheck
                       npm run build
               - step:
@@ -94,7 +96,30 @@ pipeline:
                       curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
                       mv supabase /usr/local/bin/
                       # Start local supabase container environment mock or verify SQL files syntax
-                      for file in supabase/migrations/*.sql; do
-                        echo "Validating syntax of $file..."
-                        # Syntax-check the sql structure
-                      done
+                      supabase init || true
+                      supabase start
+                      supabase db lint
+              - step:
+                  type: Run
+                  name: Backend Integration Tests
+                  identifier: backend_integration_tests
+                  spec:
+                    shell: Bash
+                    command: |
+                      source venv/bin/activate
+                      # Assuming supabase is running from the previous step
+                      export SUPABASE_URL="http://localhost:54321"
+                      export SUPABASE_ANON_KEY="dummy-key"
+                      pytest tests/integration/ -v
+              - step:
+                  type: Run
+                  name: Frontend E2E Tests
+                  identifier: frontend_e2e_tests
+                  spec:
+                    shell: Bash
+                    command: |
+                      cd dashboard
+                      npm ci
+                      npm run build
+                      # Assuming cypress is installed and configured
+                      npx cypress run

@@ -235,7 +235,9 @@ class UTBotStrategy(Strategy):
                 return
 
         # ── ENTRY LOGIC (if no open position) ───────────────────────────
-        if not has_open_position() and current_signal != 0:
+        # Ensure we only act on the daily bar signal near the close to align cadence
+        now_time = datetime.now(ET)
+        if not has_open_position() and current_signal != 0 and now_time.hour == 15 and now_time.minute >= 45:
             # ── [RISK FIX] Check daily trade limit ─────────────────────────────
             if self.trades_today >= config.MAX_TRADES_PER_DAY:
                 logger.warning("MAX_TRADES_PER_DAY (%d) reached. Entry blocked to prevent runaway.", 

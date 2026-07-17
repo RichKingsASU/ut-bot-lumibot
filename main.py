@@ -61,8 +61,8 @@ def main():
         strategy = UTBotStrategy(
             broker=broker,
             parameters={
-                "atr_period": 14,
-                "sensitivity": 3.0,
+                "atr_period": 10,
+                "sensitivity": 1.0,
             }
         )
         symbol = strategy.parameters.get("symbol", "SPY")
@@ -95,6 +95,26 @@ def main():
         stream_thread = threading.Thread(target=_run_streamer, daemon=True, name="AlpacaStreamer")
         stream_thread.start()
         bot_logger.info("Real-time WebSocket Streamer started in background.", category=ErrorCategory.INFRASTRUCTURE)
+
+        # ── [SAFETY FIX] Start Kill Switch Watchdog ───────────
+        from agents.orchestrator import _poll_kill_switch
+        import os
+
+        def _run_kill_switch_watchdog():
+            while True:
+                try:
+                    if _poll_kill_switch():
+                        bot_logger.critical("Kill switch activated — signaling SIGTERM to self.", category=ErrorCategory.CRITICAL)
+                        os.kill(os.getpid(), signal.SIGTERM)
+                        break
+                except Exception as e:
+                    bot_logger.error(f"Kill switch watchdog error: {e}", category=ErrorCategory.INFRASTRUCTURE)
+                import time
+                time.sleep(15)
+
+        kill_thread = threading.Thread(target=_run_kill_switch_watchdog, daemon=True, name="KillSwitchWatchdog")
+        kill_thread.start()
+        bot_logger.info("Kill Switch Watchdog started in background.", category=ErrorCategory.INFRASTRUCTURE)
 
         bot_logger.info("Starting Lumibot Trader Loop...", category=ErrorCategory.INFRASTRUCTURE)
         trader.run_all()

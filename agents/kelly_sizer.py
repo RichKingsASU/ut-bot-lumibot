@@ -119,9 +119,11 @@ class KellySizer:
     
     if data_sufficient:
         win_rate = len(wins) / total_trades
-        avg_win_pct = sum(wins) / len(wins) if wins else 0.0
-        avg_loss_pct = sum(losses) / len(losses) if losses else 0.0
-        payout_ratio = avg_win_pct / avg_loss_pct if avg_loss_pct > 0 else self.DEFAULT_PAYOUT
+        # Apply estimated commission drag (e.g. 0.1% or similar per trade impact)
+        # Using a conservative 0.05% per trade commission assumption.
+        avg_win_pct = max((sum(wins) / len(wins)) - 0.0005, 0.0001) if wins else 0.0001
+        avg_loss_pct = (sum(losses) / len(losses)) + 0.0005 if losses else 0.0001
+        payout_ratio = avg_win_pct / avg_loss_pct
     else:
         win_rate = self.DEFAULT_WIN_RATE
         payout_ratio = self.DEFAULT_PAYOUT

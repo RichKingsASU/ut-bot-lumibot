@@ -524,6 +524,30 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
         logger.warning("buy_to_open blocked — cooldown active (%.0fs remaining)", remaining)
         return None
 
+    # ── [SAFETY FIX] Guard: HITL approval check ──────────────────────────
+    supa_url = os.getenv("SUPABASE_URL")
+    supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if supa_url and supa_key:
+        import httpx
+        try:
+            hitl_resp = httpx.get(
+                f"{supa_url}/rest/v1/hitl_gate?symbol=eq.{underlying}&select=approved",
+                headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+                timeout=5
+            )
+            if hitl_resp.status_code == 200:
+                data = hitl_resp.json()
+                is_approved = any(row.get("approved") is True for row in data)
+                if not is_approved:
+                    logger.warning("buy_to_open blocked — HITL approval not granted for %s", underlying)
+                    return None
+            else:
+                logger.warning("buy_to_open blocked — HITL gate verification returned %d", hitl_resp.status_code)
+                return None
+        except Exception as e:
+            logger.warning("buy_to_open blocked — HITL gate verification failed (failing safe). Error: %s", e)
+            return None
+
     option_type = "call" if direction == "LONG" else "put"
 
     try:
