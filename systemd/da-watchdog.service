@@ -1,0 +1,26 @@
+[Unit]
+Description=Disrupting Alpha - Self-Healing Watchdog (run_agent_watchdog.py)
+Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
+# Replaces the tmux "watchdog" session (a single point of failure that dies with
+# the tmux server — see QA audit finding P0-14). As a systemd service it is
+# itself supervised and restarted.
+After=network-online.target
+Wants=network-online.target
+ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=k2
+Group=k2
+WorkingDirectory=/home/k2/ut-bot-lumibot
+EnvironmentFile=/home/k2/ut-bot-lumibot/.env
+ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python run_agent_watchdog.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=da-watchdog
+
+[Install]
+WantedBy=multi-user.target
