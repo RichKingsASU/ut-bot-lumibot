@@ -1,15 +1,31 @@
 [Unit]
-Description=DA Trading Bot
-After=network.target
+Description=Disrupting Alpha - UT Bot Options Trading Bot (main.py)
+Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+# Uptime is the entire purpose of this unit: never stop retrying on a crash
+# loop (this is what caused the multi-day silent outage found in the QA audit).
+# The da-watchdog service alerts a human via Telegram if the bot is flapping.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=k2
-WorkingDirectory=/opt/ut-bot-lumibot
-ExecStart=/opt/ut-bot-lumibot/venv/bin/python main.py --mode trading
+Group=k2
+WorkingDirectory=/home/k2/ut-bot-lumibot
+# systemd parses KEY=value lines directly (no shell `export`/expansion). See README.
+EnvironmentFile=/home/k2/ut-bot-lumibot/.env
+ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python main.py
 Restart=always
-RestartSec=5
-StartLimitBurst=5
+RestartSec=10
+# The strategy handles EOD flatten / exits in-app; give it room to exit cleanly.
+TimeoutStopSec=30
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=da-trading-bot
 
 [Install]
 WantedBy=multi-user.target
