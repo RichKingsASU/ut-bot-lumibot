@@ -32,6 +32,26 @@ export function unauthorizedResponse() {
 export const ALPACA_PAPER_URL = "https://paper-api.alpaca.markets";
 export const ALPACA_LIVE_URL = "https://api.alpaca.markets";
 
+// Machine-readable error taxonomy shared by the privileged alpaca-* functions
+// and the dashboard. `source` tells the UI WHERE a failure originated so a
+// local admin-auth rejection is never confused with an upstream broker
+// rejection; `code` disambiguates within a source. See requireAdmin() below
+// and alpaca-account.ts for the producers, SettingsView.tsx for the consumer.
+export const ERROR_SOURCE = {
+  ADMIN_AUTH: "admin_auth", // this proxy rejected the caller's admin key
+  ALPACA: "alpaca",         // upstream Alpaca rejected the broker credentials
+  PROXY: "proxy",           // the proxy itself failed (bad input / exception)
+} as const;
+
+export const ERROR_CODE = {
+  ADMIN_AUTH_INVALID: "ADMIN_AUTH_INVALID",             // 401 — wrong/absent admin key
+  ADMIN_AUTH_NOT_CONFIGURED: "ADMIN_AUTH_NOT_CONFIGURED", // 503 — ADMIN_API_KEY unset in prod
+  ALPACA_AUTH: "ALPACA_AUTH",       // upstream 401/403 — broker creds / env mismatch
+  ALPACA_UPSTREAM: "ALPACA_UPSTREAM", // any other non-2xx from Alpaca
+  BAD_REQUEST: "BAD_REQUEST",       // malformed body / disallowed baseUrl
+  PROXY_ERROR: "PROXY_ERROR",       // unhandled exception reaching Alpaca
+} as const;
+
 // Only genuinely local Netlify dev is allowed to skip admin auth. Every
 // deployed context (production, deploy-preview, branch-deploy) requires a key.
 function isLocalDev(): boolean {
@@ -68,7 +88,7 @@ export function requireAdmin(event: EventLike): AdminAuthResult {
     return {
       ok: false,
       statusCode: 401,
-      body: JSON.stringify({ error: "Unauthorized" }),
+      body: JSON.stringify({ error: "Unauthorized Admin API Key", code: "ADMIN_UNAUTHORIZED" }),
     };
   }
   return { ok: true };

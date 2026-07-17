@@ -343,12 +343,17 @@ export function SettingsView() {
       if (res.ok) {
         setAdminKeyTestStatus('success')
         setAdminKeyTestMsg('Connection verified — admin key is valid.')
-      } else if (res.status === 401) {
-        setAdminKeyTestStatus('error')
-        setAdminKeyTestMsg('Invalid or missing admin key — check the value and try again.')
       } else {
         setAdminKeyTestStatus('error')
-        setAdminKeyTestMsg(`Unexpected response: ${res.status}`)
+        let data: any = {}
+        try { data = await res.json() } catch(e) {}
+        if (data.code === 'ADMIN_UNAUTHORIZED') {
+          setAdminKeyTestMsg('Invalid or missing admin key — check the value and try again.')
+        } else if (res.status === 401) {
+          setAdminKeyTestMsg(`Admin key accepted, but Alpaca returned 401: ${data.error || 'Check Alpaca keys.'}`)
+        } else {
+          setAdminKeyTestMsg(`Error: ${data.error || res.status}`)
+        }
       }
     } catch (e) {
       setAdminKeyTestStatus('error')
