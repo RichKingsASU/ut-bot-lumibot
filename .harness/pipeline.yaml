@@ -1,7 +1,7 @@
 pipeline:
   name: disrupting-alpha-ci-reliability
   identifier: disruptingalphacireliability
-  projectIdentifier: disrupting_alpha
+  projectIdentifier: default_project
   orgIdentifier: default
   tags: {}
   properties:
