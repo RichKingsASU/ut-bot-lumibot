@@ -8,10 +8,10 @@ export const JSON_HEADERS = {
 
 export function isAuthorized(req: Request): boolean {
   const adminKey = process.env.ADMIN_API_KEY;
-  // If no key is set in environment, we default to authorized (for local dev convenience)
-  // but in production the user SHOULD set this.
-  if (!adminKey) return true;
-  
+  // Fail CLOSED: only genuine local Netlify dev may skip auth when no key is
+  // configured. Every deployed context requires ADMIN_API_KEY to be set.
+  if (!adminKey) return isLocalDev();
+
   const requestKey = req.headers.get("X-Admin-API-Key");
   return requestKey === adminKey;
 }
