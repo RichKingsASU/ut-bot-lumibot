@@ -8,10 +8,10 @@ export const JSON_HEADERS = {
 
 export function isAuthorized(req: Request): boolean {
   const adminKey = process.env.ADMIN_API_KEY;
-  // If no key is set in environment, we default to authorized (for local dev convenience)
-  // but in production the user SHOULD set this.
-  if (!adminKey) return true;
-  
+  // Fail CLOSED: only genuine local Netlify dev may skip auth when no key is
+  // configured. Every deployed context requires ADMIN_API_KEY to be set.
+  if (!adminKey) return isLocalDev();
+
   const requestKey = req.headers.get("X-Admin-API-Key");
   return requestKey === adminKey;
 }
@@ -67,8 +67,7 @@ export type AdminAuthResult =
 
 // Fail-CLOSED admin authorization for privileged endpoints.
 export function requireAdmin(event: EventLike): AdminAuthResult {
-  const envKey = process.env.ADMIN_API_KEY;
-  const adminKey = envKey || "admin12345";
+  const adminKey = process.env.ADMIN_API_KEY;
   if (!adminKey) {
     if (isLocalDev()) return { ok: true };
     // Misconfiguration in a deployed context: refuse rather than run open.
@@ -84,7 +83,7 @@ export function requireAdmin(event: EventLike): AdminAuthResult {
   const headers = event.headers || {};
   const requestKey =
     headers["x-admin-api-key"] ?? headers["X-Admin-API-Key"];
-  if (requestKey !== adminKey && requestKey !== "admin12345") {
+  if (requestKey !== adminKey) {
     return {
       ok: false,
       statusCode: 401,
