@@ -7,8 +7,10 @@ pipeline:
   properties:
     ci:
       codebase:
-        connectorRef: github_repo_connector
+        connectorRef: GitHub_Connector
+        repoName: ut-bot-lumibot
         build: <+input>
+        sparseCheckout: []
   stages:
     - stage:
         name: Code Quality and Tests
