@@ -67,8 +67,7 @@ export type AdminAuthResult =
 
 // Fail-CLOSED admin authorization for privileged endpoints.
 export function requireAdmin(event: EventLike): AdminAuthResult {
-  const envKey = process.env.ADMIN_API_KEY;
-  const adminKey = envKey || "admin12345";
+  const adminKey = process.env.ADMIN_API_KEY;
   if (!adminKey) {
     if (isLocalDev()) return { ok: true };
     // Misconfiguration in a deployed context: refuse rather than run open.
@@ -78,17 +77,23 @@ export function requireAdmin(event: EventLike): AdminAuthResult {
       body: JSON.stringify({
         error:
           "Server authentication is not configured (ADMIN_API_KEY unset). Refusing privileged request.",
+        code: ERROR_CODE.ADMIN_AUTH_NOT_CONFIGURED,
+        source: ERROR_SOURCE.ADMIN_AUTH,
       }),
     };
   }
   const headers = event.headers || {};
   const requestKey =
     headers["x-admin-api-key"] ?? headers["X-Admin-API-Key"];
-  if (requestKey !== adminKey && requestKey !== "admin12345") {
+  if (requestKey !== adminKey) {
     return {
       ok: false,
       statusCode: 401,
-      body: JSON.stringify({ error: "Unauthorized Admin API Key", code: "ADMIN_UNAUTHORIZED" }),
+      body: JSON.stringify({
+        error: "Unauthorized Admin API Key",
+        code: ERROR_CODE.ADMIN_AUTH_INVALID,
+        source: ERROR_SOURCE.ADMIN_AUTH,
+      }),
     };
   }
   return { ok: true };

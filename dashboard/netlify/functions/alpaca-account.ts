@@ -1,5 +1,13 @@
 import type { Handler } from '@netlify/functions'
-import { requireAdmin, isAllowedAlpacaBaseUrl, ALPACA_PAPER_URL } from "./lib/auth"
+import {
+  requireAdmin,
+  isAllowedAlpacaBaseUrl,
+  ALPACA_PAPER_URL,
+  ERROR_SOURCE,
+  ERROR_CODE,
+} from "./lib/auth"
+
+const JSON_HEADER = { 'Content-Type': 'application/json' }
 
 const handler: Handler = async (event) => {
   // Require admin auth for ALL callers, including those supplying credentials
@@ -22,7 +30,15 @@ const handler: Handler = async (event) => {
       if (body.apiSecret) apiSecret = body.apiSecret;
       if (body.baseUrl) baseUrl = body.baseUrl;
     } catch (e) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "Invalid JSON",
+          code: ERROR_CODE.BAD_REQUEST,
+          source: ERROR_SOURCE.PROXY,
+        }),
+        headers: JSON_HEADER,
+      };
     }
   }
 
@@ -31,7 +47,12 @@ const handler: Handler = async (event) => {
   if (!isAllowedAlpacaBaseUrl(baseUrl)) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: "Invalid baseUrl. Must be an Alpaca REST endpoint." }),
+      body: JSON.stringify({
+        error: "Invalid baseUrl. Must be an Alpaca REST endpoint.",
+        code: ERROR_CODE.BAD_REQUEST,
+        source: ERROR_SOURCE.PROXY,
+      }),
+      headers: JSON_HEADER,
     };
   }
 
@@ -59,14 +80,28 @@ const handler: Handler = async (event) => {
         errorMessage = errJson.message || text;
       } catch (e) { /* ignore */ }
 
+      // The admin key was already accepted by requireAdmin() above, so a
+      // rejection HERE is an UPSTREAM (broker) failure — it must never be
+      // surfaced to the UI as a local admin-auth 401. Remap an upstream
+      // 401/403 to 502 Bad Gateway so a bare 401 from this endpoint always
+      // and only means "your admin key is bad". The precise upstream status
+      // is preserved in the body for diagnostics.
+      const isUpstreamAuth = response.status === 401 || response.status === 403;
+      const isPaper = baseUrl.includes('paper-api');
       return {
-        statusCode: response.status,
-        body: JSON.stringify({ 
-          error: errorMessage,
-          statusCode: response.status,
-          latency 
+        statusCode: isUpstreamAuth ? 502 : response.status,
+        body: JSON.stringify({
+          error: isUpstreamAuth
+            ? `Alpaca rejected the broker credentials (HTTP ${response.status}). ` +
+              `Verify the API key/secret and that they are ${isPaper ? 'Paper' : 'Live'} ` +
+              `keys matching the ${isPaper ? 'Paper' : 'Live'} base URL.`
+            : errorMessage,
+          code: isUpstreamAuth ? ERROR_CODE.ALPACA_AUTH : ERROR_CODE.ALPACA_UPSTREAM,
+          source: ERROR_SOURCE.ALPACA,
+          upstreamStatus: response.status,
+          latency,
         }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADER,
       }
     }
 
@@ -86,9 +121,14 @@ const handler: Handler = async (event) => {
     }
   } catch (err) {
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: String(err), latency: Date.now() - startTime }),
-      headers: { 'Content-Type': 'application/json' },
+      statusCode: 502,
+      body: JSON.stringify({
+        error: `Could not reach Alpaca: ${String(err)}`,
+        code: ERROR_CODE.PROXY_ERROR,
+        source: ERROR_SOURCE.ALPACA,
+        latency: Date.now() - startTime,
+      }),
+      headers: JSON_HEADER,
     }
   }
 }

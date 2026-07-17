@@ -204,6 +204,11 @@ const styles = {
     borderColor: 'rgba(248, 81, 73, 0.2)',
     color: '#f85149',
   },
+  warningBox: {
+    backgroundColor: 'rgba(210, 153, 34, 0.1)',
+    borderColor: 'rgba(210, 153, 34, 0.25)',
+    color: '#d29922',
+  },
   badge: (paper: boolean) => ({
     padding: '2px 8px',
     borderRadius: '4px',
@@ -259,7 +264,7 @@ export function SettingsView() {
   const [adminKeyHasValue, setAdminKeyHasValue] = useState(false)
   const [adminKeyTestLoading, setAdminKeyTestLoading] = useState(false)
   const [adminKeySaveStatus, setAdminKeySaveStatus] = useState<SaveStatus>(null)
-  const [adminKeyTestStatus, setAdminKeyTestStatus] = useState<null | 'success' | 'error'>(null)
+  const [adminKeyTestStatus, setAdminKeyTestStatus] = useState<null | 'success' | 'error' | 'warning'>(null)
   const [adminKeyTestMsg, setAdminKeyTestMsg] = useState('')
 
   const [alpacaKey, setAlpacaKey] = useState('')
@@ -340,20 +345,33 @@ export function SettingsView() {
     setAdminKeyTestStatus(null)
     try {
       const res = await netlifyFetch('alpaca-account')
+      let data: any = {}
+      try { data = await res.json() } catch (e) { /* non-JSON body */ }
+
       if (res.ok) {
+        // Admin key accepted AND the upstream broker check succeeded.
         setAdminKeyTestStatus('success')
         setAdminKeyTestMsg('Connection verified — admin key is valid.')
-      } else {
+      } else if (data.source === 'admin_auth') {
+        // Local admin-auth failure: the proxy itself rejected our key. This is
+        // the ONLY case that reflects on the admin key the user is testing.
         setAdminKeyTestStatus('error')
-        let data: any = {}
-        try { data = await res.json() } catch(e) {}
-        if (data.code === 'ADMIN_UNAUTHORIZED') {
-          setAdminKeyTestMsg('Invalid or missing admin key — check the value and try again.')
-        } else if (res.status === 401) {
-          setAdminKeyTestMsg(`Admin key accepted, but Alpaca returned 401: ${data.error || 'Check Alpaca keys.'}`)
+        if (data.code === 'ADMIN_AUTH_NOT_CONFIGURED' || res.status === 503) {
+          setAdminKeyTestMsg('Server auth is not configured (ADMIN_API_KEY unset on the backend). This is a deployment issue, not your key.')
         } else {
-          setAdminKeyTestMsg(`Error: ${data.error || res.status}`)
+          setAdminKeyTestMsg('Invalid or missing admin key — check the value and try again.')
         }
+      } else if (data.source === 'alpaca') {
+        // Upstream broker failure: the admin key was ACCEPTED; Alpaca rejected
+        // the broker credentials (bad keys or Paper/Live mismatch). The admin
+        // key under test is fine, so surface this as a distinct warning rather
+        // than an admin-key error.
+        setAdminKeyTestStatus('warning')
+        setAdminKeyTestMsg(`Admin key is valid — but the broker check failed: ${data.error || 'Alpaca rejected the credentials.'}`)
+      } else {
+        // Proxy-level or unclassified failure (bad request, network proxy error).
+        setAdminKeyTestStatus('error')
+        setAdminKeyTestMsg(`Unexpected response (${res.status}): ${data.error || 'no detail'}`)
       }
     } catch (e) {
       setAdminKeyTestStatus('error')
@@ -586,9 +604,20 @@ export function SettingsView() {
         setLastVerified(now)
         localStorage.setItem('alpaca_last_verified', now)
       } else {
-        console.error('[CONN_TEST] Failure:', data.error)
+        console.error('[CONN_TEST] Failure:', { source: data.source, code: data.code, error: data.error })
         setTestStatus('error')
-        setTestMessage(data.error || 'Unknown connection error')
+        // Distinguish a local admin-auth failure (the dashboard's own admin key
+        // is missing/invalid) from an upstream broker rejection, so the user
+        // fixes the right credential.
+        if (data.source === 'admin_auth') {
+          setTestMessage(
+            data.code === 'ADMIN_AUTH_NOT_CONFIGURED'
+              ? 'Backend auth not configured (ADMIN_API_KEY unset) — this is a deployment issue, not your broker keys.'
+              : 'Admin API key missing or invalid. Set a valid Admin API Key in the Admin section, then retry.'
+          )
+        } else {
+          setTestMessage(data.error || 'Unknown connection error')
+        }
         setTestLatency(data.latency || null)
       }
     } catch (err) {
@@ -689,10 +718,26 @@ export function SettingsView() {
               )}
             </div>
             {adminKeyTestStatus && (
-              <div style={{ ...styles.testResult, ...(adminKeyTestStatus === 'success' ? styles.successBox : styles.errorBox), marginTop: '12px' }}>
+              <div style={{
+                ...styles.testResult,
+                ...(adminKeyTestStatus === 'success'
+                  ? styles.successBox
+                  : adminKeyTestStatus === 'warning'
+                    ? styles.warningBox
+                    : styles.errorBox),
+                marginTop: '12px',
+              }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                  {adminKeyTestStatus === 'success' ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
-                  {adminKeyTestStatus === 'success' ? 'Key Valid' : 'Key Invalid'}
+                  {adminKeyTestStatus === 'success'
+                    ? <CheckCircle2 size={15} />
+                    : adminKeyTestStatus === 'warning'
+                      ? <AlertTriangle size={15} />
+                      : <XCircle size={15} />}
+                  {adminKeyTestStatus === 'success'
+                    ? 'Admin Key Valid'
+                    : adminKeyTestStatus === 'warning'
+                      ? 'Admin Key Valid · Broker Check Failed'
+                      : 'Admin Key Invalid'}
                 </div>
                 <div style={{ fontSize: '13px', opacity: 0.9 }}>{adminKeyTestMsg}</div>
               </div>
