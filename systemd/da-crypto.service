@@ -1,0 +1,15 @@
+[Unit]
+Description=DA Crypto Bot
+After=network.target
+
+[Service]
+Type=simple
+User=k2
+WorkingDirectory=/opt/ut-bot-lumibot
+ExecStart=/opt/ut-bot-lumibot/venv/bin/python main.py --mode crypto
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
