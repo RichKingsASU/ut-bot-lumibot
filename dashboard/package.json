@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "design:lint": "designmd lint ../DESIGN.md",
+    "design:export": "designmd export --format json-tailwind ../DESIGN.md > src/design-tokens.json",
+    "dev": "npm run design:export && vite",
+    "build": "npm run design:export && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -28,6 +30,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@google/design.md": "^0.3.0",
     "@netlify/functions": "^2.8.0",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",

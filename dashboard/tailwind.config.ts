@@ -1,3 +1,18 @@
+import fs from 'fs';
+import path from 'path';
+
+let designTokens = { theme: { extend: {} } };
+try {
+  const jsonPath = path.resolve(process.cwd(), './src/design-tokens.json');
+  if (fs.existsSync(jsonPath)) {
+    designTokens = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  }
+} catch (e) {
+  console.warn("Could not load design tokens. Run npm run design:export");
+}
+
+const dt = designTokens.theme.extend;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -13,14 +28,16 @@ export default {
       },
     },
     extend: {
+      ...dt,
       colors: {
+        ...dt.colors,
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
+        background: dt.colors?.background || "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
+          DEFAULT: dt.colors?.primary || "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
