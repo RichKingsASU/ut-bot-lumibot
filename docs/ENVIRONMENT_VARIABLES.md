@@ -19,7 +19,9 @@ These variables configure broker access, database connectivity, notifications, a
 | `TELEGRAM_BOT_TOKEN` | No | API token of your Telegram notification bot. |
 | `TELEGRAM_CHAT_ID` | No | Telegram channel or personal chat identifier. |
 | `FINNHUB_API_KEY` | No | Finnhub API credential for financial news feeds. |
-| `ANTHROPIC_API_KEY` | No | Anthropic API key for debate agent modeling. |
+| `ANTHROPIC_API_KEY_AGENTS` | No | Anthropic API key for debate agent modeling. |
+| `ANTHROPIC_API_KEY_SENTIMENT` | No | Anthropic API key for sentiment scorer. |
+| `ANTHROPIC_API_KEY_HERMES` | No | Anthropic API key for Hermes agent. |
 | `HUGGINGFACE_TOKEN` | No | Hugging Face token for local FinBERT scoring. |
 | `TRADING_MODE` | **Yes** | Active execution mode: `PAPER` or `LIVE`. |
 

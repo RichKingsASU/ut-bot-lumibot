@@ -2,7 +2,7 @@
 Shared LLM helper for the Bull/Bear/Judge debate agents.
 
 Provides a thin async wrapper around the Anthropic SDK with a graceful
-fallback: when ANTHROPIC_API_KEY is absent (or any error occurs), callers
+fallback: when ANTHROPIC_API_KEY_AGENTS is absent (or any error occurs), callers
 get None back and fall through to rule-based logic. This lets the debate
 layer run immediately and upgrade automatically once a key is added.
 """
@@ -77,7 +77,7 @@ async def call_claude(
             return text or None
 
         except anthropic.AuthenticationError as exc:
-            logger.critical(f"[LLM] CRITICAL: Authentication failed. Check your ANTHROPIC_API_KEY. Details: {exc}")
+            logger.critical(f"[LLM] CRITICAL: Authentication failed. Check your ANTHROPIC_API_KEY_AGENTS. Details: {exc}")
             break
         except anthropic.PermissionDeniedError as exc:
             logger.critical(f"[LLM] CRITICAL: Permission denied. Check billing/account status. Details: {exc}")

@@ -3,7 +3,7 @@ JudgeAgent — Disrupting Alpha v2 debate layer.
 
 Weighs the bull and bear cases and renders a final verdict. The net score
 (bull - bear) deterministically sets the baseline verdict; when an
-ANTHROPIC_API_KEY is configured, Claude synthesises the reasoning and may
+ANTHROPIC_API_KEY_AGENTS is configured, Claude synthesises the reasoning and may
 sharpen confidence, but the proceed/avoid decision stays grounded in the
 numeric net score.
 """

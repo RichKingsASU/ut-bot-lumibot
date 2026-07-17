@@ -2,7 +2,7 @@
 BearAgent — Disrupting Alpha v2 debate layer.
 
 Makes the strongest possible case AGAINST a trade. Uses Claude when an
-ANTHROPIC_API_KEY is configured, otherwise falls back to a deterministic
+ANTHROPIC_API_KEY_AGENTS is configured, otherwise falls back to a deterministic
 rule-based bear score so the pipeline always produces a result.
 """
 
