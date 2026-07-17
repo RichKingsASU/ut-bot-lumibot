@@ -1,15 +1,26 @@
 [Unit]
-Description=DA Crypto Bot
-After=network.target
+Description=Disrupting Alpha - Crypto Trading Bot (run_crypto_bot.py)
+Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=k2
-WorkingDirectory=/opt/ut-bot-lumibot
-ExecStart=/opt/ut-bot-lumibot/venv/bin/python main.py --mode crypto
+Group=k2
+WorkingDirectory=/home/k2/ut-bot-lumibot
+EnvironmentFile=/home/k2/ut-bot-lumibot/.env
+ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python run_crypto_bot.py
 Restart=always
-RestartSec=5
-StartLimitBurst=5
+RestartSec=10
+TimeoutStopSec=30
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=da-crypto-bot
 
 [Install]
 WantedBy=multi-user.target
