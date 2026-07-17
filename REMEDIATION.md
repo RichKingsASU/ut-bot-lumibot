@@ -28,7 +28,9 @@ supabase db push
 No credentials should ever be committed to git. Ensure the following environment variables are securely stored in your production environment (Netlify environment variables and VM `.env` file):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_API_KEY_AGENTS`
+- `ANTHROPIC_API_KEY_SENTIMENT`
+- `ANTHROPIC_API_KEY_HERMES`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
