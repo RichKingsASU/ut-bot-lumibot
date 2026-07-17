@@ -23,8 +23,8 @@ CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 
 
 def llm_available() -> bool:
-    """True only when a non-empty ANTHROPIC_API_KEY is configured."""
-    return bool((os.getenv("ANTHROPIC_API_KEY") or "").strip())
+    """True only when a non-empty ANTHROPIC_API_KEY_AGENTS is configured."""
+    return bool((os.getenv("ANTHROPIC_API_KEY_AGENTS") or "").strip())
 
 
 async def call_claude(
@@ -50,7 +50,7 @@ async def call_claude(
 
     import asyncio
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY_AGENTS")
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=15.0)
 
     max_attempts = 3
