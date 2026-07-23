@@ -7,6 +7,9 @@
 [build.environment]
   NODE_VERSION = "20"
   PYTHON_VERSION = "3.11"
+  # Note: Environment variables for this project are automatically
+  # synced from Doppler (project: disrupting-alpha, config: production).
+  # Do not hardcode them in netlify.toml directly.
 
 
 [dev]

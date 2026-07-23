@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from collectors.tick_collector import TickCollector
 from collectors.questdb_init import init_questdb_schema
 from adapters.telegram_alerts import send_alert
+from collectors.equities_bar_collector import EquitiesBarCollector
 
 # Setup basic logging to stdout
 logging.basicConfig(
@@ -22,23 +23,28 @@ async def main():
     logger.info("Initializing QuestDB schemas...")
     schema_ok = init_questdb_schema()
     if not schema_ok:
-        logger.warning("QuestDB schema initialization failed or QuestDB is offline. Tick collector will still attempt to run.")
+        logger.warning("QuestDB schema initialization failed or QuestDB is offline. Collectors will still attempt to run.")
         
     # 2. Send Telegram Startup message
-    startup_msg = "✅ Task 1 & 2: run_tick_collector.py Starting Live (NATS + QuestDB)"
+    startup_msg = "✅ Task 1 & 2: run_tick_collector.py Starting Live (NATS + QuestDB + Equities)"
     logger.info(f"Sending Telegram startup message: {startup_msg}")
     send_alert(startup_msg)
     
-    # 3. Start Tick Collector
-    collector = TickCollector()
+    # 3. Start Collectors
+    crypto_collector = TickCollector()
+    equities_collector = EquitiesBarCollector()
     try:
-        await collector.run()
+        await asyncio.gather(
+            crypto_collector.run(),
+            equities_collector.run()
+        )
     except asyncio.CancelledError:
         logger.info("Asyncio task cancelled.")
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received.")
     finally:
-        await collector.stop()
+        await crypto_collector.stop()
+        await equities_collector.stop()
 
 if __name__ == "__main__":
     try:

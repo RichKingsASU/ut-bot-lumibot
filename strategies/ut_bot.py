@@ -64,7 +64,7 @@ class UTBotStrategy(Strategy):
     }
 
     def initialize(self):
-        self.sleeptime = "1M"  # 1-minute bars for intraday options
+        self.sleeptime = "1D"  # Aligned poll cadence to daily bar (P0-15 fix)
         self.last_signal = None
         self.last_direction = None
 

@@ -4,7 +4,7 @@ Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
-ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+ConditionFileNotEmpty=/etc/systemd/system/da-doppler.conf
 StartLimitIntervalSec=0
 
 [Service]
@@ -12,8 +12,12 @@ Type=simple
 User=k2
 Group=k2
 WorkingDirectory=/home/k2/ut-bot-lumibot
-EnvironmentFile=/home/k2/ut-bot-lumibot/.env
-ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python run_crypto_bot.py
+EnvironmentFile=/etc/systemd/system/da-doppler.conf
+ExecStart=doppler run \
+  --token ${DOPPLER_TOKEN} \
+  --project disrupting-alpha \
+  --config prd \
+  -- /home/k2/ut-bot-lumibot/venv/bin/python run_crypto_bot.py
 Restart=always
 RestartSec=10
 TimeoutStopSec=30

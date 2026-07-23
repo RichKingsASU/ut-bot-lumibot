@@ -4,7 +4,7 @@ Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
-ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+ConditionFileNotEmpty=/etc/systemd/system/da-doppler.conf
 # Uptime is the entire purpose of this unit: never stop retrying on a crash
 # loop (this is what caused the multi-day silent outage found in the QA audit).
 # The da-watchdog service alerts a human via Telegram if the bot is flapping.
@@ -16,8 +16,12 @@ User=k2
 Group=k2
 WorkingDirectory=/home/k2/ut-bot-lumibot
 # systemd parses KEY=value lines directly (no shell `export`/expansion). See README.
-EnvironmentFile=/home/k2/ut-bot-lumibot/.env
-ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python main.py
+EnvironmentFile=/etc/systemd/system/da-doppler.conf
+ExecStart=doppler run \
+  --token ${DOPPLER_TOKEN} \
+  --project disrupting-alpha \
+  --config prd \
+  -- /home/k2/ut-bot-lumibot/venv/bin/python main.py
 Restart=always
 RestartSec=10
 # The strategy handles EOD flatten / exits in-app; give it room to exit cleanly.

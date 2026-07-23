@@ -29,7 +29,7 @@ from agents.gex_calculator import compute_gex
 from agents.pead_signal import get_pead_signal
 from agents.ma_regime_filter import get_spy_200day_ma, apply_ma_filter
 from agents.market_freshness import validate_market_freshness
-from agents.hitl_queue import submit_for_approval
+
 from agents.kronos_forecaster import compare_with_timesfm as _kronos_compare
 
 load_dotenv()
@@ -765,28 +765,8 @@ def report_node(state: AgentState) -> AgentState:
         )
     logger.info(f"[Orchestrator] {asset} pipeline cycle completed. {greeks_line}")
 
-    # HITL approval gate (GATE 3)
-    try:
-        sig = state.get("signal_recommendation", {})
-        signal_id = sig.get("id")
-        if (sig.get('action') == 'BUY'
-                and state.get('execution_approved', False)
-                and os.getenv('HITL_ENABLED', 'false').lower() == 'true'):
-            # Enrich signal with pipeline context for the queue
-            hitl_signal = dict(sig)
-            debate_res = state.get('debate_result', {})
-            kelly_sz = state.get('kelly_sizing', {})
-            regime_sum = state.get('regime_summary', {})
-            hitl_signal['debate_verdict'] = debate_res.get('verdict')
-            hitl_signal['debate_bull_score'] = debate_res.get('bull_score')
-            hitl_signal['debate_bear_score'] = debate_res.get('bear_score')
-            hitl_signal['regime'] = regime_sum.get('overall_regime')
-            hitl_signal['kelly_position_value'] = kelly_sz.get('position_value', 0)
-            hitl_signal['asset_class'] = state.get('asset_class', 'equities')
-            submit_for_approval(hitl_signal)
-            logger.info(f"[HITL] Signal for {sig.get('symbol')} submitted for human approval — execution held")
-    except Exception as e:
-        logger.warning(f"[HITL] Submit error in report_node: {e}")
+    # HITL approval gate (GATE 3) has been removed because it was a false gate
+    # See P0-7: The module and its misleading log were deleted because they didn't block execution.
 
     # Update cloud Supabase agent_signals table with the rich cycle metrics
     try:

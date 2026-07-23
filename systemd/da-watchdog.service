@@ -6,7 +6,7 @@ Documentation=file:///home/k2/ut-bot-lumibot/scripts/systemd/README.md
 # itself supervised and restarted.
 After=network-online.target
 Wants=network-online.target
-ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+ConditionFileNotEmpty=/etc/systemd/system/da-doppler.conf
 StartLimitIntervalSec=0
 
 [Service]
@@ -14,8 +14,12 @@ Type=simple
 User=k2
 Group=k2
 WorkingDirectory=/home/k2/ut-bot-lumibot
-EnvironmentFile=/home/k2/ut-bot-lumibot/.env
-ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python run_agent_watchdog.py
+EnvironmentFile=/etc/systemd/system/da-doppler.conf
+ExecStart=doppler run \
+  --token ${DOPPLER_TOKEN} \
+  --project disrupting-alpha \
+  --config prd \
+  -- /home/k2/ut-bot-lumibot/venv/bin/python run_agent_watchdog.py
 Restart=always
 RestartSec=15
 StandardOutput=journal
