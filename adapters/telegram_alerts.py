@@ -1,9 +1,11 @@
 import logging
 import os
 import sys
+import time
 import threading
 import requests
 import inspect
+from datetime import datetime, timezone
 import adapters.supabase_logger as db
 from common.supabase_auth import get_supabase_headers
 
@@ -11,6 +13,18 @@ logger = logging.getLogger("telegram_outbox")
 
 _token: str | None = None
 _chat_id: str | None = None
+
+# ── Tee failure visibility state (PR #68 remediation) ──────────────────────
+# State-transition dedup: mirrors _warned_unrecognized_key pattern in
+# common/supabase_auth.py — fire ONE alert on healthy→failing, ONE on recovery.
+_tee_state_lock = threading.Lock()
+_tee_failing = False
+_tee_first_failure_ts: float | None = None
+_tee_failure_count = 0
+
+# Re-entrancy guard: prevents recursive tee attempts when the failure/recovery
+# alert itself flows back through _send → _tee_outbox.
+_tee_local = threading.local()
 
 def _init():
     """Lazy-init credentials from env."""
@@ -51,7 +65,19 @@ def _tee_outbox(body: str, chat_id, send_ok: bool, telegram_message_id, error, m
     audit row must never affect (or mask) the outer send path. Any problem is
     logged at WARNING and swallowed. Reads the service key from either
     SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY (migration in progress).
+
+    Visibility invariants (PR #68 remediation):
+      §2a  Non-blocking — never propagates exceptions to the caller.
+      §2b  Routes through common/safe_write.py, no hand-rolled HTTP.
+      §2c  Re-entrancy guard — threading.local flag prevents recursive tee
+           attempts when the failure/recovery alert itself flows through _send.
+      §2d  State-transition dedup — exactly ONE alert on healthy→failing.
+      §2e  Recovery — ONE recovery alert + component_heartbeat row on resume.
     """
+    # §2c: re-entrancy guard — skip tee entirely during failure/recovery alert dispatch
+    if getattr(_tee_local, 'suppress_tee', False):
+        return
+
     try:
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -76,8 +102,105 @@ def _tee_outbox(body: str, chat_id, send_ok: bool, telegram_message_id, error, m
             _url=url,
             _key=key
         )
+        # §2e: tee succeeded — check for recovery from prior outage
+        _on_tee_success(url, key)
     except Exception as e:
-        logger.error("[TELEGRAM] outbox tee error: %s", e)
+        # §2a: never re-raise; §2d: dedup via _on_tee_failure
+        _on_tee_failure(e)
+
+
+def _on_tee_failure(exc: Exception):
+    """Handle tee failure with state-transition dedup (§2d) and re-entrant alert (§2c).
+
+    Fires exactly ONE Telegram alert on the healthy→failing transition.
+    Consecutive failures while already in the failing state emit nothing.
+    """
+    global _tee_failing, _tee_first_failure_ts, _tee_failure_count
+
+    should_alert = False
+    with _tee_state_lock:
+        _tee_failure_count += 1
+        if not _tee_failing:
+            # Transition: healthy → failing
+            _tee_failing = True
+            _tee_first_failure_ts = time.time()
+            should_alert = True
+        logger.error("[TELEGRAM] outbox tee error: %s", exc)
+
+    if should_alert:
+        # §2c: set re-entrancy guard so the alert's own _send → _tee_outbox
+        # path skips teeing (preventing infinite recursion during outage)
+        _tee_local.suppress_tee = True
+        try:
+            _send(
+                f"🚨 OUTBOX TEE DEGRADED: Supabase audit write failed — {exc}",
+                message_type="alert",
+            )
+        except Exception:
+            pass  # §2a: alert dispatch failure must not propagate
+        finally:
+            _tee_local.suppress_tee = False
+
+
+def _on_tee_success(url: str, key: str):
+    """Handle tee success — emit recovery alert if transitioning from failing (§2e).
+
+    On the first successful tee after a failing state, writes a component_heartbeat
+    row recording the outage window and emits one recovery alert.
+    """
+    global _tee_failing, _tee_first_failure_ts, _tee_failure_count
+
+    should_recover = False
+    first_ts = None
+    count = 0
+    with _tee_state_lock:
+        if _tee_failing:
+            should_recover = True
+            first_ts = _tee_first_failure_ts
+            count = _tee_failure_count
+            _tee_failing = False
+            _tee_first_failure_ts = None
+            _tee_failure_count = 0
+
+    if should_recover:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        first_failure_iso = (
+            datetime.fromtimestamp(first_ts, tz=timezone.utc).isoformat()
+            if first_ts else None
+        )
+        # §2c: suppress tee during recovery alert dispatch
+        _tee_local.suppress_tee = True
+        try:
+            # §2e: record outage window in component_heartbeat
+            from common.safe_write import safe_write_sync
+            safe_write_sync(
+                table="component_heartbeat",
+                payload={
+                    "component": "telegram_outbox_tee",
+                    "status": "OK",
+                    "last_success_at": now_iso,
+                    "meta": {
+                        "recovery": True,
+                        "first_failure_ts": first_failure_iso,
+                        "recovery_ts": now_iso,
+                        "failure_count": count,
+                    },
+                },
+                component="telegram_outbox_tee",
+                method="post",
+                upsert=True,
+                _url=url,
+                _key=key,
+            )
+            # §2e: emit recovery alert
+            _send(
+                f"✅ OUTBOX TEE RECOVERED: audit writes resumed after {count} failure(s)",
+                message_type="alert",
+            )
+        except Exception:
+            pass  # §2a: recovery bookkeeping failure must not propagate
+        finally:
+            _tee_local.suppress_tee = False
 
 
 def _send(message: str, message_type: str | None = None):

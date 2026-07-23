@@ -14,8 +14,8 @@ def main():
     url = url.rstrip("/")
 
     from common.supabase_auth import get_supabase_headers
-    headers = get_supabase_headers(key)
-    
+    headers = get_supabase_headers(key, extra={"Accept": "application/json"})
+
     if "Authorization" in headers:
         branch = "apikey AND Authorization: Bearer (JWT)"
     else:
@@ -24,17 +24,10 @@ def main():
     print(f"Detected key branch: {branch}")
 
     try:
-        # Request 1: apikey only
-        h1 = {"apikey": key, "Accept": "application/json"}
-        r1 = httpx.get(f"{url}/rest/v1/telegram_outbox", headers=h1, params={"limit": 1}, timeout=10)
-        print(f"Request 1 (apikey only) status code: {r1.status_code}")
+        r = httpx.get(f"{url}/rest/v1/telegram_outbox", headers=headers, params={"limit": 1}, timeout=10)
+        print(f"Request status code: {r.status_code}")
 
-        # Request 2: apikey + Bearer
-        h2 = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
-        r2 = httpx.get(f"{url}/rest/v1/telegram_outbox", headers=h2, params={"limit": 1}, timeout=10)
-        print(f"Request 2 (apikey + Bearer) status code: {r2.status_code}")
-
-        if r1.status_code in (200, 201, 204) or r2.status_code in (200, 201, 204):
+        if r.status_code in (200, 201, 204):
             print("Verdict: PASS")
         else:
             print("Verdict: FAIL")
@@ -45,3 +38,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
