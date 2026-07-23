@@ -73,3 +73,15 @@ pipeline:
                         echo "FAILED: Decay simulator did not enforce strict mode!"
                         exit 1
                       fi
+              - step:
+                  type: Run
+                  name: Run Dashboard Tests
+                  identifier: Run_Dashboard_Tests
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: node:20
+                    shell: Sh
+                    command: |-
+                      cd dashboard
+                      npm ci
+                      npm run test
