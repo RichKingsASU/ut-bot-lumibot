@@ -1,6 +1,6 @@
 const { spawn } = require('child_process');
 
-const proc = spawn('npx.cmd', ['-y', '@supabase/mcp-server-supabase@latest', '--project-ref', 'wnigkahkamoizjpmpuxs'], { stdio: ['pipe', 'pipe', 'inherit'], shell: true, env: { ...process.env, SUPABASE_ACCESS_TOKEN: 'sbp_c3fae75b648c0c692469cd49c107ed6080b765e4' } });
+const proc = spawn('npx.cmd', ['-y', '@supabase/mcp-server-supabase@latest', '--access-token', 'sbp_b5ed49872140bb02c41fd72fc955079ade76cd1c', '--project-ref', 'wnigkahkamoizjpmpuxs'], { stdio: ['pipe', 'pipe', 'inherit'], shell: true });
 
 proc.stdout.on('data', (data) => {
     const lines = data.toString().split('\n').filter(Boolean);
