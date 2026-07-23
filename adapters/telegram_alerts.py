@@ -66,24 +66,16 @@ def _tee_outbox(body: str, chat_id, send_ok: bool, telegram_message_id, error, m
             "send_ok": bool(send_ok),
             "error": error,
         }
-        headers = get_supabase_headers(
-            key,
-            {
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            }
+        from common.safe_write import safe_write_sync
+        safe_write_sync(
+            table="telegram_outbox",
+            payload=row,
+            component="telegram_outbox_tee",
+            method="post",
+            upsert=False,
+            _url=url,
+            _key=key
         )
-        resp = requests.post(
-            f"{url}/rest/v1/telegram_outbox",
-            headers=headers,
-            json=row,
-            timeout=10,
-        )
-        if resp.status_code not in (200, 201, 204):
-            logger.warning(
-                "[TELEGRAM] outbox tee write failed (HTTP %s): %s",
-                resp.status_code, resp.text[:200],
-            )
     except Exception as e:
         logger.error("[TELEGRAM] outbox tee error: %s", e)
 

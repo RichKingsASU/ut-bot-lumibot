@@ -13,15 +13,13 @@ def main():
 
     url = url.rstrip("/")
 
-    # Detect branch
-    if key.startswith("sb_"):
-        branch = "apikey ONLY (sb_ prefix)"
+    from common.supabase_auth import get_supabase_headers
+    headers = get_supabase_headers(key)
+    
+    if "Authorization" in headers:
+        branch = "apikey AND Authorization: Bearer (JWT)"
     else:
-        parts = key.split(".")
-        if len(parts) == 3 and parts[0].startswith("eyJ"):
-            branch = "apikey AND Authorization: Bearer (JWT)"
-        else:
-            branch = "apikey ONLY (unrecognized format)"
+        branch = "apikey ONLY (sb_ prefix or other)"
 
     print(f"Detected key branch: {branch}")
 

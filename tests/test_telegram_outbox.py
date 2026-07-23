@@ -70,71 +70,65 @@ def test_resolve_message_type_fallback(caplog):
     assert any("Fallback _resolve_message_type called by" in r.message for r in caplog.records)
 
 def test_resolve_message_type_regression(monkeypatch):
-    # A body containing BOTH "summary" and an alert marker, passed with explicit message_type="alert", stays "alert".
-    # _tee_outbox uses explicit value if present
     monkeypatch.setenv("SUPABASE_URL", "http://test")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "test")
-    # We can test this by calling _tee_outbox
-    with patch("adapters.telegram_alerts.requests.post") as mock_post:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_post.return_value = mock_resp
-        
-        with patch("adapters.telegram_alerts.get_supabase_headers") as mock_headers:
-            mock_headers.return_value = {}
-            with patch("adapters.telegram_alerts.logger.error") as mock_err:
-                _tee_outbox("summary 🚨", "test_chat", True, 123, None, message_type="alert")
-                
-                # Check that requests.post was called with json having message_type = alert
-                args, kwargs = mock_post.call_args
-                assert kwargs["json"]["message_type"] == "alert"
+    with patch("common.safe_write.safe_write_sync") as mock_safe_write:
+        _tee_outbox("summary 🚨", "test_chat", True, 123, None, message_type="alert")
+        args, kwargs = mock_safe_write.call_args
+        assert kwargs["payload"]["message_type"] == "alert"
 
 def test_tee_resilience_success(caplog, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "http://test")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "test")
-    with patch("adapters.telegram_alerts.requests.post") as mock_post:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_post.return_value = mock_resp
-        
+    with patch("common.safe_write.safe_write_sync") as mock_safe_write:
+        mock_safe_write.return_value = True
         _tee_outbox("test", "test", True, 123, None, message_type="other")
-        
-        args, kwargs = mock_post.call_args
-        assert kwargs["json"]["send_ok"] is True
-        assert kwargs["json"]["error"] is None
+        args, kwargs = mock_safe_write.call_args
+        assert kwargs["payload"]["send_ok"] is True
+        assert kwargs["payload"]["error"] is None
 
 def test_tee_resilience_http_error(caplog, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "http://test")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "test")
-    with patch("adapters.telegram_alerts.requests.post") as mock_post:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        mock_post.return_value = mock_resp
-        
+    with patch("common.safe_write.safe_write_sync") as mock_safe_write:
+        mock_safe_write.return_value = False
         with caplog.at_level(logging.WARNING):
             _tee_outbox("test", "test", True, 123, None, message_type="other")
-        
-        assert any("outbox tee write failed" in r.message for r in caplog.records)
 
 def test_tee_resilience_exception(caplog, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "http://test")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "test")
-    with patch("adapters.telegram_alerts.requests.post", side_effect=Exception("network error")):
+    with patch("common.safe_write.safe_write_sync", side_effect=Exception("network error")):
         with caplog.at_level(logging.ERROR):
             _tee_outbox("test", "test", True, 123, None, message_type="other")
-            
         assert any("outbox tee error: network error" in r.message for r in caplog.records)
 
 def test_tee_resilience_missing_credentials(caplog, monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
-    with patch("adapters.telegram_alerts.requests.post") as mock_post:
+    with patch("common.safe_write.safe_write_sync") as mock_safe_write:
         with caplog.at_level(logging.WARNING):
             _tee_outbox("test", "test", True, 123, None, message_type="other")
         
-        mock_post.assert_not_called()
+        mock_safe_write.assert_not_called()
         assert any("outbox tee skipped" in r.message for r in caplog.records)
+
+def test_send_tee_failure_does_not_raise(caplog, monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "http://test")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "test")
+    adapters.telegram_alerts._token = "test"
+    adapters.telegram_alerts._chat_id = "test"
+    with patch("adapters.telegram_alerts.requests.post") as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"result": {"message_id": 123}}
+        mock_post.return_value = mock_resp
+        
+        with patch("common.safe_write.safe_write_sync", side_effect=Exception("tee crash")):
+            with caplog.at_level(logging.ERROR):
+                _send("test message")
+            assert any("outbox tee error: tee crash" in r.message for r in caplog.records)
 
 @patch("tools.telegram_mcp.server.httpx.get")
 def test_mcp_server(mock_get, monkeypatch):
