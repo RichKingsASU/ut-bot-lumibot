@@ -1,0 +1,3 @@
+# This file holds only the Doppler token
+# All other secrets come from Doppler at runtime
+DOPPLER_TOKEN=paste-your-service-token-here

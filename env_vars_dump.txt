@@ -1,0 +1,445 @@
+check_trades.py:6:url = os.getenv("SUPABASE_URL")
+check_trades.py:7:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+config.py:32:return os.getenv(key, default)
+config.py:42:ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+config.py:62:"API_KEY": os.getenv("ALPACA_API_KEY"),
+config.py:63:"API_SECRET": os.getenv("ALPACA_API_SECRET"),
+config.py:64:"PAPER": os.getenv("ALPACA_IS_PAPER", "true").lower() == "true",
+config.py:68:ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+config.py:69:ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
+config.py:70:ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+config.py:71:ALPACA_DATA_URL = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+config.py:74:SUPABASE_URL = os.getenv("SUPABASE_URL")
+config.py:75:SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+config_validator.py:26:missing = [v for v in critical_vars if not os.getenv(v)]
+config_validator.py:48:# os.getenv("ALPACA_BASE_URL") reader (run_agents, kelly_sizer,
+config_validator.py:50:os.environ["ALPACA_BASE_URL"] = paper_endpoint
+preflight_check.py:9:url = os.getenv("SUPABASE_URL")
+preflight_check.py:10:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+preflight_check.py:34:api_key = os.getenv("ALPACA_API_KEY")
+preflight_check.py:35:api_secret = os.getenv("ALPACA_API_SECRET")
+preflight_check.py:36:is_paper = os.getenv("ALPACA_IS_PAPER", "true").lower() == "true"
+run_agents.py:34:_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+run_agents.py:35:_TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+run_agents.py:113:token = os.getenv('TELEGRAM_BOT_TOKEN')
+run_agents.py:114:chat_id = os.getenv('TELEGRAM_CHAT_ID', '8641189809')
+run_agents.py:135:supabase_url = os.getenv("SUPABASE_URL")
+run_agents.py:136:supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+run_agents.py:223:supabase_url = os.getenv("SUPABASE_URL")
+run_agents.py:224:supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+run_agents.py:245:api_key = os.getenv("ALPACA_API_KEY")
+run_agents.py:246:api_secret = os.getenv("ALPACA_API_SECRET")
+run_agents.py:247:base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+run_backfill_sentiment.py:18:token = os.getenv("TELEGRAM_BOT_TOKEN")
+run_option_data_worker.py:29:TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+run_option_data_worker.py:30:TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+run_regime_detector.py:42:token = os.getenv('TELEGRAM_BOT_TOKEN')
+run_sentiment_scorer.py:9:token = os.getenv("TELEGRAM_BOT_TOKEN")
+run_telegram_bot.py:10:token = os.getenv('TELEGRAM_BOT_TOKEN')
+run_vector_store.py:11:token = os.getenv("TELEGRAM_BOT_TOKEN")
+test_supabase.py:6:url = os.getenv("SUPABASE_URL")
+test_supabase.py:7:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+watchdog.py:16:url = os.getenv('SUPABASE_URL')
+watchdog.py:17:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+watchdog.py:37:url = os.getenv('SUPABASE_URL')
+watchdog.py:38:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+watchdog.py:85:alpaca_url = os.getenv("ALPACA_BASE_URL")
+watchdog.py:86:api_key = os.getenv('ALPACA_API_KEY')
+watchdog.py:87:api_secret = os.getenv('ALPACA_API_SECRET')
+watchdog.py:113:telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+adapters\alpaca_streamer.py:15:self.api_key = os.getenv("ALPACA_API_KEY")
+adapters\alpaca_streamer.py:16:self.api_secret = os.getenv("ALPACA_API_SECRET")
+adapters\alpaca_streamer.py:17:self.supabase_url = os.getenv("SUPABASE_URL")
+adapters\alpaca_streamer.py:18:self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+adapters\alpaca_streamer.py:22:feed_str = os.getenv("ALPACA_FEED", "sip").lower()
+adapters\execution_filter.py:32:self.alpaca_key = os.getenv('ALPACA_API_KEY')
+adapters\execution_filter.py:33:self.alpaca_secret = os.getenv('ALPACA_API_SECRET')
+adapters\execution_filter.py:34:self.alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+adapters\execution_filter.py:36:self.alpaca_data = os.getenv('ALPACA_DATA_URL', 'https://data.alpaca.markets')
+adapters\json_logger.py:29:is_production = os.getenv("NODE_ENV") == "production" or not os.getenv("DEBUG")
+adapters\supabase_logger.py:36:_url = os.getenv("SUPABASE_URL")
+adapters\supabase_logger.py:37:_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+adapters\supabase_logger.py:355:api_key = os.getenv("ALPACA_API_KEY")
+adapters\supabase_logger.py:356:api_secret = os.getenv("ALPACA_API_SECRET")
+adapters\supabase_logger.py:357:is_paper = os.getenv("ALPACA_IS_PAPER", "true").lower() == "true"
+adapters\telegram_alerts.py:15:_token = os.getenv("TELEGRAM_BOT_TOKEN")
+adapters\telegram_alerts.py:16:_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+adapters\telegram_alerts.py:51:symbol = os.getenv("TRADING_SYMBOL", "SPY")
+agents\base_agent.py:21:self.supabase_url = os.getenv("SUPABASE_URL")
+agents\base_agent.py:23:self.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+agents\base_agent.py:24:self.alpaca_api_key = os.getenv("ALPACA_API_KEY")
+agents\base_agent.py:25:self.alpaca_api_secret = os.getenv("ALPACA_API_SECRET")
+agents\base_agent.py:26:self.alpaca_base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+agents\gex_calculator.py:18:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\gex_calculator.py:19:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\gex_calculator.py:50:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\gex_calculator.py:51:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\greeks_agent.py:36:TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+agents\greeks_agent.py:37:TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+agents\greeks_agent.py:38:SUPABASE_URL       = os.getenv("SUPABASE_URL", "")
+agents\greeks_agent.py:40:os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+agents\greeks_agent.py:42:NATS_URL           = os.getenv("NATS_URL", "nats://localhost:4222")
+agents\greeks_calculator.py:19:SUPABASE_URL      = os.getenv("SUPABASE_URL", "")
+agents\greeks_calculator.py:21:os.getenv("SUPABASE_ANON_KEY")
+agents\greeks_calculator.py:22:or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+agents\greeks_calculator.py:26:TICK_STORAGE_ROOT = os.getenv(
+agents\hitl_queue.py:5:SUPABASE_URL = os.getenv('SUPABASE_URL')
+agents\hitl_queue.py:6:SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\hitl_queue.py:7:TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\kelly_sizer.py:27:IC_INSUFFICIENT_DATA_SCALAR = float(os.getenv("IC_INSUFFICIENT_DATA_SCALAR", "0.5"))
+agents\kelly_sizer.py:30:self.supabase_url = os.getenv('SUPABASE_URL')
+agents\kelly_sizer.py:31:self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\kelly_sizer.py:32:self.alpaca_api_key = os.getenv('ALPACA_API_KEY')
+agents\kelly_sizer.py:33:self.alpaca_api_secret = os.getenv('ALPACA_API_SECRET')
+agents\kelly_sizer.py:34:self.alpaca_base_url = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+agents\kelly_sizer.py:35:_env_val = os.getenv('BASE_PORTFOLIO')
+agents\kelly_sizer.py:58:local_url = os.getenv("SUPABASE_LOCAL_URL")
+agents\kelly_sizer.py:59:local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+agents\kelly_sizer.py:230:local_url = os.getenv("SUPABASE_LOCAL_URL")
+agents\kelly_sizer.py:231:local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+agents\kelly_sizer.py:352:local_url = os.getenv("SUPABASE_LOCAL_URL")
+agents\kelly_sizer.py:353:local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+agents\kelly_sizer.py:358:"session_id": os.getenv("SESSION_ID", "standalone"),
+agents\kronos_forecaster.py:58:_ALPACA_KEY    = os.getenv('ALPACA_API_KEY') or os.getenv('APCA_API_KEY_ID')
+agents\kronos_forecaster.py:59:_ALPACA_SECRET = os.getenv('ALPACA_API_SECRET') or os.getenv('APCA_API_SECRET_KEY')
+agents\macro_filter.py:54:self.alpaca_key = os.getenv('ALPACA_API_KEY')
+agents\macro_filter.py:55:self.alpaca_secret = os.getenv('ALPACA_API_SECRET')
+agents\macro_filter.py:56:self.alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+agents\market_analyst.py:19:self.nats_url = nats_url or os.getenv("NATS_URL") or default_nats
+agents\market_analyst.py:22:self.questdb_url = os.getenv("QUESTDB_URL") or default_quest
+agents\market_freshness.py:18:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\market_freshness.py:19:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\ma_regime_filter.py:22:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\ma_regime_filter.py:23:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\orchestrator.py:41:_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+agents\orchestrator.py:42:_TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+agents\orchestrator.py:56:token = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\orchestrator.py:83:url = os.getenv("SUPABASE_URL")
+agents\orchestrator.py:84:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+agents\orchestrator.py:116:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\orchestrator.py:117:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\orchestrator.py:460:supabase_url = os.getenv("SUPABASE_URL")
+agents\orchestrator.py:461:service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+agents\orchestrator.py:504:supabase_url = os.getenv("SUPABASE_URL")
+agents\orchestrator.py:505:service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+agents\orchestrator.py:548:token = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\orchestrator.py:656:token = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\orchestrator.py:693:token = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\orchestrator.py:774:and os.getenv('HITL_ENABLED', 'false').lower() == 'true'):
+agents\orchestrator.py:796:supabase_url = os.getenv("SUPABASE_URL")
+agents\orchestrator.py:797:service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+agents\pairs_trader.py:22:self.supabase_url = os.getenv('SUPABASE_URL')
+agents\pairs_trader.py:23:self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\pead_signal.py:22:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\pead_signal.py:23:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\pead_signal.py:62:ak = os.getenv('APCA_API_KEY_ID') or os.getenv('ALPACA_API_KEY')
+agents\pead_signal.py:63:ask = os.getenv('APCA_API_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
+agents\pead_signal.py:114:url = os.getenv('SUPABASE_URL')
+agents\pead_signal.py:115:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\regime_detector.py:158:# NOTE: previously read os.environ['SUPABASE_KEY'] which is never set in
+agents\regime_detector.py:162:supabase_url = self.supabase_url or os.environ.get('SUPABASE_URL')
+agents\regime_detector.py:163:supabase_key = self.supabase_anon_key or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+agents\research_agent.py:22:_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+agents\research_agent.py:23:_TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+agents\risk_agent.py:19:self.nats_url = nats_url or os.getenv("NATS_URL") or default_nats
+agents\sentiment_status.py:41:return int(os.getenv(key, str(default)))
+agents\sentiment_status.py:47:val = os.getenv(key)
+agents\sentiment_status.py:58:if "SENTIMENT_STALENESS_MIN" in os.environ:
+agents\sentiment_velocity.py:12:self.supabase_url = os.getenv('SUPABASE_URL')
+agents\sentiment_velocity.py:13:self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\signal_agent.py:19:self.nats_url = nats_url or os.getenv("NATS_URL") or default_nats
+agents\signal_agent.py:302:service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\signal_decay_monitor.py:43:local_url = os.getenv("SUPABASE_LOCAL_URL")
+agents\signal_decay_monitor.py:44:local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+agents\signal_decay_monitor.py:242:local_url = os.getenv("SUPABASE_LOCAL_URL")
+agents\signal_decay_monitor.py:243:local_key = os.getenv("SUPABASE_LOCAL_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_LOCAL_ANON_KEY")
+agents\signal_decay_monitor.py:259:token = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\signal_decay_monitor.py:260:chat_id = os.getenv('TELEGRAM_CHAT_ID', '8641189809')
+agents\telegram_bot.py:11:TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+agents\telegram_bot.py:13:ALPACA_KEY = os.getenv('ALPACA_API_KEY')
+agents\telegram_bot.py:14:ALPACA_SECRET = os.getenv('ALPACA_API_SECRET')
+agents\telegram_bot.py:15:ALPACA_BASE = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+agents\telegram_bot.py:16:SUPABASE_URL = os.getenv('SUPABASE_URL')
+agents\telegram_bot.py:17:SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\timesfm_forecaster.py:101:api_key = os.getenv("ALPACA_API_KEY")
+agents\timesfm_forecaster.py:102:api_secret = os.getenv("ALPACA_API_SECRET")
+agents\var_risk_engine.py:22:self.supabase_url = os.getenv('SUPABASE_URL')
+agents\var_risk_engine.py:23:self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+agents\var_risk_engine.py:24:self.alpaca_key = os.getenv('ALPACA_API_KEY')
+agents\var_risk_engine.py:25:self.alpaca_secret = os.getenv('ALPACA_API_SECRET')
+agents\var_risk_engine.py:26:self.alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+agents\_llm.py:22:CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+agents\_llm.py:27:return bool((os.getenv("ANTHROPIC_API_KEY_AGENTS") or "").strip())
+agents\_llm.py:53:api_key = os.getenv("ANTHROPIC_API_KEY_AGENTS")
+agents\tools\pipeline_tools.py:293:supa_url = os.getenv("SUPABASE_URL", "")
+agents\tools\pipeline_tools.py:294:supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+agents\tools\pipeline_tools.py:367:base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+agents\tools\pipeline_tools.py:368:api_key = os.getenv("ALPACA_API_KEY", "")
+agents\tools\pipeline_tools.py:369:api_secret = os.getenv("ALPACA_API_SECRET", "")
+agents\tools\research_tools.py:31:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+agents\tools\research_tools.py:40:url_base = os.getenv("SUPABASE_URL", "")
+agents\tools\trading_tools.py:35:"APCA-API-KEY-ID": os.getenv("ALPACA_API_KEY", ""),
+agents\tools\trading_tools.py:36:"APCA-API-SECRET-KEY": os.getenv("ALPACA_API_SECRET", ""),
+agents\tools\trading_tools.py:44:return os.getenv("ALPACA_LIVE_URL", "https://api.alpaca.markets")
+agents\tools\trading_tools.py:45:return os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+agents\tools\trading_tools.py:49:return os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+agents\tools\trading_tools.py:63:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+agents\tools\trading_tools.py:73:url_base = os.getenv("SUPABASE_URL", "")
+backtests\runner.py:30:return os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_API_SECRET")
+collectors\backfill_sentiment.py:28:self.supabase_url = os.getenv("SUPABASE_URL")
+collectors\backfill_sentiment.py:29:self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+collectors\news_collector.py:23:self.finnhub_key = os.getenv("FINNHUB_API_KEY", "placeholder_finnhub_api_key")
+collectors\news_collector.py:24:self.supabase_url = os.getenv("SUPABASE_URL")
+collectors\news_collector.py:25:self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+collectors\option_data_worker.py:24:ALPACA_API_KEY    = os.getenv("ALPACA_API_KEY", "")
+collectors\option_data_worker.py:25:ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET", "")
+collectors\option_data_worker.py:26:ALPACA_BASE_URL   = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+collectors\option_data_worker.py:27:ALPACA_DATA_URL   = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+collectors\option_data_worker.py:28:NATS_URL          = os.getenv("NATS_URL", "nats://localhost:4222")
+collectors\option_data_worker.py:36:OPTIONS_FEED        = os.getenv("ALPACA_OPTIONS_FEED", "indicative")
+collectors\option_data_worker.py:39:STRIKE_BAND_PCT     = float(os.getenv("OPTIONS_STRIKE_BAND_PCT", "0.10"))
+collectors\option_data_worker.py:44:MIN_CONTRACT_VOLUME = int(os.getenv("OPTIONS_MIN_VOLUME", "0"))
+collectors\option_data_worker.py:132:data_url = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+collectors\sentiment_scorer.py:25:self.supabase_url = os.getenv("SUPABASE_URL")
+collectors\sentiment_scorer.py:26:self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+collectors\tick_collector.py:22:self.api_key = os.getenv("ALPACA_API_KEY")
+collectors\tick_collector.py:23:self.api_secret = os.getenv("ALPACA_API_SECRET")
+common\safe_write.py:16:token = os.getenv("TELEGRAM_BOT_TOKEN")
+common\safe_write.py:17:chat_id = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+common\safe_write.py:31:token = os.getenv("TELEGRAM_BOT_TOKEN")
+common\safe_write.py:32:chat_id = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+common\safe_write.py:53:url = _url or os.getenv("SUPABASE_URL")
+common\safe_write.py:54:key = _key or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+common\safe_write.py:151:url = os.getenv("SUPABASE_URL")
+common\safe_write.py:152:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+common\safe_write.py:197:url = _url or os.getenv("SUPABASE_URL")
+common\safe_write.py:198:key = _key or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+common\safe_write.py:292:url = os.getenv("SUPABASE_URL")
+common\safe_write.py:293:key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+dashboard\workers\lumibot_supabase_runner.py:16:SUPABASE_URL = os.getenv("SUPABASE_URL")
+dashboard\workers\lumibot_supabase_runner.py:17:SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+gemini-skills\skills\gemini-omni-flash-api\scripts\upload_file.py:20:return os.environ.get("GEMINI_API_KEY")
+gemini-skills\skills\gemini-omni-flash-api\scripts\video\generate_video.py:29:return os.environ.get("GEMINI_API_KEY")
+hermes\base_agent.py:22:self.supabase_url = os.getenv("SUPABASE_URL")
+hermes\base_agent.py:23:self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+hermes\base_agent.py:24:self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY_HERMES")
+hermes\news_collector.py:22:self.finnhub_key = os.getenv("FINNHUB_API_KEY")
+hermes\news_collector.py:23:self.crypto_symbols = os.getenv("CRYPTO_SYMBOLS", "BTC,ETH").split(",")
+hermes\news_collector.py:25:self.reddit_client_id = os.getenv("REDDIT_CLIENT_ID")
+hermes\news_collector.py:26:self.reddit_client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+hermes\news_collector.py:27:self.reddit_user_agent = os.getenv("REDDIT_USER_AGENT", "DisruptingAlpha/1.0")
+hermes\news_collector.py:179:nc = await nats.connect(os.getenv("NATS_URL", "nats://localhost:4222"))
+scripts\agent_watchdog.py:19:TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\agent_watchdog.py:21:SUPABASE_URL = os.getenv('SUPABASE_URL')
+scripts\agent_watchdog.py:22:SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\backtest_hmm_switching.py:527:allow_synthetic = args.allow_synthetic or os.getenv("ALLOW_SYNTHETIC", "").lower() in ("true", "1") or os.getenv("TRADING_MODE", "").lower() == "research"
+scripts\daily_pnl_report.py:10:alpaca_key = os.getenv('ALPACA_API_KEY')
+scripts\daily_pnl_report.py:11:alpaca_secret = os.getenv('ALPACA_API_SECRET')
+scripts\daily_pnl_report.py:12:alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+scripts\daily_pnl_report.py:13:supabase_url = os.getenv('SUPABASE_URL')
+scripts\daily_pnl_report.py:14:supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\daily_pnl_report.py:113:token = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\dma_regime_filter.py:583:url = os.environ.get("SUPABASE_URL")
+scripts\dma_regime_filter.py:584:key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+scripts\dma_validation.py:659:url = os.environ.get("SUPABASE_URL")
+scripts\dma_validation.py:660:key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+scripts\download_timesfm.py:6:token = os.getenv('HUGGINGFACE_TOKEN')
+scripts\ground_truth.py:20:SUPABASE_URL = os.getenv("SUPABASE_URL")
+scripts\ground_truth.py:21:SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+scripts\ground_truth.py:22:ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+scripts\ground_truth.py:23:ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
+scripts\ground_truth.py:24:ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+scripts\health_check.py:47:SUPABASE_URL = os.getenv("SUPABASE_URL")
+scripts\health_check.py:48:SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+scripts\health_check.py:49:ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+scripts\health_check.py:50:ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
+scripts\health_check.py:51:ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+scripts\kronos_vs_timesfm_backtest.py:32:_KEY    = os.getenv('ALPACA_API_KEY') or os.getenv('APCA_API_KEY_ID')
+scripts\kronos_vs_timesfm_backtest.py:33:_SECRET = os.getenv('ALPACA_API_SECRET') or os.getenv('APCA_API_SECRET_KEY')
+scripts\position_reconciliation.py:9:alpaca_key = os.getenv('ALPACA_API_KEY')
+scripts\position_reconciliation.py:10:alpaca_secret = os.getenv('ALPACA_API_SECRET')
+scripts\position_reconciliation.py:11:alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+scripts\position_reconciliation.py:12:supabase_url = os.getenv('SUPABASE_URL')
+scripts\position_reconciliation.py:13:supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\position_reconciliation.py:61:token = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\run_options_backtest.py:75:allow_synth = args.allow_synthetic or os.getenv("ALLOW_SYNTHETIC", "").lower() in ("true", "1") or os.getenv("TRADING_MODE", "").lower() == "research"
+scripts\run_pairs_analysis.py:39:token = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\run_var_check.py:25:token = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\seed_common.py:58:token = os.getenv("TELEGRAM_BOT_TOKEN")
+scripts\seed_common.py:96:STOCK_FEED = os.getenv("ALPACA_DATA_FEED", "sip").lower() or None
+scripts\seed_common.py:115:os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_API_SECRET")
+scripts\seed_common.py:121:os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_API_SECRET")
+scripts\seed_historical.py:41:key = next((os.environ[e] for e in ALPACA_KEY_ENVS if os.environ.get(e)), None)
+scripts\seed_historical.py:42:sec = next((os.environ[e] for e in ALPACA_SEC_ENVS if os.environ.get(e)), None)
+scripts\seed_historical.py:82:raise SystemExit(f"ERROR: {root} not writable as {os.environ.get('USER','?')}. "
+scripts\send_telegram.py:11:token = os.getenv("TELEGRAM_BOT_TOKEN")
+scripts\simulate_decay_recovery.py:186:allow_synthetic = args.allow_synthetic or os.getenv("ALLOW_SYNTHETIC", "").lower() in ("true", "1") or os.getenv("TRADING_MODE", "").lower() == "research"
+scripts\system_status.py:18:url = os.getenv('SUPABASE_URL')
+scripts\system_status.py:19:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\system_status.py:28:key = os.getenv('APCA_API_KEY_ID')
+scripts\system_status.py:29:secret = os.getenv('APCA_API_SECRET_KEY')
+scripts\system_status.py:51:url = os.getenv('SUPABASE_URL')
+scripts\system_status.py:52:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\test_trade_cycle.py:47:api_key = os.getenv("ALPACA_API_KEY", "")
+scripts\test_trade_cycle.py:48:base_url = os.getenv("ALPACA_BASE_URL", "")
+scripts\verify_keys.py:12:"ANTHROPIC_API_KEY_AGENTS": os.getenv("ANTHROPIC_API_KEY_AGENTS", ""),
+scripts\verify_keys.py:13:"ANTHROPIC_API_KEY_SENTIMENT": os.getenv("ANTHROPIC_API_KEY_SENTIMENT", ""),
+scripts\verify_keys.py:14:"ANTHROPIC_API_KEY_HERMES": os.getenv("ANTHROPIC_API_KEY_HERMES", ""),
+scripts\watchdog.py:13:url = os.getenv('SUPABASE_URL')
+scripts\watchdog.py:14:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\watchdog.py:15:telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+scripts\watchdog.py:16:alpaca_url = os.getenv('ALPACA_BASE_URL')
+scripts\watchdog.py:17:alpaca_key = os.getenv('ALPACA_API_KEY')
+scripts\watchdog.py:18:alpaca_secret = os.getenv('ALPACA_API_SECRET')
+scripts\watchdog_runner.py:33:url = os.getenv('SUPABASE_URL')
+scripts\watchdog_runner.py:34:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\watchdog_runner.py:52:url = os.getenv('SUPABASE_URL')
+scripts\watchdog_runner.py:53:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\watchdog_runner.py:100:f'{os.getenv("ALPACA_BASE_URL")}/v2/account',
+scripts\watchdog_runner.py:102:'APCA-API-KEY-ID': os.getenv('ALPACA_API_KEY'),
+scripts\watchdog_runner.py:103:'APCA-API-SECRET-KEY': os.getenv('ALPACA_API_SECRET')
+scripts\watchdog_runner.py:118:url = os.getenv('SUPABASE_URL')
+scripts\watchdog_runner.py:119:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+scripts\watchdog_runner.py:170:url = os.getenv('SUPABASE_URL')
+scripts\watchdog_runner.py:171:key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+strategies\dma_crossover.py:242:token = os.getenv("TELEGRAM_BOT_TOKEN")
+strategies\dma_crossover.py:243:chat_id = os.getenv("TELEGRAM_CHAT_ID", "8641189809")
+strategies\health_server.py:25:broker_ok = bool(os.getenv("ALPACA_API_KEY")) and bool(os.getenv("ALPACA_API_SECRET"))
+strategies\health_server.py:44:broker_ok = bool(os.getenv("ALPACA_API_KEY")) and bool(os.getenv("ALPACA_API_SECRET"))
+strategies\heartbeat.py:31:return os.getenv("SUPABASE_URL", "")
+strategies\heartbeat.py:35:return os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+strategies\heartbeat.py:39:return os.getenv("TRADING_SYMBOL", "SPY")
+strategies\heartbeat.py:43:is_paper = os.getenv("ALPACA_IS_PAPER", "true").lower()
+strategies\options_executor.py:132:api_key = os.getenv("ALPACA_API_KEY", "")
+strategies\options_executor.py:133:api_secret = os.getenv("ALPACA_API_SECRET", "")
+strategies\options_executor.py:149:is_paper = os.getenv("ALPACA_IS_PAPER", "true").strip().lower() == "true"
+strategies\options_executor.py:153:return os.getenv("ALPACA_BASE_URL", "https://api.alpaca.markets")
+strategies\options_executor.py:157:return os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+strategies\options_executor.py:164:supa_url = os.getenv("SUPABASE_URL")
+strategies\options_executor.py:165:supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+strategies\options_executor.py:423:supa_url = os.getenv("SUPABASE_URL")
+strategies\options_executor.py:424:supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+strategies\options_executor.py:460:supa_url = os.getenv("SUPABASE_URL")
+strategies\options_executor.py:461:supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+strategies\options_executor.py:528:supa_url = os.getenv("SUPABASE_URL")
+strategies\options_executor.py:529:supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+tests\test_tools.py:287:if not os.getenv("ALPACA_API_KEY"):
+tests\test_tools.py:382:if not os.getenv("SUPABASE_URL"):
+test_function.ts:19:// We need to mock process.env for the handler if needed,
+test_function.ts:21:process.env.ADMIN_API_KEY = 'test-admin-key';
+dashboard\netlify\functions\alpaca-account.ts:21:let apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\alpaca-account.ts:22:let apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\alpaca-account.ts:23:let baseUrl = process.env.ALPACA_BASE_URL || ALPACA_PAPER_URL
+dashboard\netlify\functions\alpaca-account.ts:59:console.log('[alpaca-account] key present:', !!process.env.ALPACA_API_KEY)
+dashboard\netlify\functions\alpaca-account.ts:60:console.log('[alpaca-account] secret present:', !!process.env.ALPACA_API_SECRET)
+dashboard\netlify\functions\alpaca-bars.ts:10:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\alpaca-bars.ts:23:const dataUrl = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets'
+dashboard\netlify\functions\alpaca-bars.ts:24:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\alpaca-bars.ts:25:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\alpaca-flatten.ts:56:'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+dashboard\netlify\functions\alpaca-flatten.ts:57:'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET,
+dashboard\netlify\functions\alpaca-orders.ts:11:const baseUrl = process.env.ALPACA_BASE_URL || ALPACA_PAPER_URL
+dashboard\netlify\functions\alpaca-orders.ts:12:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\alpaca-orders.ts:13:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\alpaca-positions.ts:11:const baseUrl = process.env.ALPACA_BASE_URL || ALPACA_PAPER_URL
+dashboard\netlify\functions\alpaca-positions.ts:12:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\alpaca-positions.ts:13:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\alpaca-stream.ts:17:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\alpaca-stream.ts:23:const streamUrl = process.env.ALPACA_STREAM_URL || 'wss://stream.data.alpaca.markets/v2/iex'
+dashboard\netlify\functions\alpaca-stream.ts:24:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\alpaca-stream.ts:25:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\alpaca-stream.ts:32:const dataUrl = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets'
+dashboard\netlify\functions\bootstrap-tables.ts:6:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\bootstrap-tables.ts:15:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\bootstrap-tables.ts:16:const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\bot-state.ts:8:const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || "https://data.alpaca.markets";
+dashboard\netlify\functions\bot-state.ts:9:const ALPACA_API_KEY = process.env.ALPACA_API_KEY || "";
+dashboard\netlify\functions\bot-state.ts:10:const ALPACA_API_SECRET = process.env.ALPACA_API_SECRET || "";
+dashboard\netlify\functions\bot-state.ts:12:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\bot-state.ts:13:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\bot-state.ts:19:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\bot-status.ts:8:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\bot-status.ts:9:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\bot-status.ts:23:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\crypto-bars.ts:5:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\crypto-bars.ts:11:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\crypto-bars.ts:12:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\crypto-prices.ts:5:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\crypto-prices.ts:11:const apiKey = process.env.ALPACA_API_KEY || ''
+dashboard\netlify\functions\crypto-prices.ts:12:const apiSecret = process.env.ALPACA_API_SECRET || ''
+dashboard\netlify\functions\data-health.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\data-health.ts:5:const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\data-health.ts:10:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\get-equities-monitor.ts:4:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\get-equities-monitor.ts:5:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\get-equities-monitor.ts:7:const ALPACA_API_KEY = process.env.ALPACA_API_KEY || "";
+dashboard\netlify\functions\get-equities-monitor.ts:8:const ALPACA_API_SECRET = process.env.ALPACA_API_SECRET || "";
+dashboard\netlify\functions\get-equities-monitor.ts:27:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\get-greeks.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\get-greeks.ts:5:const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\get-greeks.ts:11:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\get-pipeline-status.ts:4:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\get-pipeline-status.ts:5:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\get-pipeline-status.ts:38:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\get-system-health.ts:4:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\get-system-health.ts:5:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\get-system-health.ts:7:const ALPACA_API_KEY = process.env.ALPACA_API_KEY || "";
+dashboard\netlify\functions\get-system-health.ts:8:const ALPACA_API_SECRET = process.env.ALPACA_API_SECRET || "";
+dashboard\netlify\functions\get-system-health.ts:9:const ALPACA_BASE_URL = process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets";
+dashboard\netlify\functions\get-system-health.ts:42:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\ingest-bars-background.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\ingest-bars-background.ts:5:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\ingest-bars-background.ts:6:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\ingest-bars-background.ts:7:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\ingest-bars-background.ts:8:const alpacaFeed = process.env.ALPACA_FEED || 'iex';
+dashboard\netlify\functions\ingest-bars.ts:5:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\ingest-bars.ts:6:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\ingest-bars.ts:7:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\ingest-bars.ts:8:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\ingest-bars.ts:9:const alpacaFeed = process.env.ALPACA_FEED || 'sip';
+dashboard\netlify\functions\ingest-bars.ts:20:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\ingest-bars.ts:64:const symbols = (process.env.SEED_SYMBOLS || "IWM,SPY,QQQ").split(",");
+dashboard\netlify\functions\ingest-options-chain.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\ingest-options-chain.ts:5:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\ingest-options-chain.ts:6:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\ingest-options-chain.ts:7:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\ingest-options-chain.ts:8:const alpacaOptionFeed = process.env.ALPACA_OPTION_FEED || 'opra';
+dashboard\netlify\functions\ingest-options-chain.ts:28:const underlyingSymbols = (process.env.OPTIONS_SYMBOLS || "IWM,SPY").split(",");
+dashboard\netlify\functions\ingest-options-chain.ts:29:const dteMax = parseInt(process.env.OPTIONS_DTE_MAX || "60");
+dashboard\netlify\functions\ingest-options.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\ingest-options.ts:5:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\ingest-options.ts:6:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\ingest-options.ts:7:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\ingest-options.ts:28:const symbols = (process.env.OPTIONS_SYMBOLS || "IWM,SPY").split(",");
+dashboard\netlify\functions\ingest-options.ts:29:const optionsFeed = process.env.OPTIONS_FEED || 'indicative';
+dashboard\netlify\functions\options-config.ts:13:const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || "https://data.alpaca.markets";
+dashboard\netlify\functions\options-config.ts:14:const ALPACA_API_KEY = process.env.ALPACA_API_KEY || "";
+dashboard\netlify\functions\options-config.ts:15:const ALPACA_API_SECRET = process.env.ALPACA_API_SECRET || "";
+dashboard\netlify\functions\options-config.ts:17:const SUPABASE_URL = process.env.SUPABASE_URL || "";
+dashboard\netlify\functions\options-config.ts:18:const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+dashboard\netlify\functions\options-config.ts:356:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\run-backtest.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\run-backtest.ts:5:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\seed-bars-background.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\seed-bars-background.ts:5:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\seed-bars-background.ts:6:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\seed-bars-background.ts:7:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\seed-bars-background.ts:8:const alpacaFeed = process.env.ALPACA_FEED || 'sip';
+dashboard\netlify\functions\seed-options-background.ts:3:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\seed-options-background.ts:4:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\seed-options-background.ts:5:const alpacaKey = process.env.ALPACA_API_KEY!;
+dashboard\netlify\functions\seed-options-background.ts:6:const alpacaSecret = process.env.ALPACA_API_SECRET!;
+dashboard\netlify\functions\seed-options-background.ts:7:const alpacaOptionFeed = process.env.ALPACA_OPTION_FEED || 'opra';
+dashboard\netlify\functions\seed-status.ts:3:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\seed-status.ts:4:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\supabase-query.ts:4:const supabaseUrl = process.env.SUPABASE_URL!;
+dashboard\netlify\functions\supabase-query.ts:5:const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dashboard\netlify\functions\supabase-query.ts:11:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\lib\alerts.ts:7:const url = process.env.SUPABASE_URL;
+dashboard\netlify\functions\lib\alerts.ts:8:const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+dashboard\netlify\functions\lib\auth.ts:10:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\lib\auth.ts:58:return process.env.NETLIFY_DEV === "true" || process.env.CONTEXT === "dev";
+dashboard\netlify\functions\lib\auth.ts:70:const adminKey = process.env.ADMIN_API_KEY;
+dashboard\netlify\functions\lib\auth.ts:105:return process.env.ALPACA_IS_PAPER !== "false";
+dashboard\check_seed_status.js:9:const supabaseUrl = process.env.SUPABASE_URL;
+dashboard\check_seed_status.js:10:const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

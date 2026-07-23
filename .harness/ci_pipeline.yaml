@@ -1,0 +1,75 @@
+pipeline:
+  name: disrupting-alpha-ci
+  identifier: disrupting_alpha_ci
+  projectIdentifier: default
+  orgIdentifier: default
+  tags: {}
+  stages:
+    - stage:
+        name: Build and Test
+        identifier: Build_and_Test
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Run Security Scan and Tests
+                  identifier: Run_Security_Scan_and_Tests
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: python:3.12
+                    shell: Sh
+                    envVariables:
+                      DOPPLER_TOKEN: <+secrets.getValue("DOPPLER_TOKEN")>
+                    command: |-
+                      # Install dependencies
+                      curl -Ls https://cli.doppler.com/install.sh | sh
+                      pip install uv
+                      uv pip install --system -r requirements.txt
+
+                      # Security scan
+                      if grep -rn \
+                        -e 'ALPACA_API_KEY\s*=\s*"[A-Z0-9]\{10,\}"' \
+                        -e 'ALPACA_API_SECRET\s*=\s*"[A-Za-z0-9]\{20,\}"' \
+                        --include="*.py" \
+                        --exclude-dir=".git" \
+                        .; then
+                        echo "ERROR: Hardcoded API secrets found in Python files"
+                        exit 1
+                      fi
+                      
+                      echo "Security scan passed — no hardcoded secrets found"
+
+                      # Unit tests via Doppler
+                      doppler run --project disrupting-alpha --config prd -- pytest tests/ backtests/tests/ -v
+
+                      # Strict Mode validation via Doppler
+                      echo "Verifying strict mode data provenance enforcement..."
+                      if doppler run --project disrupting-alpha --config prd -- python scripts/run_options_backtest.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
+                        echo "✓ Options backtester correctly failed in strict mode"
+                      else
+                        echo "FAILED: Options backtester did not enforce strict mode!"
+                        exit 1
+                      fi
+                      
+                      if PYTHONPATH=. doppler run --project disrupting-alpha --config prd -- python scripts/backtest_hmm_switching.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
+                        echo "✓ HMM backtester correctly failed in strict mode"
+                      else
+                        echo "FAILED: HMM backtester did not enforce strict mode!"
+                        exit 1
+                      fi
+                      
+                      if PYTHONPATH=. doppler run --project disrupting-alpha --config prd -- python scripts/simulate_decay_recovery.py 2>&1 | grep -q "SyntheticDataError"; then
+                        echo "✓ Decay simulator correctly failed in strict mode"
+                      else
+                        echo "FAILED: Decay simulator did not enforce strict mode!"
+                        exit 1
+                      fi
