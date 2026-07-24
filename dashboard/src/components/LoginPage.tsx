@@ -138,7 +138,7 @@ export const LoginPage: React.FC = () => {
 
             <div className="space-y-1.5 text-left">
               <label className="text-[11px] font-bold text-secondary uppercase tracking-widest pl-1">
-                Access Token
+                Password
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-dim group-focus-within:text-blue-400 transition-colors">
