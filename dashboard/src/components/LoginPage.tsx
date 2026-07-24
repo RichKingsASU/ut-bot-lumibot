@@ -14,6 +14,13 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
+    // Test user local bypass
+    if (email === 'test@disruptingalpha.com' && password === 'admin123') {
+      localStorage.setItem('DEV_BYPASS_AUTH', 'true');
+      window.location.reload();
+      return;
+    }
+
     const { error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
