@@ -2,13 +2,24 @@ version: '3.8'
 
 services:
   trading-bot:
+    # NOT started by a bare `docker compose up -d`. On k2 the bot runs natively
+    # under systemd as da-trading-bot.service (ExecStart=venv/bin/python main.py),
+    # and this container runs the identical CMD ["python", "main.py"] against the
+    # same .env -- starting both yields two bots double-writing bar_log,
+    # signal_log and paper_trades, and duplicate Telegram alerts.
+    # scripts/start_all.sh has always excluded it; this makes that explicit.
+    # To run the containerised bot deliberately (on a host with no systemd unit):
+    #   docker compose --profile standalone up -d trading-bot
+    profiles: ["standalone"]
     build: .
     container_name: ut-bot-lumibot
     restart: always
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      # Loopback-only, matching every other service here. Was 8000:8000, which
+      # published the bot's HTTP surface on all interfaces.
+      - "127.0.0.1:8000:8000"
     logging:
       driver: "json-file"
       options:
