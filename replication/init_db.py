@@ -33,7 +33,7 @@ def init_db():
             ON sync_cursors (last_sync_created_at, last_sync_id)
         ''')
         
-    print(f"✅ Crash-Safe Sync Schema initialized successfully at {DB_PATH}")
+    print(f"[PASS] Crash-Safe Sync Schema initialized successfully at {DB_PATH}")
     conn.close()
 
 if __name__ == "__main__":

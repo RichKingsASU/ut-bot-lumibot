@@ -24,18 +24,18 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger("smoke_test")
 
 def main():
-    print("=== BEGIN E2E SMOKE TEST ===")
+    print("[PASS] === BEGIN E2E SMOKE TEST ===")
     
     # a) Load live credentials
     supabase_dsn = os.environ.get("SUPABASE_DSN")
     gcp_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     
     if not supabase_dsn:
-        print("ERROR: SUPABASE_DSN environment variable is missing.")
+        print("[FAIL] ConfigurationError: SUPABASE_DSN environment variable is missing.")
         sys.exit(1)
         
     if not gcp_json:
-        print("ERROR: GCP_SERVICE_ACCOUNT_JSON environment variable is missing.")
+        print("[FAIL] ConfigurationError: GCP_SERVICE_ACCOUNT_JSON environment variable is missing.")
         sys.exit(1)
         
     print("Loaded SUPABASE_DSN and GCP_SERVICE_ACCOUNT_JSON.")
@@ -51,7 +51,7 @@ def main():
             tables=["bar_log"]
         )
     except ConfigurationError as e:
-        print(f"ConfigurationError during initialization: {e}")
+        print(f"[FAIL] ConfigurationError during initialization: {e}")
         sys.exit(1)
         
     # b) Pull a single real record from 'bar_log'
@@ -61,7 +61,7 @@ def main():
         # Fetch 1 record
         rows = daemon._cursor_tracker.fetch_pending_rows("bar_log", "1970-01-01T00:00:00Z", 0, limit=1)
     except Exception as e:
-        print(f"Database connection or query failed: {e}")
+        print(f"[FAIL] Database connection or query failed: {e}")
         sys.exit(1)
         
     if not rows:
@@ -69,7 +69,7 @@ def main():
         sys.exit(0)
         
     row = rows[0]
-    print(f"Successfully pulled record:")
+    print(f"[PASS] Successfully pulled record ->")
     pprint(row)
     
     # c) Attempt to stream that record to the actual GCP Pub/Sub and BigQuery
@@ -78,12 +78,12 @@ def main():
     try:
         daemon._gcp_client.stream_batch("bar_log", [row])
     except Exception as e:
-        print(f"Failed to stream record to GCP: {e}")
+        print(f"[FAIL] Failed to stream record to GCP -> {e}")
         sys.exit(1)
         
     # d) Print final database acknowledgments
-    print("=== E2E SMOKE TEST PASSED ===")
-    print("Transaction receipts and acknowledgments completed successfully.")
+    print("[PASS] === E2E SMOKE TEST PASSED ===")
+    print("[PASS] Transaction receipts and acknowledgments completed successfully.")
 
 if __name__ == "__main__":
     main()
