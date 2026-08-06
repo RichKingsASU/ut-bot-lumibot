@@ -1,0 +1,42 @@
+services:
+  questdb:
+    ports: !override
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:8812:8812"
+      - "127.0.0.1:9009:9009"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  qdrant:
+    ports: !override
+      - "127.0.0.1:6333:6333"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  nats:
+    ports: !override
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
+
+  tick-collector:
+    image: edge/tick-collector:2026-07-26
+    command: !override []
+
+  news-collector:
+    image: edge/news-collector:2026-07-26
+    command: !override []
+
+  sentiment-scorer:
+    image: edge/sentiment-scorer:2026-07-26
+    command: !override []
+
+  vector-store:
+    image: edge/vector-store:2026-07-26
+    command: !override []
+
+
+
