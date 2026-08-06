@@ -1,0 +1,31 @@
+[Unit]
+Description=GCP Replicator Daemon
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=<service-user>
+Group=<service-user>
+WorkingDirectory=/opt/ut-bot-lumibot
+ExecStart=/opt/ut-bot-lumibot/venv/bin/python -m replication.gcp_replicator_daemon
+
+MemoryMax=256M
+MemoryHigh=192M
+CPUWeight=20
+CPUAccounting=true
+MemoryAccounting=true
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+Restart=on-failure
+RestartSec=5s
+
+StandardOutput=append:/var/log/<service-user>/gcp-replicator.log
+StandardError=append:/var/log/<service-user>/gcp-replicator.log
+
+[Install]
+WantedBy=multi-user.target
