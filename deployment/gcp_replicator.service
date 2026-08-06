@@ -1,0 +1,25 @@
+[Unit]
+Description=GCP Out-of-Process Replication Daemon for Disrupting Alpha
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=utbot
+Group=utbot
+WorkingDirectory=/opt/ut-bot-lumibot
+EnvironmentFile=/opt/ut-bot-lumibot/.env
+ExecStart=/opt/ut-bot-lumibot/.venv/bin/python -c "import asyncio; from replication.gcp_replicator_daemon import GCPReplicationDaemon; asyncio.run(GCPReplicationDaemon().start())"
+
+# Resilience
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+# Security
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
