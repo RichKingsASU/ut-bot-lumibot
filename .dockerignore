@@ -1,6 +1,10 @@
 node_modules
 .venv
 venv
+test_venv
+venv_broken_py314
+node-local
+scratch
 .git
 dist
 build
@@ -17,3 +21,4 @@ dashboard/dist
 .vscode
 *.pyc
 *.pyo
+

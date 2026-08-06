@@ -29,6 +29,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     stream=sys.stdout,
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("RunAgents")
 
 _TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
