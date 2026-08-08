@@ -170,27 +170,65 @@ class _CircuitBreaker:
         return default_limit
 
 
+def _load_service_account(creds_path: str, credentials_json: str):
+    """
+    Build service-account credentials from either Google's standard
+    GOOGLE_APPLICATION_CREDENTIALS file path (preferred) or the raw key
+    contents in GCP_SERVICE_ACCOUNT_JSON (legacy).
+
+    A path is preferred: the key never lands in the environment, in `ps`
+    output, or in systemd's journal, and file permissions can restrict it to
+    0600. GCP_SERVICE_ACCOUNT_JSON is still honoured so existing deployments
+    keep working.
+
+    GCP_SERVICE_ACCOUNT_JSON containing a path rather than JSON is a natural
+    mistake -- the old code fed it straight to json.loads and failed with an
+    opaque decode error -- so detect and accept that case too.
+    """
+    if creds_path:
+        if not os.path.isfile(creds_path):
+            raise ConfigurationError(
+                f"GOOGLE_APPLICATION_CREDENTIALS points at {creds_path!r}, which is not a file."
+            )
+        return service_account.Credentials.from_service_account_file(creds_path)
+
+    stripped = credentials_json.strip()
+    if not stripped.startswith("{"):
+        if os.path.isfile(stripped):
+            return service_account.Credentials.from_service_account_file(stripped)
+        raise ConfigurationError(
+            "GCP_SERVICE_ACCOUNT_JSON is neither JSON (it does not start with '{') "
+            "nor a path to an existing file. Set GOOGLE_APPLICATION_CREDENTIALS to the "
+            "key file instead."
+        )
+    return service_account.Credentials.from_service_account_info(json.loads(stripped))
+
+
 class _GCPClientWrapper:
     """Internal. Hides Pub/Sub message streaming and BigQuery loading."""
     def __init__(self, project_id: str = "disruptingalpha"):
         self.project_id = project_id
         
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
         is_prod = bool(os.environ.get("SUPABASE_DSN")) or bool(os.environ.get("PRODUCTION_MODE"))
-        
-        if is_prod and not credentials_json:
-            raise ConfigurationError("GCP_SERVICE_ACCOUNT_JSON is missing in production mode.")
-            
-        if credentials_json and service_account:
+
+        if is_prod and not (creds_path or credentials_json):
+            raise ConfigurationError(
+                "No GCP credentials in production mode: set GOOGLE_APPLICATION_CREDENTIALS "
+                "to a service-account key file (preferred), or GCP_SERVICE_ACCOUNT_JSON to "
+                "the key contents."
+            )
+
+        if (creds_path or credentials_json) and service_account:
             try:
-                info = json.loads(credentials_json)
-                self.credentials = service_account.Credentials.from_service_account_info(info)
+                self.credentials = _load_service_account(creds_path, credentials_json)
                 publisher_options = pubsub_v1.types.PublisherOptions(enable_message_ordering=True)
                 self.publisher = pubsub_v1.PublisherClient(credentials=self.credentials, publisher_options=publisher_options)
                 self.bq_client = bigquery.Client(credentials=self.credentials, project=project_id)
             except Exception as e:
                 if is_prod:
-                    raise ConfigurationError(f"Invalid GCP_SERVICE_ACCOUNT_JSON or credentials failure: {e}")
+                    raise ConfigurationError(f"Invalid GCP credentials: {e}")
                 self.publisher = None
                 self.bq_client = None
         else:
