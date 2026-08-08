@@ -1,31 +1,54 @@
 [Unit]
-Description=GCP Replicator Daemon
-After=network.target
-Requires=network.target
+Description=Disrupting Alpha - GCP Replicator (telemetry)
+After=network-online.target
+Wants=network-online.target
+# Mirrors the guard used by da-trading-bot: refuse to start without an env file
+# rather than come up credential-less and silently fall back to the SQLite mock.
+ConditionFileNotEmpty=/home/k2/ut-bot-lumibot/.env
+# Give up after 5 failures in 5 minutes instead of looping forever. Without
+# this, a missing SUPABASE_DSN (exit 2) restarts every 30s indefinitely on a
+# host whose job is running four live trading services.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
-User=<service-user>
-Group=<service-user>
-WorkingDirectory=/opt/ut-bot-lumibot
-ExecStart=/opt/ut-bot-lumibot/venv/bin/python -m replication.gcp_replicator_daemon
+User=k2
+Group=k2
+WorkingDirectory=/home/k2/ut-bot-lumibot
+EnvironmentFile=/home/k2/ut-bot-lumibot/.env
 
+# replication.gcp_replicator_daemon defines only classes -- no __main__ -- so
+# invoking it directly imports the module and exits 0 without replicating
+# anything. replication.run is the real entry point and refuses to start in
+# mock mode unless --allow-mock is passed.
+ExecStart=/home/k2/ut-bot-lumibot/venv/bin/python -m replication.run
+
+# Telemetry must never compete with the trading services for resources.
 MemoryMax=256M
 MemoryHigh=192M
 CPUWeight=20
-CPUAccounting=true
 MemoryAccounting=true
 
+# ProtectHome=true makes /home invisible to the unit, which breaks both
+# WorkingDirectory and EnvironmentFile on this host. The repo lives under
+# /home/k2, so it must stay off; ReadWritePaths scopes the writable surface to
+# the replicator's own state directory.
+ProtectHome=false
 ProtectSystem=strict
-ProtectHome=true
+ReadWritePaths=/home/k2/ut-bot-lumibot/replication
 PrivateTmp=true
 NoNewPrivileges=true
 
+# Deliberately NOT Restart=always / StartLimitIntervalSec=0 (as da-trading-bot
+# uses). Telemetry is not uptime-critical, and an unbounded restart loop on a
+# host running four live trading services is a liability, not a feature.
 Restart=on-failure
-RestartSec=5s
+RestartSec=30s
 
-StandardOutput=append:/var/log/<service-user>/gcp-replicator.log
-StandardError=append:/var/log/<service-user>/gcp-replicator.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=da-gcp-replicator
 
 [Install]
 WantedBy=multi-user.target
