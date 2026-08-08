@@ -1,10 +1,14 @@
 import sqlite3
 import logging
 import asyncio
+import base64
+import datetime
+import decimal
 import os
 import time
 import json
 import hashlib
+import uuid
 from typing import List, Dict, Any, Tuple
 
 try:
@@ -25,6 +29,34 @@ except ImportError:
     service_account = None
 
 logger = logging.getLogger("gcp_replicator")
+
+
+def _json_safe_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Make a psycopg2 row safe for json.dumps() and BigQuery insert_rows_json().
+
+    RealDictCursor returns Postgres `numeric` as Decimal and `timestamptz` as
+    datetime; neither is JSON-serializable. Only created_at used to be
+    converted, so any other timestamp or numeric column (bar_log.bar_time,
+    open/high/low/close, ...) raised TypeError on the first row streamed.
+
+    Decimals become strings rather than floats: BigQuery NUMERIC accepts a
+    string and it round-trips exactly, whereas float() silently loses precision
+    on prices.
+    """
+    safe = {}
+    for key, value in row.items():
+        if isinstance(value, decimal.Decimal):
+            safe[key] = str(value)
+        elif isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+            safe[key] = value.isoformat()
+        elif isinstance(value, uuid.UUID):
+            safe[key] = str(value)
+        elif isinstance(value, (bytes, bytearray, memoryview)):
+            safe[key] = base64.b64encode(bytes(value)).decode("ascii")
+        else:
+            safe[key] = value
+    return safe
 
 class ConfigurationError(Exception):
     pass
@@ -73,13 +105,7 @@ class _CompoundCursorTracker:
                     """
                     cur.execute(query, (last_created_at, last_created_at, last_id, limit))
                     rows = cur.fetchall()
-                    res = []
-                    for r in rows:
-                        row_dict = dict(r)
-                        if 'created_at' in row_dict and hasattr(row_dict['created_at'], 'isoformat'):
-                            row_dict['created_at'] = row_dict['created_at'].isoformat()
-                        res.append(row_dict)
-                    return res
+                    return [_json_safe_row(dict(r)) for r in rows]
             finally:
                 conn.close()
 
