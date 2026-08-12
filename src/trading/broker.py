@@ -4,11 +4,14 @@ import logging
 from datetime import datetime, timedelta
 import requests
 import pytz
+import dateutil.parser
 
 logger = logging.getLogger("broker")
 ET = pytz.timezone("America/New_York")
 
 REJECTION_COOLDOWN_SECONDS = 300
+MAX_OPTION_SPREAD_PCT = 0.25
+MAX_OPTION_QUOTE_AGE_SECONDS = 60
 _last_rejection_time = 0.0
 
 def _headers() -> dict:
@@ -19,9 +22,24 @@ def _headers() -> dict:
     }
 
 def _base_url() -> str:
-    if os.getenv("ALPACA_IS_PAPER", "true").strip().lower() == "true":
+    is_paper = os.getenv("ALPACA_IS_PAPER", "true").strip().lower() == "true"
+    allow_live = os.getenv("ALLOW_LIVE_TRADING", "").strip() == "YES_I_UNDERSTAND"
+    
+    if is_paper:
         return "https://paper-api.alpaca.markets"
+        
+    if not allow_live:
+        logger.error("CRITICAL: ALLOW_LIVE_TRADING != YES_I_UNDERSTAND. Refusing live endpoint.")
+        return "https://paper-api.alpaca.markets" # Fail safe to paper
+        
     return os.getenv("ALPACA_BASE_URL", "https://api.alpaca.markets")
+
+# Add a startup log check
+is_paper = os.getenv("ALPACA_IS_PAPER", "true").strip().lower() == "true"
+logger.info("========================================")
+logger.info(f"TRADING MODE: {'PAPER' if is_paper else 'LIVE'}")
+logger.info(f"BROKER ENDPOINT: {_base_url()}")
+logger.info("========================================")
 
 def _data_url() -> str:
     return os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
@@ -32,8 +50,8 @@ def extract_underlying(contract_symbol: str) -> str:
             return contract_symbol[:i]
     return contract_symbol
 
-def get_open_position(underlying: str) -> dict | None:
-    """Authoritative position state from Alpaca."""
+def get_open_position(underlying: str) -> dict:
+    """Authoritative position state from Alpaca. Returns dict with 'valid' and 'position'."""
     try:
         url = f"{_base_url()}/v2/positions"
         resp = requests.get(url, headers=_headers(), timeout=10)
@@ -44,16 +62,38 @@ def get_open_position(underlying: str) -> dict | None:
             symbol = pos.get("symbol", "")
             if symbol.startswith(underlying) and len(symbol) > len(underlying):
                 return {
-                    "symbol": underlying,
-                    "contract_symbol": symbol,
-                    "qty": abs(int(float(pos.get("qty", 1)))),
-                    "fill_price": float(pos.get("avg_entry_price", 0)),
-                    "direction": "LONG" if pos.get("side") == "long" else "SHORT"
+                    "valid": True,
+                    "position": {
+                        "symbol": underlying,
+                        "contract_symbol": symbol,
+                        "qty": abs(int(float(pos.get("qty", 1)))),
+                        "fill_price": float(pos.get("avg_entry_price", 0)),
+                        "direction": "LONG" if pos.get("side") == "long" else "SHORT"
+                    }
                 }
-        return None
+        return {"valid": True, "position": None}
     except Exception as e:
         logger.error(f"Failed to fetch position from broker: {e}")
-        return None
+        return {"valid": False, "position": None}
+
+def get_active_orders(underlying: str) -> dict:
+    try:
+        url = f"{_base_url()}/v2/orders"
+        params = {"status": "open", "nested": "true"}
+        resp = requests.get(url, headers=_headers(), params=params, timeout=10)
+        resp.raise_for_status()
+        orders = resp.json()
+        
+        active = []
+        for o in orders:
+            symbol = o.get("symbol", "")
+            if symbol.startswith(underlying):
+                active.append(o)
+                
+        return {"valid": True, "orders": active}
+    except Exception as e:
+        logger.error(f"Failed to fetch active orders: {e}")
+        return {"valid": False, "orders": []}
 
 def cancel_all_orders(underlying: str = None):
     try:
@@ -74,50 +114,39 @@ def get_underlying_price(symbol: str) -> float:
         logger.error(f"Error fetching underlying price: {e}")
         return 0.0
 
-def get_daily_realized_pnl() -> float:
-    """Fetch today's realized PnL via Alpaca Account Activities."""
+def get_daily_realized_pnl() -> dict:
+    """Fetch today's account equity change as a proxy for circuit breaker."""
     try:
-        today = datetime.now(ET).strftime("%Y-%m-%d")
-        url = f"{_base_url()}/v2/account/activities/FILL"
-        params = {"date": today}
-        resp = requests.get(url, headers=_headers(), params=params, timeout=10)
-        resp.raise_for_status()
-        activities = resp.json()
-        
-        # NOTE: A robust implementation would calculate actual PnL from trades.
-        # But Alpaca doesn't give PnL per trade directly in FILL activities.
-        # However, it gives account PnL? Wait, we can just use the portfolio history or PNL activities if available.
-        # Or calculate it locally. We'll return 0 for now unless we do full tracking.
-        # Actually, for "minimal authoritative", we can get the daily PnL from `GET /v2/account`.
         url_acc = f"{_base_url()}/v2/account"
         acc_resp = requests.get(url_acc, headers=_headers(), timeout=10)
         acc_resp.raise_for_status()
         acc = acc_resp.json()
         equity = float(acc["equity"])
         last_equity = float(acc["last_equity"])
-        return equity - last_equity
+        return {"valid": True, "value": equity - last_equity, "timestamp": datetime.now(ET).isoformat()}
     except Exception as e:
         logger.error(f"Failed to fetch daily P&L from broker: {e}")
-        return 0.0
+        return {"valid": False, "value": 0.0, "reason": str(e), "timestamp": datetime.now(ET).isoformat()}
 
-def get_daily_trade_count() -> int:
+def get_daily_trade_count() -> dict:
     try:
         today = datetime.now(ET).strftime("%Y-%m-%d")
-        url = f"{_base_url()}/v2/account/activities/FILL"
-        params = {"date": today}
+        url = f"{_base_url()}/v2/orders"
+        params = {"status": "all", "after": f"{today}T00:00:00Z"}
         resp = requests.get(url, headers=_headers(), params=params, timeout=10)
         resp.raise_for_status()
-        activities = resp.json()
+        orders = resp.json()
         
-        # Count only opening trades (where we increased position size)
+        # Count only filled opening orders to be deterministic
         count = 0
-        for act in activities:
-            if "buy" in act.get("side", "").lower():  # Approximation for BTO
+        for o in orders:
+            # We assume "buy" is opening for our simple model (can be enhanced if shorting options)
+            if o.get("side", "").lower() == "buy" and o.get("status") in ("filled", "partially_filled"):
                 count += 1
-        return count
+        return {"valid": True, "count": count}
     except Exception as e:
         logger.error(f"Failed to fetch trade count from broker: {e}")
-        return 0
+        return {"valid": False, "count": 0}
 
 def fetch_option_chain(underlying: str, expiration_date: str, option_type: str = "call") -> list:
     url = f"{_data_url()}/v2/options/contracts"
@@ -133,14 +162,20 @@ def fetch_option_chain(underlying: str, expiration_date: str, option_type: str =
         resp.raise_for_status()
         data = resp.json()
         contracts = data.get("option_contracts", [])
-        contracts.sort(key=lambda c: float(c.get("strike_price", 0)))
-        return contracts
+        
+        # Explicit contract validation
+        valid_contracts = []
+        for c in contracts:
+            if c.get("status") == "active" and c.get("tradable") and c.get("multiplier") == "100":
+                valid_contracts.append(c)
+                
+        valid_contracts.sort(key=lambda c: float(c.get("strike_price", 0)))
+        return valid_contracts
     except Exception as e:
         logger.error(f"Failed to fetch option chain: {e}")
         return []
 
 def select_contract(underlying: str, underlying_price: float, option_type: str = "call") -> dict | None:
-    from config import OPTION_EXPIRATION_MODE, OPTION_STRIKE_MODE
     today = datetime.now(ET).strftime("%Y-%m-%d")
     contracts = fetch_option_chain(underlying, today, option_type)
     if not contracts:
@@ -148,6 +183,7 @@ def select_contract(underlying: str, underlying_price: float, option_type: str =
         
     target_strike = round(underlying_price)
     best = min(contracts, key=lambda c: abs(float(c.get("strike_price", 0)) - target_strike))
+    logger.info(f"Selected contract: {best.get('symbol')} Strike: {best.get('strike_price')}")
     return best
 
 def get_option_quote(contract_symbol: str) -> dict:
@@ -160,10 +196,39 @@ def get_option_quote(contract_symbol: str) -> dict:
         q = quotes.get(contract_symbol, {})
         bid = float(q.get("bp", 0))
         ask = float(q.get("ap", 0))
-        return {"bid": bid, "ask": ask, "mid": round((bid + ask) / 2, 2)}
+        ts_str = q.get("t")
+        
+        valid = True
+        reason = ""
+        
+        if bid <= 0 or ask <= 0 or ask < bid:
+            valid = False
+            reason = "invalid_bid_ask"
+            
+        mid = (bid + ask) / 2
+        if mid <= 0:
+            valid = False
+            reason = "invalid_mid"
+            
+        spread_pct = (ask - bid) / ask if ask > 0 else 1.0
+        if spread_pct > MAX_OPTION_SPREAD_PCT:
+            valid = False
+            reason = "spread_too_wide"
+            
+        if ts_str:
+            try:
+                quote_time = dateutil.parser.isoparse(ts_str)
+                age = (datetime.now(pytz.utc) - quote_time).total_seconds()
+                if age > MAX_OPTION_QUOTE_AGE_SECONDS:
+                    valid = False
+                    reason = "quote_stale"
+            except Exception:
+                pass
+                
+        return {"valid": valid, "bid": bid, "ask": ask, "mid": round(mid, 2), "reason": reason}
     except Exception as e:
         logger.error(f"Failed to fetch quote: {e}")
-        return {"bid": 0, "ask": 0, "mid": 0}
+        return {"valid": False, "bid": 0, "ask": 0, "mid": 0, "reason": "api_error"}
 
 def _place_order(payload: dict) -> dict:
     url = f"{_base_url()}/v2/orders"
@@ -180,10 +245,15 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
         while time.time() < deadline:
             resp = requests.get(f"{_base_url()}/v2/orders/{current_order_id}", headers=_headers(), timeout=10)
             order = resp.json()
-            if order.get("status") == "filled":
+            status = order.get("status")
+            
+            # Partial fills are tricky, we only consider it completely done if 'filled' or dead state
+            if status == "filled":
                 return order
-            if order.get("status") in ("canceled", "expired", "rejected"):
+            if status in ("canceled", "expired", "rejected", "replaced"):
+                # If it was partially filled and then canceled, it's effectively "partially_filled" overall but let's return it
                 return order
+                
             filled_order = order
             time.sleep(1.0)
             
@@ -193,6 +263,10 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
         contract_symbol = filled_order.get("symbol")
         try:
             quote = get_option_quote(contract_symbol)
+            if not quote["valid"]:
+                logger.warning(f"Quote invalid during chase: {quote['reason']}")
+                break
+                
             new_limit = quote["ask"] if side == "buy" else quote["bid"]
             old_limit = float(filled_order.get("limit_price", 0))
             if new_limit != old_limit and new_limit > 0:
@@ -204,6 +278,8 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
                     current_order_id = patch_resp.json().get("id")
         except Exception as e:
             logger.error(f"Chase error: {e}")
+            break
+            
     return filled_order
 
 def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
@@ -219,15 +295,12 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
     
     contract_symbol = contract["symbol"]
     quote = get_option_quote(contract_symbol)
-    ask_price = quote["ask"]
-    bid_price = quote["bid"]
     
-    # Contract validation
-    if ask_price <= 0 or bid_price <= 0: return None
-    spread_pct = (ask_price - bid_price) / ask_price
-    if spread_pct > 0.25: # Max 25% spread
-        logger.warning(f"Spread too wide ({spread_pct*100:.1f}%) for {contract_symbol}")
+    if not quote["valid"]:
+        logger.warning(f"BTO blocked. Invalid quote for {contract_symbol}: {quote['reason']}")
         return None
+        
+    ask_price = quote["ask"]
 
     try:
         order = _place_order({
@@ -250,6 +323,7 @@ def sell_to_close(contract_symbol: str, qty: int) -> dict | None:
     try:
         quote = get_option_quote(contract_symbol)
         bid_price = quote["bid"]
+        
         if bid_price <= 0:
             logger.warning(f"Bid 0 for {contract_symbol}, likely worthless.")
             return {"status": "expired_worthless", "pnl": 0}

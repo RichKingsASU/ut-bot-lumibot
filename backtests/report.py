@@ -113,7 +113,9 @@ def format_summary(s: Summary, cfg, title: str = "OPTIONS BACKTEST SUMMARY") -> 
   Avg win / avg loss  : ${s.avg_win:,.2f} / ${s.avg_loss:,.2f}
   Profit factor       : {pf}
   Expectancy / trade  : ${s.expectancy_dollar:,.2f}  ({s.expectancy_pct:+.2f}% on premium)
+  CAGR (Annualized)   : {s.cagr:+.2f}%
   Max drawdown        : ${s.max_drawdown:,.2f}
+  Monte Carlo 95% DD  : ${s.mc_drawdown_95:,.2f}
   Sharpe (per-trade)  : {s.sharpe:.2f}
   ────────────────────────────────────────────────────────────────
   GROSS total (mid)   : ${s.gross_total:,.2f}

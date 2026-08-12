@@ -36,6 +36,8 @@ class Summary:
     max_drawdown: float
     sharpe: float
     bs_priced_pct: float
+    cagr: float
+    mc_drawdown_95: float
     data_provenance: Optional[str] = None
     data_rows: Optional[int] = None
 
@@ -67,10 +69,29 @@ def equity_curve(df: pd.DataFrame, starting: float = 0.0) -> pd.Series:
     eq.index = pd.to_datetime(s["exit_time"])
     return eq
 
+def calc_cagr(equity: pd.Series, initial_capital: float = 10000.0) -> float:
+    if equity.empty or len(equity) < 2: return 0.0
+    days = (equity.index[-1] - equity.index[0]).days
+    if days < 1: return 0.0
+    final = initial_capital + equity.iloc[-1]
+    if final <= 0: return -1.0
+    return float((final / initial_capital) ** (365.25 / days) - 1.0)
+
+def monte_carlo_max_dd(trades_df: pd.DataFrame, n_simulations: int = 1000) -> float:
+    if len(trades_df) < 2: return 0.0
+    net = trades_df["net_pnl"].values
+    max_dds = []
+    for _ in range(n_simulations):
+        sim_net = np.random.choice(net, size=len(net), replace=True)
+        eq = np.cumsum(sim_net)
+        running_max = np.maximum.accumulate(eq)
+        dd = eq - running_max
+        max_dds.append(dd.min())
+    return float(np.percentile(max_dds, 5))
 
 def summarize(df: pd.DataFrame) -> Summary:
     if df.empty:
-        return Summary(*([0] * 3), *([0.0] * 14))
+        return Summary(*([0] * 3), *([0.0] * 17))
 
     net = df["net_pnl"]
     wins = df[net > 0]["net_pnl"]
@@ -111,4 +132,6 @@ def summarize(df: pd.DataFrame) -> Summary:
         max_drawdown=round(max_drawdown(eq), 2),
         sharpe=round(_sharpe(pd.Series(pct_returns)), 3),
         bs_priced_pct=round(float((df["priced_via"] == "bs").mean()) * 100.0, 1),
+        cagr=round(calc_cagr(eq) * 100.0, 2),
+        mc_drawdown_95=round(monte_carlo_max_dd(df), 2)
     )

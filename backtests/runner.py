@@ -54,7 +54,18 @@ def run_single(cfg: BacktestConfig, verbose: bool = True) -> Tuple[Summary, pd.D
     if verbose:
         print(assumptions_block(cfg, u_src, q_src, summ.bs_priced_pct, rows=sd.rows))
         print(format_summary(summ, cfg))
-        print(f"  Per-trade CSV : {csv_path}")
+        
+        # OOS Splits (50/50 Time Split)
+        if len(tdf) > 4:
+            mid_idx = len(tdf) // 2
+            summ_is = summarize(tdf.iloc[:mid_idx])
+            summ_oos = summarize(tdf.iloc[mid_idx:])
+            print("\n  [ IN-SAMPLE (First 50%) ]")
+            print(f"    Trades: {summ_is.trades} | Net P&L: ${summ_is.net_total:,.2f} | Win Rate: {summ_is.win_rate:.1%} | PF: {summ_is.profit_factor:.2f} | Sharpe: {summ_is.sharpe:.2f}")
+            print("  [ OUT-OF-SAMPLE (Last 50%) ]")
+            print(f"    Trades: {summ_oos.trades} | Net P&L: ${summ_oos.net_total:,.2f} | Win Rate: {summ_oos.win_rate:.1%} | PF: {summ_oos.profit_factor:.2f} | Sharpe: {summ_oos.sharpe:.2f}")
+            
+        print(f"\n  Per-trade CSV : {csv_path}")
         if png:
             print(f"  Equity PNG    : {png}")
         print(f"  Bars analyzed : {len(df)}  ({df.index.min()} → {df.index.max()})"

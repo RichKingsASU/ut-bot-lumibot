@@ -4,15 +4,19 @@ import time
 import logging
 from datetime import datetime
 import pytz
+import json
 
 try:
     import fcntl
 except ImportError:
     fcntl = None
 
+import pandas_market_calendars as mcal
+import pandas as pd
+
 from broker import (
     get_open_position, get_daily_realized_pnl, get_daily_trade_count,
-    buy_to_open, sell_to_close, cancel_all_orders
+    buy_to_open, sell_to_close, cancel_all_orders, get_active_orders
 )
 from signal_engine import evaluate_signal
 from risk_supervisor import RiskSupervisor
@@ -21,7 +25,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("executor")
 ET = pytz.timezone("America/New_York")
 
-LOCK_FILE = "/tmp/ut_bot.lock"
+LOCK_FILE = "/run/disrupting-alpha/ut-bot.lock"
+RUNTIME_STATE_FILE = "/run/disrupting-alpha/runtime_state.json"
+LAST_SIGNAL_FILE = "/run/disrupting-alpha/last_signal.json"
 
 # Simple local state to supplement authoritative broker state
 _local_state = {
@@ -32,8 +38,10 @@ _local_state = {
 
 def acquire_lock():
     if fcntl is None:
-        logger.warning("fcntl not available, skipping lock (Windows?)")
-        return None
+        logger.error("CRITICAL: fcntl not available. Cannot guarantee single-instance lock. Exiting.")
+        sys.exit(1)
+    
+    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
     try:
         lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -42,6 +50,71 @@ def acquire_lock():
     except (IOError, BlockingIOError):
         logger.error("CRITICAL: Another instance of the bot is already running. Exiting.")
         sys.exit(1)
+
+def write_runtime_state(state: dict):
+    os.makedirs(os.path.dirname(RUNTIME_STATE_FILE), exist_ok=True)
+    try:
+        with open(RUNTIME_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to write runtime state: {e}")
+
+def load_last_signal():
+    try:
+        if os.path.exists(LAST_SIGNAL_FILE):
+            with open(LAST_SIGNAL_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load last signal: {e}")
+    return {"date": None, "direction": 0}
+
+def save_last_signal(date_str, direction):
+    os.makedirs(os.path.dirname(LAST_SIGNAL_FILE), exist_ok=True)
+    try:
+        with open(LAST_SIGNAL_FILE, "w") as f:
+            json.dump({"date": date_str, "direction": direction}, f)
+    except Exception as e:
+        logger.error(f"Failed to save last signal: {e}")
+
+def get_market_times():
+    nyse = mcal.get_calendar('NYSE')
+    now = datetime.now(ET)
+    schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+    if schedule.empty:
+        return None
+        
+    market_close = schedule.iloc[0]['market_close'].astimezone(ET)
+    return market_close
+
+def verify_and_flatten(symbol: str, supervisor):
+    logger.info("EOD Flatten started. Entering verification loop.")
+    max_retries = 10
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        logger.info(f"EOD Flatten Check {retry_count+1}/{max_retries}")
+        # 1. Cancel active orders
+        cancel_all_orders(symbol)
+        time.sleep(1)
+        
+        # 2. Check position
+        pos_result = get_open_position(symbol)
+        position = pos_result.get("position")
+        if not position and pos_result.get("valid"):
+            logger.info("EOD_FLATTEN_COMPLETE. Position is flat.")
+            return True
+            
+        # 3. Submit close
+        if position:
+            logger.info(f"Position found during flatten. Submitting STC for {position['qty']} {position['contract_symbol']}")
+            sell_to_close(position["contract_symbol"], position["qty"])
+        
+        # 4. Wait
+        time.sleep(5)
+        retry_count += 1
+        
+    logger.error("CRITICAL: EOD_FLATTEN_FAILED. Max retries exceeded.")
+    return False
 
 def main_loop():
     lock_fd = acquire_lock()
@@ -52,7 +125,8 @@ def main_loop():
         "MAX_DAILY_LOSS": os.getenv("MAX_DAILY_LOSS", "500.0"),
         "MAX_TRADES_PER_DAY": os.getenv("MAX_TRADES_PER_DAY", "10"),
         "MAX_POSITION_SIZE": int(os.getenv("MAX_POSITION_SIZE", "1")),
-        "EOD_FLATTEN_TIME": os.getenv("EOD_FLATTEN_TIME", "15:55"),
+        "ENTRY_CUTOFF_MINUTES": int(os.getenv("ENTRY_CUTOFF_MINUTES_BEFORE_CLOSE", "15")),
+        "FLATTEN_MINUTES": int(os.getenv("FLATTEN_MINUTES_BEFORE_CLOSE", "5")),
         "RSI_STEP_THRESH": os.getenv("RSI_STEP_THRESH", "5.0"),
         "STOP_PCT": os.getenv("STOP_PCT", "0.005")
     }
@@ -68,9 +142,17 @@ def main_loop():
             time.sleep(5)
             
             # Authoritative State Sync
-            position = get_open_position(symbol)
-            daily_pnl = get_daily_realized_pnl()
-            daily_trades = get_daily_trade_count()
+            pos_result = get_open_position(symbol)
+            orders_result = get_active_orders(symbol)
+            daily_pnl_result = get_daily_realized_pnl()
+            daily_trades_result = get_daily_trade_count()
+            
+            broker_state_valid = pos_result.get("valid", False) and orders_result.get("valid", False)
+            position = pos_result.get("position")
+            active_orders = orders_result.get("orders", [])
+            daily_pnl = daily_pnl_result.get("value", 0.0)
+            daily_trades = daily_trades_result.get("count", 0)
+            pnl_valid = daily_pnl_result.get("valid", False)
             
             # Reconstruct local entry state if we have a position
             if position:
@@ -80,27 +162,70 @@ def main_loop():
                 _local_state["entry_underlying_price"] = None
                 _local_state["entry_rsi"] = None
                 
+            entry_allowed = broker_state_valid and pnl_valid
+            entry_block_reason = None
+            if not broker_state_valid:
+                entry_block_reason = "BROKER_STATE_INVALID"
+            elif not pnl_valid:
+                entry_block_reason = "PNL_INVALID"
+                
+            has_opening_orders = any(o.get("side") == "buy" for o in active_orders)
+            if has_opening_orders:
+                entry_allowed = False
+                entry_block_reason = "ACTIVE_OPENING_ORDER"
+            
             # Local Kill Switch
             if supervisor.is_kill_switch_active():
-                logger.error("LOCAL KILL SWITCH ACTIVE! Cancelling orders and flattening.")
+                logger.error("KILL_SWITCH_ACTIVATED")
                 cancel_all_orders(symbol)
                 if position:
                     sell_to_close(position["contract_symbol"], position["qty"])
+                write_runtime_state({
+                    "process_alive": True, "kill_switch_active": True, "entry_allowed": False, 
+                    "entry_block_reason": "KILL_SWITCH", "duplicate_lock_owned": True
+                })
                 continue # Block all further processing
                 
-            # EOD Flatten
-            if supervisor.check_eod_flatten():
-                if position:
-                    logger.info("EOD Flatten triggered.")
-                    cancel_all_orders(symbol)
-                    sell_to_close(position["contract_symbol"], position["qty"])
-                continue # Block entries past EOD flatten time
+            # EOD Flatten / Market Hours
+            market_close = get_market_times()
+            now_et = datetime.now(ET)
+            eod_flatten_triggered = False
+            
+            if market_close:
+                flatten_time = market_close - pd.Timedelta(minutes=config["FLATTEN_MINUTES"])
+                entry_cutoff_time = market_close - pd.Timedelta(minutes=config["ENTRY_CUTOFF_MINUTES"])
+                
+                if now_et >= flatten_time:
+                    eod_flatten_triggered = True
+                    entry_allowed = False
+                    entry_block_reason = "EOD_FLATTEN"
+                elif now_et >= entry_cutoff_time:
+                    entry_allowed = False
+                    entry_block_reason = "EOD_ENTRY_CUTOFF"
+            else:
+                # Market closed today
+                entry_allowed = False
+                entry_block_reason = "MARKET_CLOSED"
+                
+            if eod_flatten_triggered and (position or active_orders):
+                logger.info("EOD_FLATTEN_STARTED")
+                success = verify_and_flatten(symbol, supervisor)
+                write_runtime_state({
+                    "process_alive": True, "kill_switch_active": False, "entry_allowed": False, 
+                    "eod_flatten_required": not success, "duplicate_lock_owned": True
+                })
+                continue
                 
             # Evaluate Data & Signals
-            sig_data = evaluate_signal(symbol)
-            current_price = sig_data["price"]
-            current_rsi = sig_data["rsi_5m"]
-            signal = sig_data["signal"]
+            sig_snapshot = evaluate_signal(symbol)
+            if not sig_snapshot.valid:
+                entry_allowed = False
+                entry_block_reason = f"MARKET_DATA_INVALID: {sig_snapshot.reason}"
+                logger.warning(f"MARKET_DATA_STALE: {sig_snapshot.reason}")
+            
+            current_price = sig_snapshot.underlying_price
+            current_rsi = sig_snapshot.rsi_5m
+            signal = sig_snapshot.signal
             
             # Position Management (Exit Logic)
             if position:
@@ -114,38 +239,57 @@ def main_loop():
                        (position["direction"] == "SHORT" and signal == 1):
                         logger.info("Signal flipped. Exiting position.")
                         sell_to_close(position["contract_symbol"], position["qty"])
-                continue # Do not attempt to enter a new position while holding one
-                
-            # Entry Logic (If no position)
-            # Evaluate daily signal exactly at 15:45 ET to avoid intraday noise,
-            # or if testing, we might evaluate it constantly.
-            # But the prompt said "15:45+ entry gating". We'll enforce this.
-            now_et = datetime.now(ET)
-            if now_et.hour != 15 or now_et.minute < 45:
-                # Outside entry window, just wait.
-                continue
-                
-            if signal == 0:
-                continue # No signal
-                
-            # Check Limits
-            if not supervisor.enforce_limits(daily_pnl, daily_trades):
-                continue
-                
-            # EXECUTE ENTRY
-            direction = "LONG" if signal == 1 else "SHORT"
-            logger.info(f"SIGNAL DETECTED: {direction} {symbol}. Executing BTO...")
             
-            res = buy_to_open(symbol, direction, config["MAX_POSITION_SIZE"])
-            if res and res.get("status") == "filled":
-                _local_state["entry_underlying_price"] = current_price
-                _local_state["entry_rsi"] = current_rsi
-                logger.info(f"Entry filled successfully.")
+            # Entry Logic (If no position)
+            last_sig = load_last_signal()
+            signal_date_str = sig_snapshot.daily_bar_timestamp.strftime("%Y-%m-%d") if sig_snapshot.daily_bar_timestamp else ""
+            
+            if entry_allowed and not position and not has_opening_orders:
+                if signal != 0:
+                    if last_sig.get("date") == signal_date_str and last_sig.get("direction") == signal:
+                        logger.info("SIGNAL_ALREADY_CONSUMED")
+                        entry_allowed = False
+                        entry_block_reason = "SIGNAL_ALREADY_CONSUMED"
+                    elif not supervisor.enforce_limits(daily_pnl, daily_trades):
+                        entry_allowed = False
+                        entry_block_reason = "RISK_LIMITS"
+                    else:
+                        # EXECUTE ENTRY
+                        direction = "LONG" if signal == 1 else "SHORT"
+                        logger.info(f"ENTRY_SUBMITTED: {direction} {symbol}.")
+                        
+                        save_last_signal(signal_date_str, signal)
+                        
+                        res = buy_to_open(symbol, direction, config["MAX_POSITION_SIZE"])
+                        if res and res.get("status") in ("filled", "partially_filled"):
+                            _local_state["entry_underlying_price"] = current_price
+                            _local_state["entry_rsi"] = current_rsi
+                            logger.info(f"ENTRY_FILLED successfully.")
+                        else:
+                            logger.warning(f"ENTRY_REJECTED or failed.")
             else:
-                logger.warning(f"Entry failed or was rejected.")
-                
+                if signal != 0 and entry_allowed is False:
+                    logger.info(f"ENTRY_BLOCKED: {entry_block_reason}")
+            
+            write_runtime_state({
+                "process_alive": True,
+                "trading_mode": "paper" if os.getenv("ALPACA_IS_PAPER", "true").lower() == "true" else "live",
+                "broker_state_valid": broker_state_valid,
+                "market_data_valid": sig_snapshot.valid,
+                "position_open": position is not None,
+                "working_orders": len(active_orders),
+                "kill_switch_active": False,
+                "duplicate_lock_owned": True,
+                "entry_allowed": entry_allowed,
+                "entry_block_reason": entry_block_reason,
+                "eod_flatten_required": False,
+                "last_broker_sync": datetime.now(ET).isoformat(),
+                "last_signal": signal,
+                "last_consumed_signal": last_sig
+            })
+            
         except Exception as e:
-            logger.error(f"Error in main loop: {e}")
+            logger.error(f"Error in main loop: {e}", exc_info=True)
             time.sleep(5) # Prevent tight crash loop
             
 if __name__ == "__main__":
