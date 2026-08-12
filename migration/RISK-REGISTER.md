@@ -33,20 +33,39 @@ rejected. Switching to `google.auth.default()` handles both. Verified by test:
 `MalformedError: missing fields client_email, token_uri`, while
 `google.auth.default()` loads it.
 
-## R-02 — Supabase database password exposed in a chat transcript (OPEN, HIGH)
+## R-02 — Supabase database password exposed in a chat transcript (DEFERRED, HIGH)
+
+    Accepted by  : repository owner, 2026-08-12
+    Review date  : 2026-11-12
+    Status       : risk accepted, not mitigated
 
 The current `SUPABASE_DSN` password was transmitted through an assistant
 conversation, which is a durable log outside this host. It grants full
 read/write access to the production database.
 
-Rotate after the pipeline is proven. Rotation is low-risk: no live service uses
-direct Postgres. Verified by reading `/proc/<pid>/environ` for the running
-services -- they carry only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-(REST), and no systemd unit references a DSN.
+**Deferred by explicit decision on 2026-08-12, to be revisited 2026-11-12.**
+Recording it as accepted rather than closed: the exposure is unchanged and does
+not decay with time. Anyone with access to that transcript can reach the
+production database until the password is rotated.
 
-An earlier password was also transmitted; if it was the Supabase *account*
-password rather than the database one, rotate that too. Account access is
-broader than database access.
+Rotation itself is cheap and was verified as low-risk. Only `da-gcp-replicator`
+holds the DSN -- confirmed by reading `/proc/<pid>/environ` on all five running
+services; the four trading services carry only `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` (REST) and never see the database password. No
+systemd unit references a DSN. Cost of rotating is a ~10s telemetry gap:
+
+    ALTER USER postgres WITH PASSWORD '<new 32-char alphanumeric>';
+    # update SUPABASE_DSN in .env
+    sudo systemctl restart da-gcp-replicator
+
+Rotate sooner than the review date if any of these change: the transcript is
+shared or exported, the replicator is restarted for another reason anyway
+(free window), or the account moves to a shared/team context.
+
+An earlier password was also transmitted. If that one was the Supabase
+*account* password rather than the database password, it should be rotated
+regardless of this deferral -- account access controls the project, its data,
+and billing, and is not covered by the reasoning above.
 
 ## R-03 — pg_partman partitions stop silently after migration (OPEN, HIGH)
 
