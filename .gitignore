@@ -114,3 +114,6 @@ gemini-skills/
 
 replication/sync_state.db
 *.bak.*
+
+# Contains a live DOPPLER_TOKEN. Use systemd/da-doppler.conf.template.
+systemd/da-doppler.conf
