@@ -20,10 +20,12 @@ except ImportError:
 # Optional GCP imports, they might not be installed in the local environment,
 # but we write the code for when they are.
 try:
+    import google.auth
     from google.cloud import pubsub_v1
     from google.cloud import bigquery
     from google.oauth2 import service_account
 except ImportError:
+    google = None
     pubsub_v1 = None
     bigquery = None
     service_account = None
@@ -172,30 +174,49 @@ class _CircuitBreaker:
 
 def _load_service_account(creds_path: str, credentials_json: str):
     """
-    Build service-account credentials from either Google's standard
-    GOOGLE_APPLICATION_CREDENTIALS file path (preferred) or the raw key
-    contents in GCP_SERVICE_ACCOUNT_JSON (legacy).
+    Resolve GCP credentials, preferring Google's standard Application Default
+    Credentials chain.
 
-    A path is preferred: the key never lands in the environment, in `ps`
-    output, or in systemd's journal, and file permissions can restrict it to
-    0600. GCP_SERVICE_ACCOUNT_JSON is still honoured so existing deployments
-    keep working.
+    A file path is preferred over inline contents: the key never lands in the
+    environment, in `ps` output, or in systemd's journal, and permissions can
+    restrict it to 0600. GCP_SERVICE_ACCOUNT_JSON is still honoured so existing
+    deployments keep working.
+
+    Path and unset both go through google.auth.default() rather than
+    service_account.Credentials.from_service_account_file(). The latter accepts
+    only {"type": "service_account"} and raises MalformedError on a Workload
+    Identity Federation config, which is {"type": "external_account"} -- so the
+    federation this deployment is migrating towards would have failed at
+    startup. google.auth.default() handles service_account, external_account,
+    authorized_user and the GCE metadata server, so the same code covers the
+    current key file and the eventual WIF config with no change.
 
     GCP_SERVICE_ACCOUNT_JSON containing a path rather than JSON is a natural
-    mistake -- the old code fed it straight to json.loads and failed with an
-    opaque decode error -- so detect and accept that case too.
+    mistake -- the original code fed it straight to json.loads and failed with
+    an opaque decode error -- so detect and accept that case too.
     """
     if creds_path:
         if not os.path.isfile(creds_path):
             raise ConfigurationError(
                 f"GOOGLE_APPLICATION_CREDENTIALS points at {creds_path!r}, which is not a file."
             )
-        return service_account.Credentials.from_service_account_file(creds_path)
+        # google.auth.default() reads GOOGLE_APPLICATION_CREDENTIALS itself.
+        credentials, _ = google.auth.default()
+        return credentials
+
+    if credentials_json is None:
+        # Neither variable set: fall back to the rest of the ADC chain
+        # (gcloud user credentials, GCE/GKE metadata server). Production mode
+        # still refuses this earlier -- see _GCPClientWrapper.__init__.
+        credentials, _ = google.auth.default()
+        return credentials
 
     stripped = credentials_json.strip()
     if not stripped.startswith("{"):
         if os.path.isfile(stripped):
-            return service_account.Credentials.from_service_account_file(stripped)
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = stripped
+            credentials, _ = google.auth.default()
+            return credentials
         raise ConfigurationError(
             "GCP_SERVICE_ACCOUNT_JSON is neither JSON (it does not start with '{') "
             "nor a path to an existing file. Set GOOGLE_APPLICATION_CREDENTIALS to the "
