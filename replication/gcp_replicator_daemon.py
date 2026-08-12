@@ -251,33 +251,41 @@ class _GCPClientWrapper:
         bq_table_id = f"{self.project_id}.replication_dataset.{table_name}"
         
         bq_rows_to_insert = []
-        
-        # Stream to Pub/Sub with ordering
+        bq_row_ids = []
+        publish_futures = []
+
         for row in rows:
             payload = json.dumps(row).encode("utf-8")
-            
+
             # Pub/Sub requires ordering keys to be strings
             ordering_key = str(row.get("id", ""))
-            
-            # Publish with deterministic ordering key
-            self.publisher.publish(
-                topic_path, 
-                data=payload,
-                ordering_key=ordering_key
+
+            # Publish with deterministic ordering key. Keep the future so the
+            # result can be awaited below -- publish() is async, so without
+            # this a failed publish is invisible and BigQuery would still be
+            # written, silently desynchronising the two sinks.
+            publish_futures.append(
+                self.publisher.publish(topic_path, data=payload, ordering_key=ordering_key)
             )
-            
-            # Prepare for BigQuery insert
-            payload_hash = hashlib.sha256(payload).hexdigest()
-            bq_rows_to_insert.append({
-                "insertId": payload_hash, # Deterministic insert_id for deduplication
-                "json": row
-            })
-            
-        # Stream rows directly to BigQuery
-        errors = self.bq_client.insert_rows_json(bq_table_id, bq_rows_to_insert)
+
+            # insert_rows_json() takes plain row dicts plus a parallel row_ids
+            # list; it builds the {"insertId": ..., "json": ...} envelope for
+            # the REST API itself. Passing that envelope in as the row makes
+            # BigQuery read "insertId" and "json" as column names and reject
+            # every row with "no such field".
+            bq_rows_to_insert.append(row)
+            bq_row_ids.append(hashlib.sha256(payload).hexdigest())
+
+        # Surface publish failures before writing to BigQuery.
+        for future in publish_futures:
+            future.result(timeout=60)
+
+        errors = self.bq_client.insert_rows_json(
+            bq_table_id, bq_rows_to_insert, row_ids=bq_row_ids
+        )
         if errors:
             raise Exception(f"BigQuery insertion errors: {errors}")
-            
+
         return True
 
 
