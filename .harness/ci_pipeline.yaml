@@ -35,17 +35,34 @@ pipeline:
                       pip install uv
                       uv pip install --system -r requirements.txt
 
-                      # Security scan
-                      if grep -rn \
-                        -e 'ALPACA_API_KEY\s*=\s*"[A-Z0-9]\{10,\}"' \
-                        -e 'ALPACA_API_SECRET\s*=\s*"[A-Za-z0-9]\{20,\}"' \
-                        --include="*.py" \
-                        --exclude-dir=".git" \
-                        .; then
-                        echo "ERROR: Hardcoded API secrets found in Python files"
+                      # Security scan.
+                      #
+                      # Previously this matched only ALPACA_* assignments in
+                      # *.py files, so it passed while two live Doppler service
+                      # tokens sat in the repo -- one in systemd/da-doppler.conf
+                      # and one in docs/harness-doppler-setup.md. Neither is a
+                      # .py file and neither is an ALPACA_ key.
+                      #
+                      # Scan every tracked file and match on credential
+                      # PREFIXES, which is what actually identifies a leaked
+                      # secret, rather than on variable names.
+                      if git ls-files -z | xargs -0 grep -nIE \
+                        -e 'dp\.st\.[A-Za-z0-9._-]{20,}' \
+                        -e 'BEGIN [A-Z ]*PRIVATE KEY' \
+                        -e 'postgresql://[^ ]+:[^@ <]+@' \
+                        -e 'sk-[A-Za-z0-9]{24,}' \
+                        -e 'AIza[A-Za-z0-9_-]{30,}' \
+                        -e 'xox[baprs]-[A-Za-z0-9-]{10,}' \
+                        -e 'ghp_[A-Za-z0-9]{30,}' \
+                        -e 'AKIA[A-Z0-9]{16}' \
+                        -e 'ALPACA_API_KEY\s*=\s*"[A-Z0-9]{10,}"' \
+                        -e 'ALPACA_API_SECRET\s*=\s*"[A-Za-z0-9]{20,}"' \
+                        | grep -vE '\.example:|\.template:|placeholder|<[A-Za-z-]+>'; then
+                        echo "ERROR: credential-shaped string found in a tracked file"
+                        echo "If this is a placeholder, use <angle-brackets> or a .example/.template file."
                         exit 1
                       fi
-                      
+
                       echo "Security scan passed — no hardcoded secrets found"
 
                       # Unit tests via Doppler
