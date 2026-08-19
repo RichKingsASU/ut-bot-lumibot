@@ -116,3 +116,8 @@ and runtime health publishes validity, reconciliation timestamp, position and
 order counts, errors, and entry block reason. Supabase and GCP are not called by
 recovery. The cache format is version 1; incompatible legacy/unversioned data is
 explicitly ignored in favor of broker reconstruction.
+
+The persistent kill/EOD state machine, operator controls, market-calendar
+cutoffs, restart recovery, and broker-flat proof are specified in
+[`KILL_AND_FLATTEN.md`](KILL_AND_FLATTEN.md). No alternate flatten path may
+interpret submission or cancel acknowledgement as flatness.

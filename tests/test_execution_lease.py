@@ -42,6 +42,9 @@ from src.trading.execution_lease import (
 
 
 def _hold_lease(runtime_dir, ready, release, crash=False):
+    # multiprocessing may inherit pytest's SIGINT disposition; exercise the
+    # production/default termination behavior deterministically.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     lease = ExecutionLease("acct-a", "paper", "child", Path(runtime_dir)).acquire()
     ready.set()
     release.wait(10)

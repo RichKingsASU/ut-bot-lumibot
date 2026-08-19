@@ -337,7 +337,7 @@ Highest-Risk Technical Failure:
 Concurrent legacy/new executors can submit duplicate or conflicting orders without one account-scoped lock.
 
 Highest-Risk Silent Failure:
-A close/flatten submission or fresh heartbeat can report success while the broker still holds a position.
+A close/flatten submission no longer establishes flatness in the canonical executor. **FIXED IN SOURCE, UNIT TESTED, PROCESS TESTED, EDGE RUNTIME NOT VALIDATED**: the persistent kill/EOD workflow requires a fresh broker position quantity of zero and no prohibited opening orders before `KILLED_FLAT`; failures keep entry disabled.
 
 Most Important Scientific Gap:
 Live incomplete-daily-candle timing is not parity-validated against the option backtest and no immutable OOS protocol exists.
