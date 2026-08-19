@@ -20,8 +20,8 @@ FORWARD_BARS = 5               # bars ahead to measure return (for reference)
 
 class SignalDecayMonitor(BaseAgent):
 
-    def __init__(self, name: str):
-        super().__init__(name)
+    def __init__(self, name: str, qdrant_client=None, embed_model=None):
+        super().__init__(name, qdrant_client=qdrant_client, embed_model=embed_model)
         # Configure the complete universe list
         self.symbols = [
             "SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL",

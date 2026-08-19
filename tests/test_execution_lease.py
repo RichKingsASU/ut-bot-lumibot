@@ -2,33 +2,11 @@ import multiprocessing
 import os
 import subprocess
 import sys
-import types
 import signal
-from datetime import timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-
-# Keep this safety suite runnable in the minimal audit image. Production still
-# installs the real packages from requirements-test.txt.
-if "requests" not in sys.modules:
-    requests_stub = types.ModuleType("requests")
-    requests_stub.get = Mock(); requests_stub.post = Mock()
-    requests_stub.patch = Mock(); requests_stub.delete = Mock()
-    sys.modules["requests"] = requests_stub
-if "pytz" not in sys.modules:
-    pytz_stub = types.ModuleType("pytz")
-    pytz_stub.timezone = lambda _name: timezone.utc
-    pytz_stub.utc = timezone.utc
-    sys.modules["pytz"] = pytz_stub
-if "dateutil" not in sys.modules:
-    dateutil_stub = types.ModuleType("dateutil")
-    parser_stub = types.ModuleType("dateutil.parser")
-    parser_stub.isoparse = lambda value: __import__("datetime").datetime.fromisoformat(value)
-    dateutil_stub.parser = parser_stub
-    sys.modules["dateutil"] = dateutil_stub
-    sys.modules["dateutil.parser"] = parser_stub
 
 from src.trading import broker
 from src.trading.execution_lease import (

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import pytest
+from unittest.mock import Mock
 
 # Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -16,7 +17,15 @@ def test_ic_direction():
     orig_min_trades = sdm.MIN_TRADES
     sdm.MIN_TRADES = 1
     try:
-        monitor = SignalDecayMonitor('test-monitor')
+        # IC calculation is pure business logic; injected collaborators keep this
+        # unit test independent of Qdrant, model packages, and model downloads.
+        vector_client = Mock()
+        embed_model = Mock()
+        monitor = SignalDecayMonitor(
+            'test-monitor', qdrant_client=vector_client, embed_model=embed_model
+        )
+        assert monitor.qdrant_client is vector_client
+        assert monitor._injected_embed_model is embed_model
         
         # 4 synthetic matched pairs with a positive edge (predictive signal):
         # 1. winning long:  sig = +1, pnl = +0.05

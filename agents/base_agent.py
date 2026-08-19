@@ -11,7 +11,8 @@ logger = logging.getLogger("BaseAgent")
 class BaseAgent(abc.ABC):
     _embed_model = None
 
-    def __init__(self, name, qdrant_host="localhost", qdrant_port=6333):
+    def __init__(self, name, qdrant_host="localhost", qdrant_port=6333,
+                 qdrant_client=None, embed_model=None):
         self.name = name
         self.qdrant_host = qdrant_host
         self.qdrant_port = qdrant_port
@@ -25,12 +26,18 @@ class BaseAgent(abc.ABC):
         self.alpaca_api_secret = os.getenv("ALPACA_API_SECRET")
         self.alpaca_base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
         
-        # Connect to Qdrant client
-        from qdrant_client import QdrantClient
-        self.qdrant_client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
-        
-        # Ensure embedding model is loaded once at the class level
-        BaseAgent._get_embed_model()
+        # Unit-test and alternate-runtime collaborators may be injected without
+        # importing or initializing the optional model/storage dependencies.
+        if qdrant_client is None:
+            from qdrant_client import QdrantClient
+            qdrant_client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
+        self.qdrant_client = qdrant_client
+
+        self._injected_embed_model = embed_model
+        if embed_model is None:
+            # Preserve the production eager-loading behavior when no collaborator
+            # is supplied explicitly.
+            BaseAgent._get_embed_model()
 
     @classmethod
     def _get_embed_model(cls):
@@ -44,7 +51,8 @@ class BaseAgent(abc.ABC):
     async def query_qdrant(self, query_text, collection, limit=5):
         """Generates embedding with SentenceTransformer all-MiniLM-L6-v2 and searches Qdrant, returning list of payloads."""
         loop = asyncio.get_running_loop()
-        embedding = await loop.run_in_executor(None, lambda: self._get_embed_model().encode(query_text).tolist())
+        model = self._injected_embed_model or self._get_embed_model()
+        embedding = await loop.run_in_executor(None, lambda: model.encode(query_text).tolist())
         
         def _search():
             if hasattr(self.qdrant_client, "query_points"):

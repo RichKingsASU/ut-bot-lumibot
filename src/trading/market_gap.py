@@ -10,7 +10,9 @@ from .data_validity import DataStatus, ValidatedValue, parse_timestamp
 
 def check_gap(symbol: str, *, session_open: float | None = None) -> ValidatedValue[float]:
     source = "ALPACA_MARKET_DATA"
-    url = f"{os.getenv('ALPACA_DATA_URL', 'https://data.alpaca.markets')}/v2/stocks/{symbol}/bars"
+    configured_url = os.getenv("ALPACA_DATA_URL")
+    base_url = configured_url or "https://data.alpaca.markets"
+    url = f"{base_url}/v2/stocks/{symbol}/bars"
     headers = {"APCA-API-KEY-ID": os.getenv("ALPACA_API_KEY", ""),
                "APCA-API-SECRET-KEY": os.getenv("ALPACA_API_SECRET", "")}
     try:
