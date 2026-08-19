@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   trading-bot:
+    profiles: ["trading-dev"]
     build: 
       context: .
       target: bot
@@ -9,9 +10,12 @@ services:
     env_file: .env
     volumes:
       - .:/app
+      - /run/disrupting-alpha:/run/disrupting-alpha
     ports:
       - "8000:8000"
-    command: python main.py
+    # Legacy Lumibot writer is retained for development inspection only. Its
+    # broker mutation boundary still requires the shared host execution lease.
+    command: python src/trading/executor.py
 
   dashboard:
     build:

@@ -1,15 +1,9 @@
 import os
-import sys
 import time
 import logging
 from datetime import datetime
 import pytz
 import json
-
-try:
-    import fcntl
-except ImportError:
-    fcntl = None
 
 import pandas_market_calendars as mcal
 import pandas as pd
@@ -20,12 +14,15 @@ from broker import (
 )
 from signal_engine import evaluate_signal
 from risk_supervisor import RiskSupervisor
+from execution_lease import (
+    ExecutionLease, ExecutionLeaseError, execution_lease_state,
+    install_execution_lease,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("executor")
 ET = pytz.timezone("America/New_York")
 
-LOCK_FILE = "/run/disrupting-alpha/ut-bot.lock"
 RUNTIME_STATE_FILE = "/run/disrupting-alpha/runtime_state.json"
 LAST_SIGNAL_FILE = "/run/disrupting-alpha/last_signal.json"
 
@@ -36,20 +33,12 @@ _local_state = {
     "last_signal_time": None
 }
 
-def acquire_lock():
-    if fcntl is None:
-        logger.error("CRITICAL: fcntl not available. Cannot guarantee single-instance lock. Exiting.")
-        sys.exit(1)
-    
-    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
-    try:
-        lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        logger.info("Acquired single-instance lock.")
-        return lock_fd
-    except (IOError, BlockingIOError):
-        logger.error("CRITICAL: Another instance of the bot is already running. Exiting.")
-        sys.exit(1)
+def acquire_execution_authority() -> ExecutionLease:
+    """Acquire authority before constructing any money-moving runtime."""
+    lease = ExecutionLease.from_environment(process_name="canonical-executor")
+    lease.acquire()
+    install_execution_lease(lease)
+    return lease
 
 def write_runtime_state(state: dict):
     os.makedirs(os.path.dirname(RUNTIME_STATE_FILE), exist_ok=True)
@@ -117,7 +106,7 @@ def verify_and_flatten(symbol: str, supervisor):
     return False
 
 def main_loop():
-    lock_fd = acquire_lock()
+    lease = acquire_execution_authority()
     
     # Configuration
     config = {
@@ -162,7 +151,7 @@ def main_loop():
                 _local_state["entry_underlying_price"] = None
                 _local_state["entry_rsi"] = None
                 
-            entry_allowed = broker_state_valid and pnl_valid
+            entry_allowed = broker_state_valid and pnl_valid and lease.owned
             entry_block_reason = None
             if not broker_state_valid:
                 entry_block_reason = "BROKER_STATE_INVALID"
@@ -182,7 +171,7 @@ def main_loop():
                     sell_to_close(position["contract_symbol"], position["qty"])
                 write_runtime_state({
                     "process_alive": True, "kill_switch_active": True, "entry_allowed": False, 
-                    "entry_block_reason": "KILL_SWITCH", "duplicate_lock_owned": True
+                    "entry_block_reason": "KILL_SWITCH", **execution_lease_state()
                 })
                 continue # Block all further processing
                 
@@ -212,7 +201,7 @@ def main_loop():
                 success = verify_and_flatten(symbol, supervisor)
                 write_runtime_state({
                     "process_alive": True, "kill_switch_active": False, "entry_allowed": False, 
-                    "eod_flatten_required": not success, "duplicate_lock_owned": True
+                    "eod_flatten_required": not success, **execution_lease_state()
                 })
                 continue
                 
@@ -279,7 +268,7 @@ def main_loop():
                 "position_open": position is not None,
                 "working_orders": len(active_orders),
                 "kill_switch_active": False,
-                "duplicate_lock_owned": True,
+                **execution_lease_state(),
                 "entry_allowed": entry_allowed,
                 "entry_block_reason": entry_block_reason,
                 "eod_flatten_required": False,
@@ -293,4 +282,8 @@ def main_loop():
             time.sleep(5) # Prevent tight crash loop
             
 if __name__ == "__main__":
-    main_loop()
+    try:
+        main_loop()
+    except ExecutionLeaseError as exc:
+        logger.critical("CRITICAL: %s", exc)
+        raise SystemExit(2)

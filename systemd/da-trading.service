@@ -13,6 +13,8 @@ StartLimitIntervalSec=0
 Type=simple
 User=k2
 Group=k2
+RuntimeDirectory=disrupting-alpha
+RuntimeDirectoryMode=0750
 WorkingDirectory=/home/k2/ut-bot-lumibot
 EnvironmentFile=/etc/systemd/system/da-doppler.conf
 

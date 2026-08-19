@@ -18,6 +18,7 @@ import requests
 import pytz
 
 import adapters.supabase_logger as db
+from src.trading.execution_lease import require_execution_lease
 
 logger = logging.getLogger("options_executor")
 logger.setLevel(logging.INFO)
@@ -355,6 +356,7 @@ def get_option_quote(contract_symbol: str) -> dict:
 
 def _place_order(payload: dict) -> dict:
     """Submit an order to Alpaca and return the response JSON."""
+    require_execution_lease("legacy_submit_order")
     url = f"{_base_url()}/v2/orders"
     resp = requests.post(url, json=payload, headers=_headers(), timeout=15)
     resp.raise_for_status()
@@ -366,6 +368,7 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
     Monitor an order and 'chase' the market if not filled.
     Updates the limit price to the current bid (sell) or ask (buy).
     """
+    require_execution_lease("legacy_replace_order")
     current_order_id = order_id
     chase_count = 0
 
@@ -400,6 +403,7 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
                              contract_symbol, old_limit, new_limit, chase_count, max_chases)
                 
                 patch_url = f"{_base_url()}/v2/orders/{current_order_id}"
+                require_execution_lease("legacy_replace_order")
                 patch_resp = requests.patch(patch_url, json={"limit_price": str(new_limit)}, headers=_headers(), timeout=15)
                 
                 if patch_resp.status_code == 200:
@@ -509,6 +513,7 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1,
 
     Returns the filled order dict, or None on failure.
     """
+    require_execution_lease("legacy_buy_to_open")
     global open_position, _last_rejection_time
 
     # ── Guard: no double entry ───────────────────────────────────────────
@@ -669,6 +674,7 @@ def sell_to_close(exit_reason: str = "signal") -> dict | None:
 
     Returns the filled order dict, or None on failure.
     """
+    require_execution_lease("legacy_sell_to_close")
     global open_position
 
     if not open_position:
