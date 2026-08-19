@@ -23,7 +23,7 @@
 | Kill switch | Partial | No | No | No | local file, cloud poll, Telegram/dashboard controls | unify persistence/audit; manage/flatten and confirm flat |
 | EOD flatten | Partial | No | No | No | new retry helper/calendar; legacy submit-only 15:55 | cancel openings, terminal status, alert and early-close drills |
 | Restart recovery | Partial | No | No | No | broker reads occur after loop start | pending-entry/exit/partial-fill scenario suite |
-| Duplicate prevention | Partial | No | No | No | lock in new executor only | account-scoped lease across all launch/control paths |
+| Duplicate prevention | Yes | Yes (`tests/test_execution_lease.py`) | No | Partial | account/mode kernel lease plus broker guards; default legacy launchers disabled | edge systemd/Docker runtime drill |
 | Account/exposure | Partial | No | No | No | broker account/positions available; separate fallbacks | unified freshness-tagged snapshot and account-wide exposure |
 | Option quote validity | Partial | No | No | Partial | new adapter validates bid/ask/spread/age/contract | prove emergency exits bypass entry checks |
 | Health/readiness | Partial | No | No | No | legacy health + richer runtime JSON disconnected | canonical component/state readiness API |

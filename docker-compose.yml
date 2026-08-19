@@ -10,7 +10,7 @@ services:
     # scripts/start_all.sh has always excluded it; this makes that explicit.
     # To run the containerised bot deliberately (on a host with no systemd unit):
     #   docker compose --profile standalone up -d trading-bot
-    profiles: ["standalone"]
+    profiles: ["deprecated-legacy-trading"]
     build: .
     container_name: ut-bot-lumibot
     restart: always
@@ -120,5 +120,4 @@ services:
       resources:
         limits:
           memory: 2G
-
 

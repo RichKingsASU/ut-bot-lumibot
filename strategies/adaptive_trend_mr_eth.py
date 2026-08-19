@@ -213,6 +213,8 @@ class AdaptiveTrendMR(Strategy):
             if new_trail > self._trail_stop:
                 self._trail_stop = new_trail
             if price <= self._trail_stop:
+                from src.trading.execution_lease import require_execution_lease
+                require_execution_lease("legacy_crypto_close")
                 self.sell_all()
                 self._reset_state()
         elif self._position_side == "short":
@@ -220,6 +222,8 @@ class AdaptiveTrendMR(Strategy):
             if new_trail < self._trail_stop:
                 self._trail_stop = new_trail
             if price >= self._trail_stop:
+                from src.trading.execution_lease import require_execution_lease
+                require_execution_lease("legacy_crypto_close")
                 self.sell_all()
                 self._reset_state()
 
@@ -232,6 +236,8 @@ class AdaptiveTrendMR(Strategy):
         return round(min(risk_qty, kelly_qty), 6)
 
     def _submit_entry(self, side, qty, price, sl, tp, tag):
+        from src.trading.execution_lease import require_execution_lease
+        require_execution_lease("legacy_crypto_submit")
         order = self.create_order(
             self.asset, quantity=qty, side=side,
             type="market", quote=self.quote_asset

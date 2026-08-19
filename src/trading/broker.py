@@ -6,6 +6,11 @@ import requests
 import pytz
 import dateutil.parser
 
+try:
+    from .execution_lease import require_execution_lease
+except ImportError:  # Direct canonical invocation: python src/trading/executor.py
+    from execution_lease import require_execution_lease
+
 logger = logging.getLogger("broker")
 ET = pytz.timezone("America/New_York")
 
@@ -96,6 +101,7 @@ def get_active_orders(underlying: str) -> dict:
         return {"valid": False, "orders": []}
 
 def cancel_all_orders(underlying: str = None):
+    require_execution_lease("cancel_all_orders")
     try:
         url = f"{_base_url()}/v2/orders"
         resp = requests.delete(url, headers=_headers(), timeout=10)
@@ -231,12 +237,14 @@ def get_option_quote(contract_symbol: str) -> dict:
         return {"valid": False, "bid": 0, "ask": 0, "mid": 0, "reason": "api_error"}
 
 def _place_order(payload: dict) -> dict:
+    require_execution_lease("submit_order")
     url = f"{_base_url()}/v2/orders"
     resp = requests.post(url, json=payload, headers=_headers(), timeout=15)
     resp.raise_for_status()
     return resp.json()
 
 def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, chase_interval: int = 10) -> dict:
+    require_execution_lease("replace_order")
     current_order_id = order_id
     chase_count = 0
     while chase_count <= max_chases:
@@ -273,6 +281,7 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
                 chase_count += 1
                 logger.info(f"Chasing market for {contract_symbol}: limit {old_limit} -> {new_limit}")
                 patch_url = f"{_base_url()}/v2/orders/{current_order_id}"
+                require_execution_lease("replace_order")
                 patch_resp = requests.patch(patch_url, json={"limit_price": str(new_limit)}, headers=_headers(), timeout=15)
                 if patch_resp.status_code == 200:
                     current_order_id = patch_resp.json().get("id")
@@ -283,6 +292,7 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
     return filled_order
 
 def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
+    require_execution_lease("buy_to_open")
     global _last_rejection_time
     if (time.time() - _last_rejection_time) < REJECTION_COOLDOWN_SECONDS:
         return None
@@ -320,6 +330,7 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
         return None
 
 def sell_to_close(contract_symbol: str, qty: int) -> dict | None:
+    require_execution_lease("sell_to_close")
     try:
         quote = get_option_quote(contract_symbol)
         bid_price = quote["bid"]

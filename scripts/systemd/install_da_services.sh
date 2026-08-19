@@ -11,7 +11,8 @@ set -euo pipefail
 REPO_DIR="/home/k2/ut-bot-lumibot"
 UNIT_SRC="${REPO_DIR}/scripts/systemd"
 UNIT_DST="/etc/systemd/system"
-SERVICES=(da-trading-bot da-agents da-crypto-bot da-watchdog)
+# da-crypto-bot is a second Alpaca writer and is intentionally not enabled.
+SERVICES=(da-trading-bot da-agents da-watchdog)
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "ERROR: must run as root (use sudo)." >&2

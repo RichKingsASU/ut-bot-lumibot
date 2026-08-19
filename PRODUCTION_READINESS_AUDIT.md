@@ -102,9 +102,9 @@ No replace path exists outside broker limit-price polling/PATCH in both option a
 
 ## 5. P0 findings
 
-1. **P0 — duplicate executor cannot be excluded.** Two systemd generations launch different options executors; Docker dev/standalone and manual invocation add paths. Only `src/trading/executor.py` takes `/run/disrupting-alpha/ut-bot.lock`; `main.py`, Lumibot, crypto, and dashboard flatten do not share an account-scoped lease.
+1. **P0 — duplicate executor cannot be excluded. [FIXED IN CODE; TESTED; NOT RUNTIME VALIDATED.]** `src/trading/executor.py` is canonical and acquires an Alpaca account-alias/paper-live `flock` before startup. Both options adapters deny mutations without current-PID authority; dashboard mutation is retired, Docker is explicit-profile only with the host lock mounted, and the installer no longer enables crypto. `tests/test_execution_lease.py` proves duplicate/manual denial, zero mutation HTTP calls, crash/stale-file recovery, strict modes, and read-only access. Edge systemd/Docker execution remains unvalidated here.
 2. **P0 — legacy EOD close is not a flat state transition.** `UTBotStrategy` submits `sell_to_close` once and returns; its daily sleep cadence and static 15:55 clock are incompatible with robust intraday supervision. It does not cancel openings, retry, reconcile order states, or confirm flat. The new executor loop is closer but has no independent alert/persistence after ten failures.
-3. **P0 — canonical deployment is ambiguous.** The older service explicitly runs `main.py`; the newer service runs the safer executor. An operator can enable both under distinct service names.
+3. **P0 — canonical deployment is ambiguous. [FIXED IN CODE; TESTED; NOT RUNTIME VALIDATED.]** Both maintained trading service definitions now invoke `src/trading/executor.py`; the canonical installer installs only `da-trading-bot`, legacy/crypto writers are removed from default startup, and any alternate process converges on the same account lease. Host unit enablement has not been inspected or changed from this environment.
 4. **P0 — lifecycle/restart evidence is incomplete.** No executable scenario proof exists for pending entry/exit, partial fill across restart, rejection/cancel/replaced, or local-flat/broker-open. Saving a signal before successful fill can suppress a needed retry while partial fills can be counted as complete trade attempts.
 5. **P0 — invalid live mode strings fail toward live intent.** Exact-`true` parsing means malformed values choose the non-paper branch. The new broker's second acknowledgement prevents live routing, but the whole repository does not apply that guard consistently (Lumibot/config and other consumers remain).
 6. **P0 — invalid market/quote data is not uniformly fail-closed.** The new signal/quote path has explicit validity, but legacy and agent code still maps missing values to `0`, `50`, neutral, empty collections, or defaults. Existing-position management also depends on signal evaluation and reconstructed local entry metadata.
@@ -226,7 +226,7 @@ Estimated repository model: tick rows can reach millions/day per liquid symbol; 
 | partial fill | broker status partial | opening order gate | quantity/restart unsafe | polling only | logs | correlation loss |
 | pending-order restart | open-order query | new path blocks duplicate | incomplete recovery | manual/broker polling | logs | metadata loss |
 | EOD close rejection | new helper retries | yes | partial | ten retries | error log, alert unproven | state retained at broker |
-| duplicate executor | lock only one path | no | conflicting | manual stop | weak | duplicate records/orders |
+| duplicate executor | account/mode kernel lease at broker boundary | yes (source tests) | only lease owner | kernel release/restart | structured critical events | edge runtime drill pending |
 
 ## 12. False-green matrix (highest financial risk first)
 
