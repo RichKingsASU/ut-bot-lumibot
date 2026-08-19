@@ -134,6 +134,15 @@ class AlpacaRESTBroker:
     def orders(self): return get_relevant_orders()
     def order_by_client_id(self, value): return get_order_by_client_id(value)
     def submit(self, payload): return _place_order(payload)
+    def cancel(self, order_id):
+        require_execution_lease("cancel_order")
+        resp = requests.delete(f"{_base_url()}/v2/orders/{order_id}", headers=_headers(), timeout=10)
+        resp.raise_for_status()
+        return resp
+    def order(self, order_id):
+        resp = requests.get(f"{_base_url()}/v2/orders/{order_id}", headers=_headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
 
 def cancel_all_orders(underlying: str = None):
     require_execution_lease("cancel_all_orders")

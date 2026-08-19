@@ -20,8 +20,11 @@
 | Cancel | Yes | No | No | No | account-wide DELETE in adapters/dashboard | scope/audit, confirm terminal state, recovery |
 | Replace | Partial | No | No | No | limit repricing PATCH loops | pending_replace/replaced/rejection/idempotency tests |
 | Reconciliation | Yes | Yes (`test_broker_reconciliation.py`) | No | Partial | account/position/recent-order startup reconstruction; query failures are unknown | edge paper drill |
-| Kill switch | Partial | No | No | No | local file, cloud poll, Telegram/dashboard controls | unify persistence/audit; manage/flatten and confirm flat |
-| EOD flatten | Partial | No | No | No | new retry helper/calendar; legacy submit-only 15:55 | cancel openings, terminal status, alert and early-close drills |
+| Kill switch | Source Pass | Yes | Yes | No | durable/runtime state machine; broker-confirmed and cross-process tests | edge runtime not validated |
+| EOD flatten | Source Pass | Yes | Yes | No | same verified engine; normal/early-close calendar tests | edge runtime not validated |
+| Broker-flat verification | Source Pass | Yes | Yes | No | zero broker quantity plus no prohibited opening orders | paper edge drill required |
+| Market calendar | Source Pass | Yes | N/A | No | NYSE session/holiday/early-close fail-closed tests | edge timezone validation required |
+| Restart kill recovery | Source Pass | Yes | Yes | No | durable state reload across new Python processes | machine reboot not executed |
 | Restart recovery | Yes | Yes (unit + spawned-process test) | No | Partial | pending entry/exit, partial fill and durable cache reload scenarios | edge paper drill |
 | Duplicate prevention | Yes | Yes (`test_execution_lease.py`, `test_broker_reconciliation.py`) | No | Partial | account lease plus deterministic consumed-signal/client-ID boundary | edge systemd/Docker runtime drill |
 | Account/exposure | Partial | No | No | No | broker account/positions available; separate fallbacks | unified freshness-tagged snapshot and account-wide exposure |

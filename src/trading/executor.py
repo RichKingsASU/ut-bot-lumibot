@@ -6,7 +6,6 @@ import pytz
 import json
 
 import pandas_market_calendars as mcal
-import pandas as pd
 
 from broker import (
     get_open_position, get_daily_realized_pnl, get_daily_trade_count,
@@ -20,6 +19,7 @@ from execution_lease import (
     ExecutionLease, ExecutionLeaseError, execution_lease_state,
     install_execution_lease,
 )
+from kill_flatten import KillFlattenWorkflow, KillReason, KillState, KillStore, session_times
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("executor")
@@ -68,46 +68,6 @@ def save_last_signal(date_str, direction):
     except Exception as e:
         logger.error(f"Failed to save last signal: {e}")
 
-def get_market_times():
-    nyse = mcal.get_calendar('NYSE')
-    now = datetime.now(ET)
-    schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
-    if schedule.empty:
-        return None
-        
-    market_close = schedule.iloc[0]['market_close'].astimezone(ET)
-    return market_close
-
-def verify_and_flatten(symbol: str, supervisor):
-    logger.info("EOD Flatten started. Entering verification loop.")
-    max_retries = 10
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        logger.info(f"EOD Flatten Check {retry_count+1}/{max_retries}")
-        # 1. Cancel active orders
-        cancel_all_orders(symbol)
-        time.sleep(1)
-        
-        # 2. Check position
-        pos_result = get_open_position(symbol)
-        position = pos_result.get("position")
-        if not position and pos_result.get("valid"):
-            logger.info("EOD_FLATTEN_COMPLETE. Position is flat.")
-            return True
-            
-        # 3. Submit close
-        if position:
-            logger.info(f"Position found during flatten. Submitting STC for {position['qty']} {position['contract_symbol']}")
-            sell_to_close(position["contract_symbol"], position["qty"])
-        
-        # 4. Wait
-        time.sleep(5)
-        retry_count += 1
-        
-    logger.error("CRITICAL: EOD_FLATTEN_FAILED. Max retries exceeded.")
-    return False
-
 def main_loop():
     lease = acquire_execution_authority()
     
@@ -125,9 +85,14 @@ def main_loop():
     
     supervisor = RiskSupervisor(broker=None, config=config)
     symbol = config["SYMBOL"]
-    reconciler = BrokerReconciler(AlpacaRESTBroker(), DurableState(BROKER_STATE_FILE),
+    safety_broker = AlpacaRESTBroker()
+    reconciler = BrokerReconciler(safety_broker, DurableState(BROKER_STATE_FILE),
                                   lambda: lease.owned,
                                   "paper" if os.getenv("ALPACA_IS_PAPER", "true").lower() == "true" else "live")
+    kill = KillFlattenWorkflow(safety_broker, KillStore(),
+        max_attempts=int(os.getenv("FLATTEN_MAX_ATTEMPTS", "5")),
+        retry_seconds=float(os.getenv("FLATTEN_RETRY_SECONDS", "2")))
+    kill.recover()
 
     # Startup is not readiness: REST account, position and order reconstruction
     # must complete after lease acquisition and before an entry can be considered.
@@ -177,45 +142,46 @@ def main_loop():
                 entry_allowed = False
                 entry_block_reason = "ACTIVE_OPENING_ORDER"
             
-            # Local Kill Switch
-            if supervisor.is_kill_switch_active():
-                logger.error("KILL_SWITCH_ACTIVATED")
-                cancel_all_orders(symbol)
-                if position:
-                    sell_to_close(position["contract_symbol"], position["qty"])
-                write_runtime_state({
-                    "process_alive": True, "kill_switch_active": True, "entry_allowed": False, 
-                    "entry_block_reason": "KILL_SWITCH", **execution_lease_state()
-                })
-                continue # Block all further processing
-                
             # EOD Flatten / Market Hours
-            market_close = get_market_times()
             now_et = datetime.now(ET)
-            eod_flatten_triggered = False
-            
-            if market_close:
-                flatten_time = market_close - pd.Timedelta(minutes=config["FLATTEN_MINUTES"])
-                entry_cutoff_time = market_close - pd.Timedelta(minutes=config["ENTRY_CUTOFF_MINUTES"])
-                
-                if now_et >= flatten_time:
-                    eod_flatten_triggered = True
+            market = None
+            try:
+                market = session_times(mcal.get_calendar('NYSE'), now_et,
+                    config["ENTRY_CUTOFF_MINUTES"], config["FLATTEN_MINUTES"])
+            except Exception as exc:
+                logger.critical("MARKET_CALENDAR_UNAVAILABLE: %s", exc)
+                entry_allowed = False
+                entry_block_reason = "MARKET_CALENDAR_UNAVAILABLE"
+
+            if market:
+                if now_et >= market.flatten_time:
                     entry_allowed = False
                     entry_block_reason = "EOD_FLATTEN"
-                elif now_et >= entry_cutoff_time:
+                    if not kill.store.active:
+                        logger.warning("EOD_CUTOFF_REACHED")
+                        kill.request(KillReason.EOD_FLATTEN)
+                elif now_et >= market.entry_cutoff:
                     entry_allowed = False
                     entry_block_reason = "EOD_ENTRY_CUTOFF"
             else:
-                # Market closed today
                 entry_allowed = False
-                entry_block_reason = "MARKET_CLOSED"
-                
-            if eod_flatten_triggered and (position or active_orders):
-                logger.info("EOD_FLATTEN_STARTED")
-                success = verify_and_flatten(symbol, supervisor)
+                entry_block_reason = entry_block_reason or "MARKET_CLOSED"
+
+            # A cloud command may only materialize this local request; disappearance
+            # of the cloud cannot clear it. The local marker is authoritative.
+            if supervisor.is_kill_switch_active() and not kill.store.durable.exists():
+                kill.request(KillReason.EMERGENCY_KILL)
+            if kill.store.active:
+                result = kill.run()
+                try: kill.process_enable_request()
+                except Exception as exc: logger.error("ENABLE_REQUEST_DENIED: %s", exc)
                 write_runtime_state({
-                    "process_alive": True, "kill_switch_active": False, "entry_allowed": False, 
-                    "eod_flatten_required": not success, **execution_lease_state()
+                    "process_alive": True, "entry_allowed": False,
+                    "entry_block_reason": "KILL_ACTIVE", **execution_lease_state(),
+                    **kill.health(),
+                    "market_session_close": market.close.isoformat() if market else None,
+                    "entry_cutoff": market.entry_cutoff.isoformat() if market else None,
+                    "flatten_time": market.flatten_time.isoformat() if market else None,
                 })
                 continue
                 
@@ -283,11 +249,14 @@ def main_loop():
                 "market_data_valid": sig_snapshot.valid,
                 "position_open": position is not None,
                 "working_orders": len(active_orders),
-                "kill_switch_active": False,
+                **kill.health(),
                 **execution_lease_state(),
                 "entry_allowed": entry_allowed,
                 "entry_block_reason": entry_block_reason,
                 "eod_flatten_required": False,
+                "market_session_close": market.close.isoformat() if market else None,
+                "entry_cutoff": market.entry_cutoff.isoformat() if market else None,
+                "flatten_time": market.flatten_time.isoformat() if market else None,
                 "last_broker_sync": datetime.now(ET).isoformat(),
                 "last_signal": signal,
                 "last_consumed_signal": last_sig,
