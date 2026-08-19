@@ -20,6 +20,7 @@ from execution_lease import (
     install_execution_lease,
 )
 from kill_flatten import KillFlattenWorkflow, KillReason, KillState, KillStore, session_times
+from component_health import ComponentReporter, Criticality, HealthRegistry, aggregate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("executor")
@@ -70,6 +71,9 @@ def save_last_signal(date_str, direction):
 
 def main_loop():
     lease = acquire_execution_authority()
+    health_registry = HealthRegistry()
+    health = ComponentReporter("trading_executor", Criticality.TIER_0, registry=health_registry,
+                               expected_interval_seconds=5, max_staleness_seconds=15)
     
     # Configuration
     config = {
@@ -106,6 +110,8 @@ def main_loop():
         try:
             # 1. RISK SUPERVISOR CADENCE (Every 5 seconds)
             time.sleep(5)
+            iteration_id = f"executor-{health.record.instance_id}-{health.record.work_count + 1}"
+            health.work_started(iteration_id, lease_owned=lease.owned)
             
             # Authoritative State Sync
             pos_result = get_open_position(symbol)
@@ -141,6 +147,15 @@ def main_loop():
             if has_opening_orders:
                 entry_allowed = False
                 entry_block_reason = "ACTIVE_OPENING_ORDER"
+
+            # Component readiness gates new risk only. It never gates the kill,
+            # flatten, reconciliation, or position-management paths below.
+            required = {name.strip() for name in os.getenv("DA_REQUIRED_COMPONENTS", "run_agents").split(",") if name.strip()}
+            component_state = aggregate(health_registry.read_all(), required)
+            if not component_state["entry_allowed"]:
+                entry_allowed = False
+                entry_block_reason = "COMPONENT_HEALTH:" + ",".join(component_state["reasons"])
+                logger.error("ENTRY_BLOCKED_COMPONENT_HEALTH reasons=%s", component_state["reasons"])
             
             # EOD Flatten / Market Hours
             now_et = datetime.now(ET)
@@ -264,9 +279,16 @@ def main_loop():
                 "last_signal": signal,
                 "last_consumed_signal": last_sig,
                 **reconciler.health(),
+                "component_health": component_state,
             })
+            health.work_succeeded(iteration_id, broker_reconciliation_valid=reconciliation.valid,
+                                  position_management_success=True, lease_owned=lease.owned,
+                                  broker_capabilities={"account_rest": True, "positions_rest": pos_result.get("valid", False),
+                                                       "orders_rest": orders_result.get("valid", False)})
             
         except Exception as e:
+            if 'health' in locals():
+                health.work_failed(str(e))
             logger.error(f"Error in main loop: {e}", exc_info=True)
             time.sleep(5) # Prevent tight crash loop
             

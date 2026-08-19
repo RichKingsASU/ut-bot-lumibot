@@ -1,13 +1,28 @@
 import os
 import sys
 import subprocess
-import httpx
+import importlib
 from datetime import datetime, timezone, timedelta
-from dotenv import load_dotenv
 
-# Ensure we can import send_telegram
+# Ensure the operational-only Telegram dependency is loaded only when alerting.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from send_telegram import send_message
+
+
+class _LazyHttpx:
+    """Keep local functional-health unit tests independent of cloud extras."""
+    def __getattr__(self, name):
+        return getattr(importlib.import_module("httpx"), name)
+
+
+httpx = _LazyHttpx()
+
+
+def load_dotenv(*args, **kwargs):
+    return importlib.import_module("dotenv").load_dotenv(*args, **kwargs)
+
+
+def send_message(message):
+    return importlib.import_module("send_telegram").send_message(message)
 
 # ── Staleness thresholds (named constants) ───────────────────────────────────
 AGENT_SIGNALS_STALE_MIN = 30   # Check 1: agent_signals freshness
@@ -216,9 +231,28 @@ def run_check7():
 
     return (alerts, notes)
 
+
+def functional_health_alerts(registry=None, *, required=None, alive=None):
+    """Safety-authoritative local useful-work check.
+
+    Systemd/tmux/container state remains diagnostic only: it can make health
+    worse, but it can never turn stale functional evidence green.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from src.trading.component_health import HealthRegistry, aggregate, process_alive
+    registry = registry or HealthRegistry()
+    required = required or {"trading_executor", "run_agents"}
+    result = aggregate(registry.read_all(), set(required), alive=alive or process_alive)
+    return ([f"CRITICAL: WATCHDOG_FALSE_GREEN_DETECTED {reason}" for reason in result["reasons"]], result)
+
 def main():
     verbose = "--verbose" in sys.argv
     alerts = []
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from src.trading.component_health import ComponentReporter, Criticality
+    watchdog_health = ComponentReporter("watchdog", Criticality.TIER_2,
+        expected_interval_seconds=1800, max_staleness_seconds=2400)
+    watchdog_health.work_started("periodic-audit")
     
     # Check 1
     c1 = run_check1()
@@ -268,6 +302,13 @@ def main():
             print(f"  {note}")
     alerts.extend(c7_alerts)
 
+    # Check 8: local useful-work proof. This runs independently of cloud
+    # telemetry and is the false-green authority for active trading.
+    c8, aggregate_health = functional_health_alerts()
+    if verbose:
+        print(f"Check 8 (Useful Work): {aggregate_health['status']}")
+    alerts.extend(c8)
+
     if alerts:
         # Get ET timezone time formatted as HH:MM
         utc_now = datetime.now(timezone.utc)
@@ -289,6 +330,9 @@ def main():
         else:
             # Silent output as requested by prompt
             pass
+    watchdog_health.work_succeeded("periodic-audit", exit_status=0,
+        alert_count=len(alerts), watchdog_last_run=datetime.now(timezone.utc).isoformat(),
+        watchdog_last_success=datetime.now(timezone.utc).isoformat())
 
 if __name__ == "__main__":
     main()

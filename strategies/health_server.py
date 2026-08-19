@@ -5,6 +5,7 @@ from flask import Flask, jsonify
 import psutil
 from strategies.options_executor import has_open_position
 from config import ALPACA_CONFIG, ALPACA_BASE_URL
+from src.trading.component_health import HealthRegistry, aggregate
 
 logger = logging.getLogger("health_server")
 app = Flask(__name__)
@@ -21,18 +22,22 @@ def add_cors_headers(response):
 
 @app.route("/health")
 def health():
-    """Consolidated health report for the dashboard."""
+    """Useful-work aggregate; process/resource metrics cannot make it green."""
     broker_ok = bool(os.getenv("ALPACA_API_KEY")) and bool(os.getenv("ALPACA_API_SECRET"))
-    
-    return jsonify({
-        "status": "ready" if (_is_ready and broker_ok) else "starting",
+    required = {name.strip() for name in os.getenv(
+        "DA_REQUIRED_COMPONENTS", "trading_executor,run_agents").split(",") if name.strip()}
+    functional = aggregate(HealthRegistry().read_all(), required)
+    payload = {
+        **functional,
         "cpu": psutil.cpu_percent(),
         "memory": psutil.virtual_memory().percent,
-        "websocket": "connected" if _is_ready else "disconnected", # Simplified for now
+        "process_ready": _is_ready,
+        "broker_credentials_configured": broker_ok,
         "paper_mode": ALPACA_CONFIG.get("PAPER", True),
         "has_open_position": has_open_position(),
         "uptime": int(psutil.Process().create_time())
-    }), 200
+    }
+    return jsonify(payload), 200 if functional["entry_allowed"] else 503
 
 @app.route("/ready")
 def ready():

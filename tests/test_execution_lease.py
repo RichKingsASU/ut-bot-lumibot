@@ -104,10 +104,25 @@ def test_stale_lockfile_does_not_block_after_crash(tmp_path):
 
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
 def test_kernel_releases_after_termination_signal(tmp_path, signum):
-    ready, never = multiprocessing.Event(), multiprocessing.Event()
-    proc = multiprocessing.Process(target=_hold_lease, args=(tmp_path, ready, never))
-    proc.start(); assert ready.wait(5); os.kill(proc.pid, signum); proc.join(5)
-    assert proc.exitcode != 0
+    # Use a fresh interpreter rather than multiprocessing's pytest-inherited
+    # signal machinery. READY is a causal synchronization point, not a sleep.
+    code = f"""
+import os, signal
+from pathlib import Path
+from src.trading.execution_lease import ExecutionLease
+lease = ExecutionLease('acct-a', 'paper', 'child', Path({str(tmp_path)!r})).acquire()
+def terminate(signum, frame): os._exit(128 + signum)
+signal.signal(signal.SIGINT, terminate); signal.signal(signal.SIGTERM, terminate)
+if hasattr(signal, 'pthread_sigmask'):
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {{signal.SIGINT, signal.SIGTERM}})
+print('READY', flush=True)
+while True: signal.pause()
+"""
+    proc = subprocess.Popen([sys.executable, "-c", code], cwd=Path(__file__).parents[1],
+                            stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "READY"
+    os.kill(proc.pid, signum)
+    assert proc.wait(timeout=5) == 128 + signum
     with ExecutionLease("acct-a", "paper", runtime_dir=tmp_path) as lease:
         assert lease.owned
 

@@ -296,6 +296,9 @@ async def main() -> None:
     logger.info(startup_message)
 
     cycle_count = 0
+    health = component_heartbeat.reporter(
+        "run_agents", tier=1, expected_interval_seconds=_CYCLE_INTERVAL_SECONDS,
+        max_staleness_seconds=_CYCLE_INTERVAL_SECONDS + 600)
     morning_sent = False
     afternoon_sent = False
     dma_evaluated = False
@@ -326,6 +329,9 @@ async def main() -> None:
             afternoon_sent = True
             
         cycle_count += 1
+        cycle_id = f"agents-{health.record.instance_id}-{cycle_count}"
+        health.work_started(cycle_id, cycle_id=cycle_id, stage="market→signal→agents→risk→decision")
+        logger.info("PIPELINE_CYCLE_STARTED cycle_id=%s", cycle_id)
         logger.info(f"[RunAgents] ── Starting cycle #{cycle_count} (ET: {now_et.strftime('%H:%M:%S')}) ──")
         
         try:
@@ -338,12 +344,17 @@ async def main() -> None:
                 status="ok",
                 last_successful_cycle_id=cycle_count,
             )
+            logger.info("PIPELINE_CYCLE_COMPLETED cycle_id=%s", cycle_id)
         except (httpx.ConnectError, httpx.TimeoutException,
                 ConnectionResetError, OSError) as e:
+            health.work_failed(f"network: {type(e).__name__}", cycle_id=cycle_id)
+            logger.error("PIPELINE_CYCLE_FAILED cycle_id=%s reason=%s", cycle_id, type(e).__name__)
             logger.warning(f"Network error: {e} — retrying in 60s")
             await asyncio.sleep(60)
             continue
         except Exception as e:
+            health.work_failed(str(e), cycle_id=cycle_id)
+            logger.error("PIPELINE_CYCLE_FAILED cycle_id=%s reason=%s", cycle_id, type(e).__name__)
             logger.error(f"Cycle error: {e} — retrying in 30s")
             await asyncio.sleep(30)
             continue
