@@ -1,76 +1,81 @@
-# Production Remediation Plan
+# Disrupting Alpha Production Remediation Plan
 
-This plan converts the findings in `PRODUCTION_READINESS_AUDIT.md` into release-gated engineering work. Tasks are ordered by dependency, not calendar duration. No task is complete until its validation artifact is attached to the release evidence bundle.
+> **This audit applies to the Disrupting Alpha algorithmic trading architecture. Django is not an architectural requirement.**
 
-## Phase 1 — Production blockers
+**Audit base:** `96e157aa6399307c590ca56a3d05fd9cecbce929` · **Date:** 2026-08-19 UTC · **Starting verdict:** NOT READY / 41%.
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-001 | P0 | Resolve approved-stack conflict | Current system is React/Flask/Supabase/Python 3.11, not Django/Bootstrap/psycopg/Python 3.13 | whole repository, requirements, Docker, CI, dashboard | Architecture Decision Record signed by Forrest; either formally approve exception or define/execute migration with acceptance parity | ADR approval plus stack inventory CI assertion | 1 |
-| PR-002 | P0 | Create deterministic clean build | Full tests/build cannot start; Python requirements are broad, unpinned, and malformed | `requirements*.txt`, dashboard lockfile, Dockerfiles, CI | standardize Python 3.13.x and Node; repair encoding; lock hashes/versions; separate runtime/dev/research dependencies | clean ephemeral build installs with no undeclared dependency and produces immutable artifacts | 1, 6, 8 |
-| PR-003 | P0 | Establish authoritative PostgreSQL 17 schema | Supabase SQL is not proven on PG17 and schema sources diverge | `supabase/migrations`, `dashboard/supabase`, `schema_snapshot.sql`, adapters | nominate one migration chain; add clean/upgrade/dirty-state migration tests and schema drift check | migrate empty and production-shaped clone on PG17; compare schema; zero drift | 2 |
-| PR-004 | P0 | Prove trading safety lifecycle | Real money could be exposed to stale/duplicate/partial orders or failed exits | `main.py`, `strategies/ut_bot.py`, `strategies/options_executor.py`, risk engines/watchdogs | define state machine and fail-closed invariants for paper/live, partial fills, cancel/replace, restart, outage, loss cap, EOD close, kill switch | staged broker sandbox scenarios with persisted evidence; independent reviewer sign-off | 3, 5, 7 |
-| PR-005 | P0 | Implement Forrest identity and RBAC | One generic authenticated role/shared admin key is inadequate | dashboard auth/client, Netlify functions, Supabase RLS | define viewer/operator/trader/admin roles, MFA, server-side claims, least privilege, deprovisioning, break-glass audit | authorization matrix automated tests and manual privilege-escalation review | 4, 5 |
-| PR-006 | P0 | Build backup/restore capability | No recovery evidence; data/state loss cannot be accepted | Supabase/Postgres, QuestDB, Qdrant, config/state files | define assets, encrypted backups, retention, PITR where needed, RPO/RTO, restore order, integrity checks | destructive staging restore drill meets approved RPO/RTO | 2, 9 |
+This plan deliberately does not migrate frameworks, tune UT Bot, expand AI features, switch live services, or move databases during the audit. Every gate requires executable evidence; a merged implementation without a receipt does not close a finding.
 
-## Phase 2 — Production hardening
+## Phase 0 — P0 closure (trading safety only)
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-101 | P1 | Close secret incident and strengthen scanning | Risk register records prior DB credential disclosure | secret stores, Git history, workflows, migration risk register | rotate affected credentials, revoke old values, document attestation; add history-capable secret scanner | old credential rejected; scanner passes full history; owner attests rotation | 5 |
-| PR-102 | P1 | Replace browser-held admin key | localStorage shared secret is exposed to XSS/local compromise | `dashboard/src/lib/apiClient.ts`, Settings, Netlify handlers | use authenticated server session/JWT claims and short-lived authorization; remove localStorage secret | browser storage inspection and XSS threat test show no privileged reusable secret | 4, 5 |
-| PR-103 | P1 | Secure service network | Compose publishes unauthenticated data/messaging endpoints | `docker-compose*.yml`, nginx/network/firewall docs | bind privately, authenticate, encrypt where supported, segment networks, firewall host | external port scan blocked; authorized internal clients pass | 5, 8 |
-| PR-104 | P1 | Harden containers | root, mutable tags, runtime installs and bind mounts undermine integrity | Dockerfiles, Compose | multi-stage immutable builds, non-root UID, read-only FS, capabilities drop, pinned digests, health/resource limits | image scan, runtime security assertions, restart/limit test | 5, 8 |
-| PR-105 | P1 | Typed environment profiles | configuration is scattered and some unsafe values only warn | `config.py`, validator, workers, `.env.example`, Netlify config | explicit dev/test/UAT/prod schemas; fail closed on weak/mismatched live config; eliminate runtime ambiguity | table-driven config tests for missing/invalid/cross-environment cases | 1, 5, 8 |
-| PR-106 | P1 | Correct readiness and failure semantics | presence of credentials is not connectivity; fatal loop can exit successfully | health server, `main.py`, watchers | dependency probes with bounded timeouts; degraded/not-ready status; non-zero fatal exit; avoid leaking internals | fault injection for broker/DB/ws/alert failures and orchestrator response | 3, 10 |
-| PR-107 | P1 | Guarantee data write integrity | REST writes and local state allow partial/duplicate/concurrent inconsistency | adapters, execution, Supabase functions/migrations, local state | database constraints, idempotency keys, atomic RPC/transactions, optimistic locking, durable dedup state | concurrency/duplicate/crash tests verify exactly-once business outcomes | 2, 3 |
-| PR-108 | P2 | Data governance | retention, PII, timezone, audit standards are undefined | schemas, logs, docs | classify fields, approve retention/deletion, UTC storage/display rules, immutable audit events | governance review plus automated retention/audit checks | 2, 5, 13 |
+1. **Declare one canonical options executor.** Inventory enabled host units, cron, tmux, Compose profiles and manual wrappers. Disable/retire competing launch definitions only through a separately reviewed deployment change. Use one account+strategy scoped lease acquired before any broker client is constructed; make all alternate executors fail closed. Test two processes and two different launch mechanisms.
+2. **Centralize fail-closed broker mode resolution.** Accept only typed `true|false`; malformed/unset production settings must choose paper or abort, never infer live. Live requires independent explicit acknowledgement and endpoint allow-list. Use the resolver for Lumibot, both REST adapters, dashboard flatten, scripts and tests. Mock every money-moving route and prove `ALPACA_IS_PAPER=true` never reaches `api.alpaca.markets` despite stale base URLs.
+3. **Build a broker-authoritative lifecycle state machine.** Assign stable `client_order_id`/correlation IDs; persist intended quantity, filled quantity, remaining quantity, status and parent signal before submit. Model all Alpaca states (`new`, `accepted`, `pending_new`, `partially_filled`, `filled`, `canceled`, `expired`, `rejected`, `pending_cancel`, `pending_replace`, `replaced`). Retries must be idempotent.
+4. **Reconcile before entry permission.** At startup and continuously fetch broker positions, all working/recent orders and fills. Resolve local-flat/broker-open, local-open/broker-flat, pending entry/exit and partial fill before entry. Unknown state means `BLOCK_ENTRY`, while deterministic existing-position exit remains available.
+5. **Make kill and EOD persistent workflows.** Transition: disable entries → cancel opening orders → query broker → submit close for actual filled quantity → reconcile/retry → verify broker flat → emit acknowledged critical alert. Persist active kill across restart. Use Alpaca calendar/early closes. Failure must remain red and page an operator.
+6. **Separate safety states.** Implement deterministic `BLOCK_ENTRY`, `MANAGE_EXISTING`, `EMERGENCY_FLATTEN`, and `FULL_HALT` semantics. Data/telemetry/AI/Supabase/GCP uncertainty blocks entries but must not block exits. Apply maximum size/trades/loss/absolute ceiling/exposure and duplicate lease independently of the strategy.
+7. **Close invalid-data paths.** Typed market/quote snapshots carry status, event timestamp, receive timestamp, source and reason. Missing/empty/error/stale cannot become price zero, RSI 50, neutral sentiment or empty success. Emergency exits must not depend on entry quote quality.
 
-## Phase 3 — Test completion
+**Exit evidence:** hermetic unit/contract tests plus supervised paper drills for every acceptance scenario; zero unknown order path; final broker-flat receipts; no open P0.
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-201 | P0 | Restore green test collection | audit collection has 14 errors and targeted suite mostly fails | pytest config, dependencies, test layout | isolate test roots, declare all dependencies, remove network-on-import, enforce hermetic fixtures | `pytest --collect-only -q` and `pytest -q` both pass in clean CI | 6 |
-| PR-202 | P1 | Restore dashboard quality suite | Vitest/build/typecheck unavailable in audit tree | dashboard package/lock/config/tests | clean `npm ci`; run lint, typecheck, unit/component/function tests, production build | all commands green from clean checkout | 6 |
-| PR-203 | P1 | Add Selenium application E2E | approved browser automation and browser→DB proof are absent | new Selenium suite, staging stack | cover login, permissions, dashboard data, settings, paper order lifecycle, HITL, kill switch, error/empty states, refresh persistence | Selenium on approved browsers against isolated PG17; DB assertions and screenshots/artifacts | 7 |
-| PR-204 | P1 | Add integration/failure tests | critical dependency failures are not proven recoverable | broker, Supabase, NATS, QuestDB, Qdrant, Telegram, GCP | deterministic fakes plus staging contract tests for timeout, malformed response, outage, retry, duplicate, partial fill | fault matrix passes with correct logs/status/recovery | 3, 6, 10 |
-| PR-205 | P2 | Establish coverage and mutation goals | no coverage measurement exists | Python/dashboard CI | measure meaningful branch coverage; set reviewed critical-module thresholds; consider mutation tests for risk rules | published reports meet approved thresholds with no excluded critical path | 6 |
-| PR-206 | P2 | Add security regression tests | RBAC/RLS/input/dependency controls need continuous proof | RLS, APIs, dashboard, CI | role matrix, injection/XSS, method/schema validation, dependency/image/IaC scans | zero critical/high unaccepted findings; negative auth cases pass | 4, 5, 6 |
+## Phase 1 — Paper execution validation
 
-## Phase 4 — Deployment readiness
+1. Run a supervised, bounded paper pilot only after Phase 0. Reconcile broker/local orders and positions at startup, each transition, shutdown and next startup.
+2. Capture expected/actual contract, decision quote, order request, broker ID, every status/fill, exit request/status, fees and P&L under one immutable correlation ID.
+3. Exercise normal entry/exit plus cancel, replace, reject, partial fill, network timeout after POST, restart, WebSocket disconnect, broker-data outage, broker-trading outage, Supabase outage and disk-pressure simulation.
+4. Publish a canonical readiness endpoint exposing broker-state-valid, market-data-valid, entry-allowed/reason, kill state, positions, working orders, last broker/data/signal/useful-work/consumed-output timestamps, executor lease and risk supervisor state.
+5. Replace process-only watchdog checks with progress SLOs and severity cadence (seconds for executor/working orders/EOD, minutes for streams/agents, longer for maintenance). Test alert delivery and acknowledgement.
+6. Lock Python/Node dependencies, correct pytest discovery/import isolation, and make safety tests mandatory on PRs. Add dashboard function tests, deployment linting, history/entropy secret scanning and offline broker fixtures.
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-301 | P1 | Define one release topology | systemd/Compose/Netlify/Supabase/GCP/tmux/PM2 paths overlap | deployment files, scripts, docs | document authoritative components and retire stale launchers; prevent duplicate bot instances with distributed lease | staging deployment and forced duplicate start prove single active executor | 1, 8 |
-| PR-302 | P1 | Remove machine-specific assumptions | `/home/k2` and `/mnt/tick-storage` impede repeatability | systemd, Compose, scripts, env template | parameterize paths/users/storage; validate prerequisites without destructive action | deploy successfully on clean non-developer host | 8 |
-| PR-303 | P1 | Implement safe release pipeline | current CI omits most deployable surfaces | GitHub/Harness workflows | build/sign artifacts once; scan; migration gate; deploy staging; smoke; manual approval; production rollout | rehearsal generates complete signed release evidence | 6, 8 |
-| PR-304 | P1 | Define rollback | app and schema rollback are not coordinated | migrations, deployment/runbooks | forward-fix/rollback policy, compatible migration pattern, previous artifact, config rollback, abort thresholds | failed-release game day restores service/data consistency | 8, 9 |
-| PR-305 | P1 | Operational monitoring and alerting | existing health/Telegram lacks SLO and ownership proof | logging, heartbeat, health, alerts | SLO/SLI, dashboards, on-call routes, severity/dedup, runbook links, retention/redaction | inject incidents; alert reaches named responder and runbook resolves them | 10, 13 |
-| PR-306 | P2 | Supply SBOM and release manifest | deployed versions across services are not correlated | pipeline/artifacts | record commit, images/digests, packages, migrations, config version and model versions | operator can reconstruct and verify a release offline | 8, 11 |
+**Exit evidence:** minimum agreed supervised sessions including an early-close day or simulated calendar, no unreconciled order/position, documented incident drill results, and a signed execution-behavior report. Passing does **not** establish alpha.
 
-## Phase 5 — UAT
+## Phase 2 — Strategy scientific validation
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-401 | P1 | Approve requirements and acceptance cases | Forrest workflows/NFRs are incomplete | product/FDE documentation | name stakeholders; approve workflow, risk, compliance, data, performance and accessibility acceptance criteria | requirements traceability review signed | 11, 12 |
-| PR-402 | P1 | Execute role-based UAT | real-user adoption is unproven | staging dashboard and operations | viewer/operator/trader/admin execute normal/error/recovery scenarios with paper accounts | defects triaged; zero open P0/P1; stakeholder sign-off | 12 |
-| PR-403 | P1 | Operations handoff | accountable ownership/support is absent | runbooks/training/on-call | name owners for app/infra/data/integrations/security/support; train restart, user admin, restore, kill switch, escalation | tabletop plus hands-on handoff checklist signed | 13 |
+1. Freeze exact live information timing. Decide completed daily candle/next-session or another explicit rule; reproduce it byte-for-byte in the backtester. Do not validate incomplete-candle live logic with completed-bar tests.
+2. Create immutable experiment IDs binding Git SHA, strategy/parameters, universe, data manifest/hash, corporate-action policy, time zone/calendar, contract rules, quote source, cost model and random seed.
+3. Run real-quote OOS and walk-forward evaluation for the actual UT Bot option expression. Separate synthetic/Black-Scholes mechanics from real-quote evidence.
+4. Add parameter sensitivity, regime breakdown, Monte Carlo/path/bootstrap uncertainty, multiple-trial tracking, PBO and Deflated Sharpe where statistically applicable. Document survivorship and look-ahead controls.
+5. Define profitability/promotability thresholds before results. Preserve losing/null experiments. Execution correctness and profitability receive separate approvals.
 
-## Phase 6 — Production release
+**Exit evidence:** reproducible real-data report, locked OOS results, uncertainty/multiple-testing treatment and independent review. No profitability claim is allowed from synthetic output.
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-501 | P1 | Controlled production rollout | trading blast radius requires progressive exposure | release pipeline, broker config, monitoring | deploy read-only/dashboard first, then paper; require explicit change approval before any live capability; cap initial exposure | preflight, smoke, reconciliation and abort criteria all pass | 3–13 |
-| PR-502 | P1 | Release sign-off | evidence must drive GO | evidence bundle | FDE, product, security, data, operations and business owners review all gates and accepted caveats | signed checklist references immutable artifacts and results | 1–13 |
+## Phase 3 — Extended paper and drift
 
-## Phase 7 — Post-production validation
+1. Add a paper-shadow record matching expected signal/contract/quote/fill/exit/P&L to actual values by correlation ID.
+2. Run through varied volatility/liquidity/regime conditions and scheduled early closes. Measure missed signals, contract mismatch, quote age/spread, fill slippage, lifecycle latency, exit drift and P&L attribution.
+3. Establish SLOs and promotion gates: broker reconciliation lag, market freshness, working-order age, EOD flat deadline, alert delivery, executor uptime/useful-work, data loss and drift tolerances.
+4. Perform recovery drills: edge reboot with open/pending positions, corrupt local state, database outage, disk full, collector/agent/watchdog death and broker outage.
 
-| ID | Priority | Description | Reason | Affected files/components | Recommended action | Validation method | Release gate |
-|---|---|---|---|---|---|---|---|
-| PR-601 | P2 | Post-release smoke and reconciliation | deployment can drift from staging | all production components | automate read-only health/data/order/account reconciliation and manual first-operations watch | expected records/metrics/alerts reconcile with broker and DB | 3, 10 |
-| PR-602 | P2 | Stabilization feedback loop | defects and enhancements need ownership | support tracker/runbooks | define intake, severity, response targets, root-cause and change-review process | sample incident traverses workflow with timestamps/owner | 13 |
-| PR-603 | P3 | Capacity and canary improvement | improve confidence after baseline readiness | pipeline/monitoring | recurring load/soak, canary, synthetic user and recovery exercises | trend reports remain within approved SLO/error budgets | 8, 10 |
+**Exit evidence:** extended paper window with no safety breach, explained drift, SLO history and incident runbooks exercised by someone other than the author.
 
-## Mandatory exit criteria
+## Phase 4 — Infrastructure simplification
 
-Production remains **NO-GO** until all P0 tasks and P1 tasks are either completed or explicitly risk-accepted by accountable Forrest owners, with no risk acceptance permitted for loss of trading control, exposed active secrets, irrecoverable data, authentication bypass, or failed core workflows. Gates 1–13 must be PASS or documented PASS WITH CAVEATS; UAT and operations handoff cannot be inferred from automated tests.
+1. Only after safety is stable, assign one owner per process: systemd for critical edge executors/watchdogs, Compose for bounded data services, no tmux/cron duplicate ownership.
+2. Keep broker/risk/exit local and independent of Supabase/GCP/dashboard/Telegram/AI. Classify Supabase uses; move high-volume raw OHLCV/ticks first, retain low-volume control/telemetry only with explicit degraded semantics.
+3. Use QuestDB for bounded hot data, manifested/compacted parquet for warm replay, BigQuery/object storage for cold analytics. Set retention, capacity, inode and restore SLOs. Bound Docker logs/caches.
+4. Revalidate BigQuery/Pub/Sub idempotency, natural keys, ack-after-durable-write, cursor advancement, lag alerts and bulk-seed/stream cutover. Never make replication part of exits.
+5. Prove `pg_partman` maintenance by observing future partition creation beyond the horizon; alert on horizon days, default-partition growth and cron failure before any migration.
+6. Rotate/revoke historical secrets at providers, prefer WIF/short-lived identity, remove static service-account keys, and retain rotation receipts without secret values.
+
+**Exit evidence:** architecture ownership map matches enabled host state; capacity/retention/restore and replication drills pass; exits work during total analytics/control-plane outage.
+
+## Phase 5 — Micro-live readiness
+
+1. Convene a separate go/no-go review; paper success is not automatic approval. Require Phase 0–4 evidence, strategy sign-off, security review, broker permission review and operator coverage.
+2. Use a distinct live credential/project/account configuration, tiny hard broker-side/account-side notional, one strategy/symbol, no unattended scaling, and an explicit rollback/flatten drill.
+3. Require two-person live-mode activation, immutable audit logging, launch-time endpoint/account fingerprint confirmation and continuous broker reconciliation.
+4. Set loss/order/position ceilings below paper settings, staged canary hours, manual observation, and automatic entry block on any unknown state. Existing positions remain manageable.
+5. Review every live fill and drift daily. Any duplicate, uncorrelated order, stale-data decision, missed EOD flat, reconciliation breach or unexplained alert stops the pilot.
+
+**Exit evidence:** a new, explicit micro-live approval. This plan does not authorize live trading.
+
+## Priority ledger
+
+| Priority | Closure theme | Owner discipline | Proof required |
+|---|---|---|---|
+| P0 | unintended/duplicate order, loss of position control, invalid-data trade, paper→live route | trading + broker + SRE | deterministic tests and supervised broker receipts |
+| P1 | recovery, monitoring, risk correctness, credentials, test reproducibility | SRE + QA + security | failure injection, alert/recovery receipts, CI green |
+| P2 | scientific validity, drift, storage lifecycle, replication correctness | quant + data | immutable experiments, SLOs, reconciliation reports |
+| P3 | performance and AI/product enhancements | product/research | only after higher priorities close |
+
+AI feature expansion, strategy optimization, framework migration, live configuration changes, and database migration are explicitly sequenced behind P0/P1 closure.
