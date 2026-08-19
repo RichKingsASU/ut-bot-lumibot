@@ -70,7 +70,7 @@ services:
     env_file:
       - .env
     command: >
-      bash -c "pip install --no-cache-dir -r requirements.txt && python run_tick_collector.py"
+      bash -c "pip install --no-cache-dir -r requirements-production.txt && python run_tick_collector.py"
 
   news-collector:
     image: python:3.11-slim
@@ -84,7 +84,7 @@ services:
     env_file:
       - .env
     command: >
-      bash -c "pip install --no-cache-dir -r requirements.txt && python run_news_collector.py"
+      bash -c "pip install --no-cache-dir -r requirements-production.txt && python run_news_collector.py"
 
   sentiment-scorer:
     image: python:3.11-slim
@@ -120,4 +120,3 @@ services:
       resources:
         limits:
           memory: 2G
-

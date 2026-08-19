@@ -33,7 +33,7 @@ pipeline:
                       # Install dependencies
                       curl -Ls https://cli.doppler.com/install.sh | sh
                       pip install uv
-                      uv pip install --system -r requirements.txt
+                      uv pip install --system -r requirements-test.txt
 
                       # Security scan
                       if grep -rn \

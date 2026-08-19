@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-production.txt requirements-core.txt requirements-cloud.txt ./
+RUN pip install --no-cache-dir -r requirements-production.txt
 
 # Copy application code
 COPY . .

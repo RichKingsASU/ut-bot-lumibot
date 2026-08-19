@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config import AgentConfig
+from agent_config import AgentConfig
 from browser_env import denormalize_x, denormalize_y, is_url_permitted
 from safety import SafetyManager
 

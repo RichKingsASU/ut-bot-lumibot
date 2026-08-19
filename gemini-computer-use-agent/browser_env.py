@@ -4,7 +4,7 @@ import time
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
-from config import AgentConfig
+from agent_config import AgentConfig
 
 
 def denormalize_x(x: int, screen_width: int) -> int:

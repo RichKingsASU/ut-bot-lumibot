@@ -1,0 +1,5 @@
+-r requirements-core.txt
+-r requirements-backtest.txt
+-r requirements-agents.txt
+
+pytest>=8.2,<9

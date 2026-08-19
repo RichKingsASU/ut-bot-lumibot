@@ -7,20 +7,32 @@ import json
 
 import pandas_market_calendars as mcal
 
-from broker import (
-    get_open_position, get_daily_realized_pnl, get_daily_trade_count,
-    buy_to_open, sell_to_close, cancel_all_orders, get_active_orders, AlpacaRESTBroker
-)
-from order_state import OrderIntent, client_order_id
-from reconciliation import BrokerReconciler, DurableState
-from signal_engine import evaluate_signal
-from risk_supervisor import RiskSupervisor
-from execution_lease import (
-    ExecutionLease, ExecutionLeaseError, execution_lease_state,
-    install_execution_lease,
-)
-from kill_flatten import KillFlattenWorkflow, KillReason, KillState, KillStore, session_times
-from component_health import ComponentReporter, Criticality, HealthRegistry, aggregate
+if __package__:
+    from .broker import (get_open_position, get_daily_realized_pnl, get_daily_trade_count,
+                         buy_to_open, sell_to_close, cancel_all_orders, get_active_orders,
+                         AlpacaRESTBroker)
+    from .order_state import OrderIntent, client_order_id
+    from .reconciliation import BrokerReconciler, DurableState
+    from .signal_engine import evaluate_signal
+    from .risk_supervisor import RiskSupervisor
+    from .execution_lease import (ExecutionLease, ExecutionLeaseError,
+                                  execution_lease_state, install_execution_lease)
+    from .kill_flatten import (KillFlattenWorkflow, KillReason, KillState, KillStore,
+                               session_times)
+    from .component_health import ComponentReporter, Criticality, HealthRegistry, aggregate
+else:  # Direct invocation: python src/trading/executor.py
+    from broker import (get_open_position, get_daily_realized_pnl, get_daily_trade_count,
+                        buy_to_open, sell_to_close, cancel_all_orders, get_active_orders,
+                        AlpacaRESTBroker)
+    from order_state import OrderIntent, client_order_id
+    from reconciliation import BrokerReconciler, DurableState
+    from signal_engine import evaluate_signal
+    from risk_supervisor import RiskSupervisor
+    from execution_lease import (ExecutionLease, ExecutionLeaseError,
+                                 execution_lease_state, install_execution_lease)
+    from kill_flatten import (KillFlattenWorkflow, KillReason, KillState, KillStore,
+                              session_times)
+    from component_health import ComponentReporter, Criticality, HealthRegistry, aggregate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("executor")

@@ -16,7 +16,7 @@ project/
 ├── .env                  # local secrets (ignored by git)
 ├── .env.example          # template for secrets
 ├── .gitignore            # git ignore patterns
-├── requirements.txt      # python dependencies
+├── requirements-production.txt  # canonical production dependencies
 ├── config.py             # credential loader
 ├── main.py               # entry point to run the bot
 ├── LICENSE               # MIT License
@@ -37,7 +37,7 @@ project/
    ```
 3. **Install dependencies**:
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements-production.txt
    ```
 4. **Configure your credentials**:
    Copy `.env.example` to `.env` and fill in your Alpaca API Key and Secret.

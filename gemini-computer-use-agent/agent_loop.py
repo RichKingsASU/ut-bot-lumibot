@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 from google import genai
-from config import AgentConfig
+from agent_config import AgentConfig
 from logging_utils import AuditLogger
 from safety import SafetyManager, SYSTEM_SAFETY_INSTRUCTION
 from browser_env import BrowserEnvironment

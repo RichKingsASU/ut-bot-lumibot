@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Keep this safety suite runnable in the minimal audit image. Production still
-# installs the real packages from requirements.txt.
+# installs the real packages from requirements-test.txt.
 if "requests" not in sys.modules:
     requests_stub = types.ModuleType("requests")
     requests_stub.get = Mock(); requests_stub.post = Mock()
