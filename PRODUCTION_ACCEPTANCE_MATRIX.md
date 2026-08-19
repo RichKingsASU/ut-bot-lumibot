@@ -14,16 +14,16 @@
 | Sentiment | Partial | No | No | No | nullable/status path exists; legacy zero defaults and no DISABLED | end-to-end status schema and policy tests |
 | Risk supervisor | Partial | No | No | No | loss/trade/size/data/cutoff gates split across stacks | one independent gate and formal safety states |
 | Kelly sizing | Yes | No | No | No | cap and equity logic exists | assert final percent/dollars/quantity and cautious reduction display |
-| Order submission | Yes | No | No | No | two raw REST adapters + Lumibot | canonicalize, mock broker contracts, idempotent IDs |
-| Accepted versus filled | Partial | No | No | No | new adapter polls; legacy truthy response path | explicit transition model and test every status |
-| Partial fill | Partial | No | No | No | status recognized | durable filled/remaining quantity, restart and exit tests |
+| Order submission | Yes | Yes (`test_broker_reconciliation.py`) | No | Partial | canonical REST boundary uses deterministic client IDs and lost-response lookup | edge paper drill |
+| Accepted versus filled | Yes | Yes (`test_broker_reconciliation.py`) | No | Partial | explicit normalized lifecycle; unknown status fails closed | edge paper drill |
+| Partial fill | Yes | Yes (`test_broker_reconciliation.py`) | No | Partial | broker requested/filled/remaining quantities and remaining-only replace | edge paper drill |
 | Cancel | Yes | No | No | No | account-wide DELETE in adapters/dashboard | scope/audit, confirm terminal state, recovery |
 | Replace | Partial | No | No | No | limit repricing PATCH loops | pending_replace/replaced/rejection/idempotency tests |
-| Reconciliation | Partial | No | No | No | new executor polls broker; legacy startup sync | reconstruct position/orders/fills/metadata before enabling entry |
+| Reconciliation | Yes | Yes (`test_broker_reconciliation.py`) | No | Partial | account/position/recent-order startup reconstruction; query failures are unknown | edge paper drill |
 | Kill switch | Partial | No | No | No | local file, cloud poll, Telegram/dashboard controls | unify persistence/audit; manage/flatten and confirm flat |
 | EOD flatten | Partial | No | No | No | new retry helper/calendar; legacy submit-only 15:55 | cancel openings, terminal status, alert and early-close drills |
-| Restart recovery | Partial | No | No | No | broker reads occur after loop start | pending-entry/exit/partial-fill scenario suite |
-| Duplicate prevention | Yes | Yes (`tests/test_execution_lease.py`) | No | Partial | account/mode kernel lease plus broker guards; default legacy launchers disabled | edge systemd/Docker runtime drill |
+| Restart recovery | Yes | Yes (unit + spawned-process test) | No | Partial | pending entry/exit, partial fill and durable cache reload scenarios | edge paper drill |
+| Duplicate prevention | Yes | Yes (`test_execution_lease.py`, `test_broker_reconciliation.py`) | No | Partial | account lease plus deterministic consumed-signal/client-ID boundary | edge systemd/Docker runtime drill |
 | Account/exposure | Partial | No | No | No | broker account/positions available; separate fallbacks | unified freshness-tagged snapshot and account-wide exposure |
 | Option quote validity | Partial | No | No | Partial | new adapter validates bid/ask/spread/age/contract | prove emergency exits bypass entry checks |
 | Health/readiness | Partial | No | No | No | legacy health + richer runtime JSON disconnected | canonical component/state readiness API |
