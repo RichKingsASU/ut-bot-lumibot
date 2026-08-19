@@ -100,6 +100,41 @@ def get_active_orders(underlying: str) -> dict:
         logger.error(f"Failed to fetch active orders: {e}")
         return {"valid": False, "orders": []}
 
+def get_account() -> dict:
+    """Fetch account identity; exceptions deliberately propagate to reconciliation."""
+    resp = requests.get(f"{_base_url()}/v2/account", headers=_headers(), timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+def get_all_positions() -> list:
+    resp = requests.get(f"{_base_url()}/v2/positions", headers=_headers(), timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+def get_relevant_orders(after: str = None) -> list:
+    params = {"status": "all", "nested": "true", "limit": 500}
+    if after:
+        params["after"] = after
+    resp = requests.get(f"{_base_url()}/v2/orders", headers=_headers(), params=params, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+def get_order_by_client_id(client_order_id: str) -> dict | None:
+    resp = requests.get(f"{_base_url()}/v2/orders:by_client_order_id", headers=_headers(),
+                        params={"client_order_id": client_order_id}, timeout=10)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+class AlpacaRESTBroker:
+    """Minimal canonical adapter consumed by broker reconciliation."""
+    def account(self): return get_account()
+    def positions(self): return get_all_positions()
+    def orders(self): return get_relevant_orders()
+    def order_by_client_id(self, value): return get_order_by_client_id(value)
+    def submit(self, payload): return _place_order(payload)
+
 def cancel_all_orders(underlying: str = None):
     require_execution_lease("cancel_all_orders")
     try:
@@ -282,7 +317,12 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
                 logger.info(f"Chasing market for {contract_symbol}: limit {old_limit} -> {new_limit}")
                 patch_url = f"{_base_url()}/v2/orders/{current_order_id}"
                 require_execution_lease("replace_order")
-                patch_resp = requests.patch(patch_url, json={"limit_price": str(new_limit)}, headers=_headers(), timeout=15)
+                requested = float(filled_order.get("qty", 0) or 0)
+                filled = float(filled_order.get("filled_qty", 0) or 0)
+                remaining = max(0.0, requested - filled)
+                if remaining <= 0:
+                    return filled_order
+                patch_resp = requests.patch(patch_url, json={"limit_price": str(new_limit), "qty": str(remaining)}, headers=_headers(), timeout=15)
                 if patch_resp.status_code == 200:
                     current_order_id = patch_resp.json().get("id")
         except Exception as e:
@@ -291,7 +331,7 @@ def _execute_order_with_chase(order_id: str, side: str, max_chases: int = 3, cha
             
     return filled_order
 
-def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
+def buy_to_open(underlying: str, direction: str, qty: int = 1, client_order_id: str = None) -> dict | None:
     require_execution_lease("buy_to_open")
     global _last_rejection_time
     if (time.time() - _last_rejection_time) < REJECTION_COOLDOWN_SECONDS:
@@ -313,14 +353,27 @@ def buy_to_open(underlying: str, direction: str, qty: int = 1) -> dict | None:
     ask_price = quote["ask"]
 
     try:
-        order = _place_order({
+        payload = {
             "symbol": contract_symbol,
             "qty": str(qty),
             "side": "buy",
             "type": "limit",
             "limit_price": str(ask_price),
             "time_in_force": "day",
-        })
+        }
+        if client_order_id:
+            payload["client_order_id"] = client_order_id
+        try:
+            order = _place_order(payload)
+        except Exception:
+            # Resolve an ambiguous POST using the same deterministic correlation ID.
+            if not client_order_id:
+                raise
+            order = get_order_by_client_id(client_order_id)
+            if order is None:
+                raise RuntimeError("submit outcome absent; do not retry with a new client order ID")
+            logger.warning("LOST_RESPONSE_RECOVERED client_order_id=%s broker_order_id=%s",
+                           client_order_id, order.get("id"))
         filled_order = _execute_order_with_chase(order.get("id"), side="buy")
         if filled_order.get("status") == "rejected":
             _last_rejection_time = time.time()

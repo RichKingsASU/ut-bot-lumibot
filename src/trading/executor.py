@@ -10,8 +10,10 @@ import pandas as pd
 
 from broker import (
     get_open_position, get_daily_realized_pnl, get_daily_trade_count,
-    buy_to_open, sell_to_close, cancel_all_orders, get_active_orders
+    buy_to_open, sell_to_close, cancel_all_orders, get_active_orders, AlpacaRESTBroker
 )
+from order_state import OrderIntent, client_order_id
+from reconciliation import BrokerReconciler, DurableState
 from signal_engine import evaluate_signal
 from risk_supervisor import RiskSupervisor
 from execution_lease import (
@@ -25,6 +27,7 @@ ET = pytz.timezone("America/New_York")
 
 RUNTIME_STATE_FILE = "/run/disrupting-alpha/runtime_state.json"
 LAST_SIGNAL_FILE = "/run/disrupting-alpha/last_signal.json"
+BROKER_STATE_FILE = os.getenv("BROKER_STATE_FILE", "/run/disrupting-alpha/broker_state.v1.json")
 
 # Simple local state to supplement authoritative broker state
 _local_state = {
@@ -122,6 +125,15 @@ def main_loop():
     
     supervisor = RiskSupervisor(broker=None, config=config)
     symbol = config["SYMBOL"]
+    reconciler = BrokerReconciler(AlpacaRESTBroker(), DurableState(BROKER_STATE_FILE),
+                                  lambda: lease.owned,
+                                  "paper" if os.getenv("ALPACA_IS_PAPER", "true").lower() == "true" else "live")
+
+    # Startup is not readiness: REST account, position and order reconstruction
+    # must complete after lease acquisition and before an entry can be considered.
+    startup_reconciliation = reconciler.reconcile()
+    if not startup_reconciliation.valid:
+        logger.error("ENTRY_BLOCKED_RECONCILIATION: %s", startup_reconciliation.reason_codes)
     
     logger.info("Starting Execution Engine Loop...")
     
@@ -136,7 +148,9 @@ def main_loop():
             daily_pnl_result = get_daily_realized_pnl()
             daily_trades_result = get_daily_trade_count()
             
-            broker_state_valid = pos_result.get("valid", False) and orders_result.get("valid", False)
+            reconciliation = reconciler.reconcile()
+            broker_state_valid = (pos_result.get("valid", False) and orders_result.get("valid", False)
+                                  and reconciliation.valid)
             position = pos_result.get("position")
             active_orders = orders_result.get("orders", [])
             daily_pnl = daily_pnl_result.get("value", 0.0)
@@ -151,7 +165,7 @@ def main_loop():
                 _local_state["entry_underlying_price"] = None
                 _local_state["entry_rsi"] = None
                 
-            entry_allowed = broker_state_valid and pnl_valid and lease.owned
+            entry_allowed = broker_state_valid and pnl_valid and lease.owned and reconciliation.entry_allowed
             entry_block_reason = None
             if not broker_state_valid:
                 entry_block_reason = "BROKER_STATE_INVALID"
@@ -249,7 +263,9 @@ def main_loop():
                         
                         save_last_signal(signal_date_str, signal)
                         
-                        res = buy_to_open(symbol, direction, config["MAX_POSITION_SIZE"])
+                        correlation_id = client_order_id("utbot", signal_date_str, f"{signal}:{signal_date_str}",
+                                                         OrderIntent.ENTRY, 1)
+                        res = buy_to_open(symbol, direction, config["MAX_POSITION_SIZE"], correlation_id)
                         if res and res.get("status") in ("filled", "partially_filled"):
                             _local_state["entry_underlying_price"] = current_price
                             _local_state["entry_rsi"] = current_rsi
@@ -274,7 +290,8 @@ def main_loop():
                 "eod_flatten_required": False,
                 "last_broker_sync": datetime.now(ET).isoformat(),
                 "last_signal": signal,
-                "last_consumed_signal": last_sig
+                "last_consumed_signal": last_sig,
+                **reconciler.health(),
             })
             
         except Exception as e:

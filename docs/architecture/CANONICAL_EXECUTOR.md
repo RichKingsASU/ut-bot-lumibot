@@ -65,3 +65,54 @@ the non-secret identity; entry permission is conjoined with ownership.
 
 This is a single-host lease. Multi-host execution is unsupported and outside
 this remediation.
+
+## Broker-authoritative lifecycle and recovery
+
+Alpaca REST orders, fills, and positions override every local cache. Local JSON
+is a versioned, atomic metadata/correlation cache only; an absent or stale cache
+never proves flatness or a terminal order. Query failure is an unknown state,
+not an empty result, and blocks entries while read/cancel/exit/flatten remain
+available where Alpaca is reachable.
+
+The canonical states are `NEW`, `ACCEPTED`, `PENDING_NEW`,
+`PARTIALLY_FILLED`, `FILLED`, `PENDING_CANCEL`, `CANCELED`, `EXPIRED`,
+`REJECTED`, `PENDING_REPLACE`, and `REPLACED`, plus explicit Alpaca terminal
+states and `UNKNOWN_BROKER_STATE`. Unknown and unclassified working orders fail
+closed. Requested, broker-filled, and remaining quantities are separate;
+replacement quantity is never greater than broker-reported remaining quantity.
+A submitted/filled close is not flat until the positions query returns quantity
+zero.
+
+Startup order is: acquire `ExecutionLease`; verify Alpaca account identity;
+fetch positions; fetch recent/open orders and fills represented by those orders;
+reconstruct correlations and metadata confidence; classify mismatches; then, and
+only then, permit entry. The same REST reconciliation runs before entry, after
+submission, on the five-second active executor cadence, and therefore after
+reconnect and while positions/orders exist. Broker events may accelerate future
+updates but can never replace startup/disconnect REST recovery.
+
+Client IDs are at most 48 characters and use
+`da-<strategy:10>-<YYYYMMDD>-<e|x|f>-<sha256:12>-<attempt:2>`. The digest binds
+the full strategy, session, signal identity, and intent without disclosing the
+signal. A timed-out POST is looked up by this exact ID; it is never retried with
+a new ID. An unresolved outcome blocks entry. Recovered positions retain broker
+quantity/average price; unavailable underlying price, RSI, or strategy version
+is explicitly `UNKNOWN`/`DEGRADED_POSITION_STATE`, never invented.
+
+### Canonical operation map
+
+| Operation | Caller | Broker method | Lease required | State recorded |
+|---|---|---|---:|---|
+| Entry submit | executor/broker lifecycle | `POST /v2/orders` | Yes | deterministic client ID, broker order |
+| Exit submit | executor | `POST /v2/orders` | Yes | broker order; position remains authoritative |
+| Cancel | flatten helper | `DELETE /v2/orders` | Yes | next REST reconciliation |
+| Replace/chase | broker adapter | `PATCH /v2/orders/{id}` | Yes | replacement IDs and remaining quantity |
+| Flatten | executor verification loop | cancel + exit | Yes | broker position until quantity zero |
+| Status/partial fills | reconciler | `GET /v2/orders` | No | requested/filled/remaining/status |
+| Positions/startup | reconciler | `GET /v2/account`, `/v2/positions` | No | account identity and broker positions |
+
+Structured reconciliation/order/position events are emitted without secrets,
+and runtime health publishes validity, reconciliation timestamp, position and
+order counts, errors, and entry block reason. Supabase and GCP are not called by
+recovery. The cache format is version 1; incompatible legacy/unversioned data is
+explicitly ignored in favor of broker reconstruction.
