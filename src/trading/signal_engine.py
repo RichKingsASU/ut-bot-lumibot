@@ -11,16 +11,16 @@ from typing import Optional, Dict
 logger = logging.getLogger("signal_engine")
 ET = pytz.timezone("America/New_York")
 
-MAX_5M_BAR_AGE_SECONDS = 300  # Configurable 5m bar freshness limit
-MAX_DAILY_BAR_AGE_HOURS = 24  # Max age for daily bars
+MAX_5M_BAR_AGE_SECONDS = int(os.getenv("MAX_5M_DATA_AGE_SECONDS", "360"))
+MAX_DAILY_BAR_AGE_HOURS = int(os.getenv("MAX_DAILY_BAR_AGE_HOURS", "36"))
 
 @dataclass
 class SignalSnapshot:
     valid: bool
     signal: int
-    underlying_price: float
-    rsi_5m: float
-    trail_stop: float
+    underlying_price: Optional[float]
+    rsi_5m: Optional[float]
+    trail_stop: Optional[float]
     daily_bar_timestamp: Optional[datetime]
     intraday_bar_timestamp: Optional[datetime]
     reason: str
@@ -137,31 +137,27 @@ def evaluate_signal(symbol: str) -> SignalSnapshot:
     # 1. Fetch Daily Bars
     df_daily = get_bars(symbol, "1Day", limit=100)
     if df_daily.empty:
-        return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, None, None, "DAILY_DATA_UNAVAILABLE")
+        return SignalSnapshot(False, 0, None, None, None, None, None, "DAILY_DATA_UNAVAILABLE")
         
     daily_ts = df_daily.index[-1]
     # In live execution (e.g. 15:45 ET), we might be fetching today's incomplete daily bar.
     if (now - daily_ts).total_seconds() > MAX_DAILY_BAR_AGE_HOURS * 3600:
-        return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, daily_ts, None, "STALE_DAILY_DATA")
+        return SignalSnapshot(False, 0, None, None, None, daily_ts, None, "STALE_DAILY_DATA")
     
     # 2. Fetch 5-Min Bars for RSI
     df_5m = get_bars(symbol, "5Min", limit=100)
     if df_5m.empty:
-        return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, daily_ts, None, "INTRADAY_DATA_UNAVAILABLE")
+        return SignalSnapshot(False, 0, None, None, None, daily_ts, None, "INTRADAY_DATA_UNAVAILABLE")
         
     intraday_ts = df_5m.index[-1]
     
     age_seconds = (now - intraday_ts).total_seconds()
     if age_seconds > MAX_5M_BAR_AGE_SECONDS:
-        # Check if we are outside market hours (approx)
-        if now.hour >= 16 or now.hour < 9 or (now.hour == 9 and now.minute < 30) or now.weekday() >= 5:
-            pass # Accept stale data outside market hours for position management
-        else:
-            return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, daily_ts, intraday_ts, f"STALE_5M_DATA")
+        return SignalSnapshot(False, 0, None, None, None, daily_ts, intraday_ts, "STALE_5M_DATA")
 
     current_rsi = compute_rsi(df_5m['close'], 14)
     if np.isnan(current_rsi):
-        return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, daily_ts, intraday_ts, "MALFORMED_DATA_RSI")
+        return SignalSnapshot(False, 0, None, None, None, daily_ts, intraday_ts, "MALFORMED_DATA_RSI")
     
     df_daily = compute_ut_bot(df_daily, 10, 1.0)
     
@@ -171,7 +167,7 @@ def evaluate_signal(symbol: str) -> SignalSnapshot:
     trail_stop = latest['trail_stop']
     
     if current_price <= 0 or np.isnan(current_price):
-        return SignalSnapshot(False, 0, 0.0, 0.0, 0.0, daily_ts, intraday_ts, "INVALID_PRICE")
+        return SignalSnapshot(False, 0, None, None, None, daily_ts, intraday_ts, "INVALID_PRICE")
         
     return SignalSnapshot(
         valid=True,

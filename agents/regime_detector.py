@@ -140,7 +140,9 @@ class RegimeDetector(BaseAgent):
         state_regimes[vol_remaining[0]] = 'VOLATILE'
         state_regimes[vol_remaining[1]] = 'QUIET'
         
-        regime = state_regimes.get(current_state, 'QUIET')
+        regime = state_regimes.get(current_state)
+        if regime is None or not np.isclose(float(np.sum(state_probs)), 1.0, atol=1e-6):
+            raise ValueError("invalid regime state/probabilities")
         
         return {
             'regime': regime,
@@ -167,16 +169,20 @@ class RegimeDetector(BaseAgent):
                 df = self._load_bars(symbol)
                 if df is None:
                     logger.warning(f'[Regime] No data for {symbol}')
-                    results[symbol] = {'regime': 'QUIET', 'regime_probability': 0.5}
+                    results[symbol] = {'regime': None, 'regime_probability': None,
+                                       'status': 'NO_DATA', 'reason': 'bars unavailable'}
                     continue
                 
                 features = self._extract_features(df)
                 if features is None or len(features) < self.MIN_BARS:
-                    results[symbol] = {'regime': 'QUIET', 'regime_probability': 0.5}
+                    results[symbol] = {'regime': None, 'regime_probability': None,
+                                       'status': 'MALFORMED', 'reason': 'features unavailable'}
                     continue
                 
                 model = self._fit_model(symbol, features)
                 classification = self._classify_regime(model, features)
+                classification['status'] = 'VALID'
+                classification['timestamp'] = datetime.now(timezone.utc).isoformat()
                 results[symbol] = classification
                 
                 if supabase_url and supabase_key:
@@ -206,15 +212,17 @@ class RegimeDetector(BaseAgent):
                 
             except Exception as e:
                 logger.error(f'[Regime] Error for {symbol}: {e}')
-                results[symbol] = {'regime': 'QUIET', 'regime_probability': 0.5}
+                results[symbol] = {'regime': None, 'regime_probability': None,
+                                   'status': 'ERROR', 'reason': type(e).__name__}
         
-        regimes = [r['regime'] for r in results.values()]
+        regimes = [r['regime'] for r in results.values() if r.get('status') == 'VALID']
         from collections import Counter
         regime_counts = Counter(regimes)
-        overall = regime_counts.most_common(1)[0][0] if regime_counts else 'QUIET'
+        overall = regime_counts.most_common(1)[0][0] if regime_counts else None
         
         return {
             'overall_regime': overall,
+            'regime_status': 'VALID' if overall else 'NO_DATA',
             'symbol_regimes': results,
             'regime_distribution': dict(regime_counts),
             'strategy_recommendation': self.get_strategy_recommendation(overall),

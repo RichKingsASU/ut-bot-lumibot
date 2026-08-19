@@ -198,6 +198,9 @@ def main_loop():
             
             # Position Management (Exit Logic)
             if position:
+                # Invalid enrichment blocks only new risk. Price/RSI exits are
+                # skipped when unavailable, while signal-independent kill/EOD
+                # flatten remains above and broker-confirmed.
                 exit_reason = supervisor.check_exit_triggers(position, current_price, current_rsi)
                 if exit_reason:
                     logger.info(f"Exit triggered: {exit_reason}")

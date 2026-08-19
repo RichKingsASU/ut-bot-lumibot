@@ -162,7 +162,7 @@ class KellySizer:
         return max(self.MIN_POSITION_PCT, min(self.MAX_POSITION_PCT, f_fractional))
 
   async def get_portfolio_value(self) -> float:
-    """Fetch current account equity from Alpaca or return default capital."""
+    """Fetch current account equity; failure is not fictitious baseline capital."""
     alpaca_headers = {
         "APCA-API-KEY-ID": self.alpaca_api_key or "",
         "APCA-API-SECRET-KEY": self.alpaca_api_secret or "",
@@ -175,15 +175,18 @@ class KellySizer:
             )
             if resp.status_code == 200:
                 data = resp.json()
-                equity = float(data.get("equity", self.BASE_PORTFOLIO))
+                if data.get("equity") is None:
+                    raise ValueError("account response missing equity")
+                equity = float(data["equity"])
+                if equity <= 0:
+                    raise ValueError("account equity must be positive")
                 logger.info(f"Alpaca dynamic equity parsed successfully: ${equity:,.2f}")
                 return equity
             else:
-                logger.warning(f"Alpaca equity fetch returned status {resp.status_code}. Using baseline capital.")
-                return float(self.BASE_PORTFOLIO)
+                raise RuntimeError(f"Alpaca equity fetch returned status {resp.status_code}")
     except Exception as e:
         logger.error(f"Failed to fetch portfolio value from Alpaca: {e}")
-        return float(self.BASE_PORTFOLIO)
+        raise RuntimeError("ACCOUNT_STATE_UNAVAILABLE") from e
 
   async def calculate_position_size(
     self,
