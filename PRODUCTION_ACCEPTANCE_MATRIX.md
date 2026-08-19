@@ -61,3 +61,13 @@
 ## Non-negotiable acceptance scenarios
 
 Each must produce broker request/response fixtures, correlated state transitions, alert receipt, and final broker truth: local flat/broker open; local open/broker flat; pending entry restart; partial fill restart; pending exit restart; rejected/canceled/expired/replaced; duplicate process start; malformed paper/live settings; kill flat/open/pending/cloud-down/restart; EOD early close/rejection; stale/empty/error bars; stale/invalid quote; disk full; and Supabase/GCP/QuestDB/Qdrant/NATS outages.
+## P0-04 — decision-data validity (2026-08-19)
+
+| Acceptance criterion | Source evidence | Status |
+|---|---|---|
+| Missing, stale, malformed and failed inputs cannot authorize entry | `src/trading/data_validity.py`, `src/trading/decision_inputs.py` | PASS (source) |
+| Empty market response is not a zero gap | `src/trading/market_gap.py`, `tests/test_market_gap.py` | PASS |
+| Zero sentiment differs from zero scored articles | `tests/test_data_validity.py` | PASS |
+| Invalid quote blocks entry without gating exits | `tests/test_data_validity.py` | PASS |
+| Lease, reconciliation and kill/flatten regression | Existing P0 suites | PARTIAL: SIGINT lease-release test fails in this runtime; other cases pass |
+| Edge deployment/runtime observation | Requires deployed credentials and live session | NOT VERIFIED |

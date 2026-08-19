@@ -351,3 +351,14 @@ Top 5 Actions:
 3. Make kill/EOD a persistent workflow that cancels openings, retries closes, confirms broker-flat, and escalates before/after early closes.
 4. Make paper/live parsing fail closed and execute an endpoint matrix for every money-moving path with live network calls mocked.
 5. Lock dependencies and run deterministic safety suites plus supervised-paper failure drills before collecting strategy-validation evidence.
+## P0-04 data-validity remediation — 2026-08-19
+
+Source now defines explicit value/status/timestamp/age/source/reason semantics and a
+central mandatory-input entry gate. Market bars, option quotes, sentiment aggregates,
+risk values, agent decisions, regime failures, account equity, and SPY gap payloads no
+longer use plausible zeros or neutral states for failures. Risk-reduction workflows
+remain independent of enrichment validity. See `docs/architecture/DATA_VALIDITY.md`
+for timing, status, provenance, and the dangerous-default inventory.
+
+Operational acceptance remains partial until exercised in the deployed edge runtime.
+Component useful-work heartbeat redesign is explicitly deferred to the next P0.
