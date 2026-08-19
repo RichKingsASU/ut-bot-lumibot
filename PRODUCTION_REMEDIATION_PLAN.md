@@ -1,3 +1,9 @@
+# Remediation Execution Update — 2026-08-19
+
+Work is proceeding on `refactor/production-django`. Current statuses and blockers are maintained in `docs/remediation/REMEDIATION_LEDGER.md`; the plan below remains authoritative and no P0 has been marked PASS without execution.
+
+---
+
 # Production Remediation Plan
 
 This plan converts the findings in `PRODUCTION_READINESS_AUDIT.md` into release-gated engineering work. Tasks are ordered by dependency, not calendar duration. No task is complete until its validation artifact is attached to the release evidence bundle.

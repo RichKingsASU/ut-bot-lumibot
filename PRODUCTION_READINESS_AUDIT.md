@@ -1,3 +1,11 @@
+# Remediation Re-audit — 2026-08-19
+
+**Original score: 40%. Current evidence-based score: 48%. Production decision: NO-GO.** The approved Django/PostgreSQL foundation, transactional safety controls, RBAC design, CI, and operations artifacts improve implementation coverage, but no P0 is closed because registry policy prevented Django installation/tests, PostgreSQL 17 tooling is absent, recovery was not drilled, Selenium was not executed, and UAT is unsigned. See `docs/remediation/REMEDIATION_LEDGER.md`.
+
+Gate changes: approved stack **Fail → Partial**; deterministic baseline **Fail → documented Fail**; RBAC **Fail → Partial**; trading safety **Fail → Partial**; recovery remains **Fail**; CI/deployment/operations **Fail → Partial**. No Partial is release approval.
+
+---
+
 # Forrest Logistics FDE Production Readiness Audit
 
 > **How close is this application to being safely deployable into production at Forrest Logistics?**

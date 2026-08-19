@@ -1,3 +1,9 @@
+# Remediation Acceptance Update — 2026-08-19
+
+Django models/templates, PostgreSQL production settings, psycopg, server-side RBAC, trading-safety primitives, Selenium journeys, and recovery procedures now exist on the refactor branch. They remain **not production validated** because dependency installation was denied (HTTP 403), Docker/PostgreSQL tools are unavailable, and UAT is unsigned. Current readiness is **48%, NO-GO**. Detailed status: `docs/remediation/REMEDIATION_LEDGER.md`.
+
+---
+
 # Production Acceptance Matrix
 
 Statuses are evidence-based as of commit `5d8d99ab67623aeca4eac6c354e619b224f4fe74` on 2026-08-19 UTC. **Partial** means source exists but production-like proof does not. **Not verified** is never equivalent to pass.

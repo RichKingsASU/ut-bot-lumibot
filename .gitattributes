@@ -1,0 +1,3 @@
+# Dependency manifests are source text. The legacy file contained a mixed-encoding
+# tail that made Git classify both sides of the replacement as binary.
+requirements*.txt text diff eol=lf

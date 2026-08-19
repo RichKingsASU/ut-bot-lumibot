@@ -1,73 +1,37 @@
-name: CI
-
+name: Approved Stack CI
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
-
 jobs:
-  build:
+  django:
     runs-on: ubuntu-latest
-
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env: {POSTGRES_DB: lumibot_test, POSTGRES_USER: lumibot, POSTGRES_PASSWORD: test-only-password}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U lumibot -d lumibot_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SECRET_KEY: ci-only-secret-key-that-is-more-than-fifty-characters-long-and-not-production
+      DJANGO_ALLOWED_HOSTS: localhost
+      DATABASE_URL: postgresql://lumibot:test-only-password@localhost:5432/lumibot_test
+      DATABASE_SSLMODE: disable
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip uv
-        uv pip install --system -r requirements.txt
-
-    - name: Syntax check
-      run: |
-        python -m py_compile config.py main.py strategies/ut_bot.py
-
-    - name: Security scan (Secrets check)
-      run: |
-        # Fail only on actual hardcoded secret VALUES (not env var references)
-        # A hardcoded secret looks like: API_KEY = "ABCD1234..." (quoted value)
-        # NOT: os.getenv("API_KEY"), print("API_KEY not set"), f"Bearer {token}"
-        if grep -rn \
-          -e 'ALPACA_API_KEY\s*=\s*"[A-Z0-9]\{10,\}"' \
-          -e 'ALPACA_API_SECRET\s*=\s*"[A-Za-z0-9]\{20,\}"' \
-          --include="*.py" \
-          --exclude-dir=".git" \
-          .; then
-          echo "ERROR: Hardcoded API secrets found in Python files"
-          exit 1
-        fi
-        echo "Security scan passed — no hardcoded secrets found"
-
-    - name: Run unit tests and verify strict mode
-      run: |
-        pip install pytest
-        pytest tests/ -v
-        pytest backtests/tests/ -v
-        
-        # Enforce strict mode validation checks (must fail with SyntheticDataError)
-        echo "Verifying strict mode data provenance enforcement..."
-        if python scripts/run_options_backtest.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
-          echo "✓ Options backtester correctly failed in strict mode"
-        else
-          echo "FAILED: Options backtester did not enforce strict mode!"
-          exit 1
-        fi
-        
-        if PYTHONPATH=. python scripts/backtest_hmm_switching.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then
-          echo "✓ HMM backtester correctly failed in strict mode"
-        else
-          echo "FAILED: HMM backtester did not enforce strict mode!"
-          exit 1
-        fi
-        
-        if PYTHONPATH=. python scripts/simulate_decay_recovery.py 2>&1 | grep -q "SyntheticDataError"; then
-          echo "✓ Decay simulator correctly failed in strict mode"
-        else
-          echo "FAILED: Decay simulator did not enforce strict mode!"
-          exit 1
-        fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.7', cache: pip}
+      - run: python -m pip install --requirement requirements.txt
+      - run: python manage.py check
+      - run: python manage.py check --deploy
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py migrate --noinput
+      - run: python manage.py test tests_django --verbosity 2
+      - run: python manage.py collectstatic --noinput
+      - name: Assert approved production stack
+        run: |
+          ! rg -i 'flask|supabase|playwright|react' config accounts operations trading templates requirements.txt Dockerfile.django docker-compose.production.yml
+      - name: Compile production source
+        run: python -m compileall -q config accounts operations trading
