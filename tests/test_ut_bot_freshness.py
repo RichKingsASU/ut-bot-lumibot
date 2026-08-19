@@ -1,6 +1,6 @@
 from datetime import datetime
 import pytz
-from strategies.ut_bot import _daily_bar_is_stale
+from strategies.ut_bot_logic import _daily_bar_is_stale
 
 ET = pytz.timezone("America/New_York")
 
