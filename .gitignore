@@ -117,3 +117,6 @@ replication/sync_state.db
 
 # Contains a live DOPPLER_TOKEN. Use systemd/da-doppler.conf.template.
 systemd/da-doppler.conf
+
+# Documented local Python test environment
+.venv-test/

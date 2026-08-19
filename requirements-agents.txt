@@ -1,0 +1,8 @@
+-r requirements-core.txt
+
+# Lightweight agent test dependencies. Model runtimes (torch, transformers,
+# sentence-transformers and TimesFM) are deliberately optional.
+playwright>=1.40,<2
+google-genai>=2.7,<3
+termcolor>=2.3,<4
+aiohttp>=3.9,<4

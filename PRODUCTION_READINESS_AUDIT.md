@@ -247,10 +247,16 @@ Estimated repository model: tick rows can reach millions/day per liquid symbol; 
 
 | Command | Collected | Passed | Failed | Skipped | Errors | Result |
 |---|---:|---:|---:|---:|---:|---|
-| `pytest -q` | collection interrupted | 0 | 0 | 0 | 14 | FAIL: missing numpy/pandas/requests/httpx/pytz plus Gemini `config` import collision |
-| `python -m pytest backtests/tests/ -q` | collection interrupted | 0 | 0 | 0 | 6 | FAIL: missing numpy/pandas |
+| `scripts/test-safety.sh` | 109 | 109 | 0 | 0 | 0 | PASS on Python 3.14 audit host; canonical CI remains Python 3.11 |
+| `pytest --collect-only -q` in clean Python 3.11 venv | not completed | 0 | 0 | 0 | environment | Local audit runner could not reach the package index (HTTP proxy 403); CI installs `requirements-test.txt` from a clean cache miss |
 
-CI installs `requirements.txt`, syntax-checks only three Python files, runs `tests/` and backtests, checks narrow secret patterns, and runs strict synthetic-data guards. It does not test dashboard in the main workflow, executor exclusivity, endpoint matrix, restart/partial fills/flat confirmation, kill/EOD failure injection, migrations, broker contract mocks, or deployment manifests. Secret validation is push-to-main/manual rather than PR and depends on Doppler/network. Dependency locking/hashes are absent; tests include environment/network-sensitive scripts under broad pytest discovery.
+CI now installs the bounded canonical `requirements-test.txt`, compiles all Python
+source trees, runs an environment precheck and `pip check`, collects the intended
+secret-independent suite, then runs mandatory safety, backtest, and complete-unit
+gates. Operational network/model probes are explicitly excluded from unit
+discovery. The local audit environment could not independently complete the clean
+install because its package-index proxy returned HTTP 403; the workflow is the
+authoritative clean-install evidence until it runs on GitHub Actions.
 
 ## 14. Weighted production maturity score
 
@@ -266,9 +272,9 @@ CI installs `requirements.txt`, syntax-checks only three Python files, runs `tes
 | Edge/runtime reliability | 5% | 40 | 2.00 |
 | Data durability/storage | 5% | 45 | 2.25 |
 | Security/secrets | 5% | 55 | 2.75 |
-| CI/testing | 3% | 30 | 0.90 |
+| CI/testing | 3% | 45 | 1.35 |
 | Operational documentation | 2% | 65 | 1.30 |
-| **Total** | **100%** |  | **40.60 → 41%** |
+| **Total** | **100%** |  | **41.05 → 41%** |
 
 The controlling score is **41%**. Present-but-unexecuted safety tests receive no maturity credit; this avoids conflating test existence with execution evidence.
 

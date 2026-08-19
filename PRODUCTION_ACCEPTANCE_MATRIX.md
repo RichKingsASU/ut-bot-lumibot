@@ -35,7 +35,7 @@
 | Supabase outage | Partial | No | No | No | logging often catches errors; cloud kill/control coupled | failure injection; exits independent; entry policy explicit |
 | GCP outage | Yes (degradation) | No | No | Partial | out-of-process bounded replicator | prove no exit dependency and lag/backlog recovery |
 | QuestDB/Qdrant/NATS outage | Partial | No | No | No | Docker restart/dependencies | progress/loss/backpressure tests; deterministic entry policy |
-| Backtesting | Yes | No (6 collection errors) | No | No | option economics/provenance/reports exist | hermetic dependencies and real-data acceptance run |
+| Backtesting | Yes | Pending clean CI gate | No | No | bounded backtest manifest and mandatory CI backtest gate | obtain clean CI receipt and real-data acceptance run |
 | Live/backtest parity | Partial | No | No | No | signal parity test exists but did not collect | align completed/incomplete candle and execution timestamps |
 | OOS validation | Fragmented | No | No | No | isolated rolling/walk-forward scripts | locked UT Bot option OOS protocol |
 | Walk-forward | Fragmented | No | No | No | forecasting/HMM scripts | unified candidate scoring and leakage controls |
@@ -45,7 +45,7 @@
 | AI safety boundary | Partial | Partial (approval stub tests not run here) | No | Partial | trading tools are stubs; deterministic executor orders | prevent agent risk/live/kill authority; audit permissions |
 | Storage durability | Partial | No | No | No | parquet/QuestDB/BigQuery/Supabase layers and storage guard | owners, retention, capacity SLO, restore drills |
 | Secrets | Partial | No | No | No | ignore/examples/Doppler/WIF and narrow CI scan | history-wide scan and provider revocation receipts |
-| CI | Partial | N/A | No | No | Python 3.11 workflow/test jobs | lock deps; dashboard, safety integration, deployments, secret PR scan |
+| CI | Partial | Source configured | No | No | Python 3.11 compile/collect/safety/backtest/full gates use canonical test manifest | obtain clean CI receipt; add dashboard/deployment validation |
 | Incident recovery | Partial | No | No | No | docs/scripts exist | supervised drills with broker convergence receipts |
 
 ## Stage gates

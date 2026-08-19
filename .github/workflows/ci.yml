@@ -9,6 +9,34 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ADMIN_API_KEY: ''
+      ALPACA_API_KEY: ''
+      ALPACA_API_SECRET: ''
+      ALPACA_BASE_URL: ''
+      ALPACA_DATA_URL: ''
+      ALPACA_LIVE_URL: ''
+      APCA_API_KEY_ID: ''
+      APCA_API_SECRET_KEY: ''
+      ANTHROPIC_API_KEY_AGENTS: ''
+      ANTHROPIC_API_KEY_HERMES: ''
+      ANTHROPIC_API_KEY_SENTIMENT: ''
+      FINNHUB_API_KEY: ''
+      GEMINI_API_KEY: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      HUGGINGFACE_TOKEN: ''
+      NATS_URL: ''
+      QUESTDB_URL: ''
+      REDDIT_CLIENT_SECRET: ''
+      SUPABASE_ANON_KEY: ''
+      SUPABASE_DSN: ''
+      SUPABASE_KEY: ''
+      SUPABASE_LOCAL_ANON_KEY: ''
+      SUPABASE_LOCAL_SERVICE_ROLE_KEY: ''
+      SUPABASE_LOCAL_URL: ''
+      SUPABASE_SERVICE_ROLE_KEY: ''
+      SUPABASE_URL: ''
+      TELEGRAM_BOT_TOKEN: ''
 
     steps:
     - uses: actions/checkout@v4
@@ -21,11 +49,19 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip uv
-        uv pip install --system -r requirements.txt
+        uv pip install --system -r requirements-test.txt
 
-    - name: Syntax check
+    - name: Compile Python sources
       run: |
-        python -m py_compile config.py main.py strategies/ut_bot.py
+        python -m compileall -q src strategies agents collectors backtests scripts
+
+    - name: Validate environment and dependency resolution
+      run: |
+        python scripts/check_test_environment.py
+        python -m pip check
+
+    - name: Collect complete intended suite
+      run: python -m pytest --collect-only -q
 
     - name: Security scan (Secrets check)
       run: |
@@ -43,12 +79,17 @@ jobs:
         fi
         echo "Security scan passed — no hardcoded secrets found"
 
-    - name: Run unit tests and verify strict mode
+    - name: Trading safety gate
+      run: scripts/test-safety.sh
+
+    - name: Backtest gate
+      run: python -m pytest -q backtests/tests/
+
+    - name: Complete unit suite
+      run: python -m pytest -q
+
+    - name: Verify strict mode
       run: |
-        pip install pytest
-        pytest tests/ -v
-        pytest backtests/tests/ -v
-        
         # Enforce strict mode validation checks (must fail with SyntheticDataError)
         echo "Verifying strict mode data provenance enforcement..."
         if python scripts/run_options_backtest.py --symbol SPY 2>&1 | grep -q "SyntheticDataError"; then

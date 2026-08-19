@@ -1,0 +1,8 @@
+# Install only for deployed database/cloud replication components.
+supabase>=2.3,<3
+alpaca-py>=0.20,<1
+nats-py>=2.14,<3
+qdrant-client>=1.9,<2
+psycopg2-binary>=2.9,<3
+google-cloud-bigquery>=3,<4
+google-cloud-pubsub>=2,<3

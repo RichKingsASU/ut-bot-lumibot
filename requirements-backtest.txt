@@ -1,0 +1,10 @@
+-r requirements-core.txt
+
+scipy>=1.11,<2
+hmmlearn>=0.3,<0.4
+scikit-learn>=1.4,<2
+statsmodels>=0.14,<1
+matplotlib>=3.8,<4
+polars>=0.20,<2
+pyarrow>=15,<22
+yfinance>=0.2,<1
