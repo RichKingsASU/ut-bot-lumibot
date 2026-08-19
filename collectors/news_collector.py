@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 
 from collectors.base_collector import BaseCollector
+from src.trading.component_health import ComponentReporter, Criticality
 
 logger = logging.getLogger("NewsCollector")
 
@@ -55,6 +56,8 @@ class NewsCollector(BaseCollector):
 
         # follow_redirects so feeds that 301 (MarketWatch, BitcoinMagazine) resolve.
         self.http_client = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
+        self.health = ComponentReporter("news", Criticality.TIER_2,
+            expected_interval_seconds=600, max_staleness_seconds=14400)
 
     def _get_url_hash(self, url: str) -> str:
         return hashlib.md5(url.strip().encode("utf-8")).hexdigest()
@@ -158,6 +161,10 @@ class NewsCollector(BaseCollector):
 
     async def poll_rss(self):
         """Poll RSS feeds."""
+        fetch_id = f"rss-{datetime.now(timezone.utc).isoformat()}"
+        self.health.work_started(fetch_id, provider_status="FETCHING")
+        successful_providers = 0
+        articles_fetched = 0
         logger.info("[NEWS] Polling RSS feeds...")
         for source, url in self.rss_feeds.items():
             try:
@@ -167,6 +174,7 @@ class NewsCollector(BaseCollector):
                 if resp.status_code != 200:
                     logger.warning(f"[NEWS] RSS Feed {source} returned {resp.status_code}")
                     continue
+                successful_providers += 1
                     
                 root = ET.fromstring(resp.text.encode("utf-8"))
                 channel = root.find("channel")
@@ -189,6 +197,7 @@ class NewsCollector(BaseCollector):
                         
                     self.seen_url_hashes.add(url_hash)
                     new_count += 1
+                    articles_fetched += 1
                     
                     # Parse standard pubDate string or fallback to now
                     try:
@@ -226,6 +235,12 @@ class NewsCollector(BaseCollector):
                 logger.info(f"[NEWS] RSS Feed {source} poll complete. Discovered {new_count} new articles.")
             except Exception as e:
                 logger.error(f"[NEWS] Error polling RSS Feed {source}: {e}")
+        if successful_providers:
+            # Zero new/relevant articles is still a successful useful fetch.
+            self.health.work_succeeded(fetch_id, provider_status="OK",
+                successful_providers=successful_providers, articles_fetched=articles_fetched)
+        else:
+            self.health.work_failed("no RSS provider completed successfully", provider_status="FAILED")
 
     async def _finnhub_loop(self):
         while self._running:

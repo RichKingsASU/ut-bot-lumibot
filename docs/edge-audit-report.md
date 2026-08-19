@@ -1,3 +1,5 @@
+> **P0-05 component health (2026-08-19): FIXED IN SOURCE; UNIT TESTED; FALSE-GREEN TESTED; EDGE RUNTIME NOT VALIDATED.** Local useful-work evidence supersedes process/container-only green states.
+
 # Edge Server Audit — k2-MotherBoard-Series — 2026-07-26T02:01:38-07:00
 
 ## 0. GPU — the Phase 0 gate

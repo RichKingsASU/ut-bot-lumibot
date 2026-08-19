@@ -21,6 +21,18 @@ import threading
 from datetime import datetime, timezone
 
 logger = logging.getLogger("component_heartbeat")
+_reporters = {}
+
+
+def reporter(process_name: str, *, tier: int = 1, expected_interval_seconds: float = 60,
+             max_staleness_seconds: float = 120):
+    """Return one local reporter (and therefore one instance UUID) per process."""
+    if process_name not in _reporters:
+        from src.trading.component_health import ComponentReporter, Criticality
+        _reporters[process_name] = ComponentReporter(
+            process_name, Criticality(tier), expected_interval_seconds=expected_interval_seconds,
+            max_staleness_seconds=max_staleness_seconds)
+    return _reporters[process_name]
 
 
 def _post(payload: dict) -> None:
@@ -53,6 +65,17 @@ def beat(
         payload["last_successful_cycle_id"] = last_successful_cycle_id
     if last_trade_decision_timestamp is not None:
         payload["last_trade_decision_timestamp"] = last_trade_decision_timestamp
+
+    # Atomic local evidence is safety-authoritative and remains available when
+    # Supabase is down. A cycle id is evidence of completed work; a plain beat
+    # is deliberately only process-liveness evidence.
+    local = reporter(process_name, expected_interval_seconds=900 if process_name == "run_agents" else 30,
+                     max_staleness_seconds=1500 if process_name == "run_agents" else 120)
+    if last_successful_cycle_id is not None:
+        local.work_succeeded(str(last_successful_cycle_id),
+                             last_trade_decision_timestamp=last_trade_decision_timestamp)
+    else:
+        local.heartbeat(remote_status=status)
 
     if blocking:
         _post(payload)
