@@ -14,7 +14,6 @@ jobs:
       ALPACA_API_KEY: ''
       ALPACA_API_SECRET: ''
       ALPACA_BASE_URL: ''
-      ALPACA_DATA_URL: ''
       ALPACA_LIVE_URL: ''
       APCA_API_KEY_ID: ''
       APCA_API_SECRET_KEY: ''

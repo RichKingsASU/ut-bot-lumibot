@@ -19,6 +19,16 @@ def test_gap_uses_data_endpoint_and_returns_real_value(get):
 
 
 @patch("src.trading.market_gap.requests.get")
+def test_blank_data_endpoint_uses_safe_default(get, monkeypatch):
+    monkeypatch.setenv("ALPACA_DATA_URL", "")
+    get.return_value = response({"bars": []})
+
+    check_gap("SPY")
+
+    assert get.call_args.args[0].startswith("https://data.alpaca.markets/v2/")
+
+
+@patch("src.trading.market_gap.requests.get")
 def test_http_200_empty_bars_is_no_data_not_zero(get):
     get.return_value = response({"bars": []})
     result = check_gap("SPY")
