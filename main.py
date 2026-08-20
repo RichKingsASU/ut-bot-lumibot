@@ -57,7 +57,19 @@ def main():
     set_ready(True)
 
     try:
+
         broker = Alpaca(ALPACA_CONFIG)
+        from config import TRADING_MODE, I_CONFIRM_LIVE_TRADING_EXPECTED_ACCOUNT
+        if TRADING_MODE == "live":
+            try:
+                account = broker.api.get_account()
+                if account.id != I_CONFIRM_LIVE_TRADING_EXPECTED_ACCOUNT:
+                    bot_logger.error(f"FATAL: Connected to Alpaca account {account.id} but expected {I_CONFIRM_LIVE_TRADING_EXPECTED_ACCOUNT}")
+                    sys.exit(1)
+            except Exception as e:
+                bot_logger.error(f"FATAL: Could not verify Alpaca account identity: {e}")
+                sys.exit(1)
+
         strategy = UTBotStrategy(
             broker=broker,
             parameters={

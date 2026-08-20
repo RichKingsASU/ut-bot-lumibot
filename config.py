@@ -58,10 +58,13 @@ def reload():
 
 
 # ── Alpaca Configuration (for Lumibot broker) ───────────────────────────────
+TRADING_MODE = os.getenv("TRADING_MODE", "").lower()
+I_CONFIRM_LIVE_TRADING_EXPECTED_ACCOUNT = os.getenv("I_CONFIRM_LIVE_TRADING_EXPECTED_ACCOUNT", "")
+
 ALPACA_CONFIG = {
     "API_KEY": os.getenv("ALPACA_API_KEY"),
     "API_SECRET": os.getenv("ALPACA_API_SECRET"),
-    "PAPER": os.getenv("ALPACA_IS_PAPER", "true").lower() == "true",
+    "PAPER": TRADING_MODE != "live",
 }
 
 # Alpaca REST API (for direct options trading)
